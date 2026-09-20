@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MarketPicks</string>
+    <string name="tab_watchlist">Watchlist</string>
+    <string name="tab_charts">Charts</string>
+    <string name="tab_portfolio">Portfolio</string>
+    <string name="tab_search">Search</string>
+    <string name="tab_profile">Profile</string>
+    <string name="watchlist_title">Watchlist</string>
+    <string name="portfolio_title">My Portfolio</string>
+    <string name="total_value">Total Value</string>
+    <string name="today_change">Today\'s Change</string>
+    <string name="add_to_watchlist">Add to Watchlist</string>
+    <string name="chart_placeholder">Chart View</string>
+    <string name="holdings">Holdings</string>
+</resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CreateStuff</string>
+    <string name="tab_templates">Templates</string>
+    <string name="tab_saved">Saved</string>
+    <string name="tab_explore">Explore</string>
+    <string name="tab_profile">Profile</string>
+    <string name="tab_create">Create</string>
+    <string name="template_category_social">Social Media</string>
+    <string name="template_category_poster">Posters</string>
+    <string name="template_category_logo">Logos</string>
+    <string name="template_category_cards">Cards</string>
+    <string name="template_category_presentations">Presentations</string>
+    <string name="template_category_thumbnails">Thumbnails</string>
+    <string name="template_use_btn">Use Template</string>
+    <string name="saved_projects_title">My Projects</string>
+    <string name="no_projects">No saved projects yet</string>
+    <string name="new_project">New Project</string>
+    <string name="detail_title">Template Details</string>
+    <string name="detail_description">Start customizing this template to make it yours. Add text, images, and adjust colors.</string>
+</resources>

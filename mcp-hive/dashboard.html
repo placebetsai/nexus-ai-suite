@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Hive Orchestrator</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e17;--card:#111827;--border:#1e293b;--neon-cyan:#06d6a0;--neon-pink:#ef476f;--neon-blue:#118ab2;--neon-yellow:#ffd166;--text:#e2e8f0;--muted:#64748b}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#0f172a,#1e1b4b);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:1.4rem;background:linear-gradient(90deg,var(--neon-cyan),var(--neon-blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .status-dot{width:10px;height:10px;border-radius:50%;background:var(--neon-cyan);box-shadow:0 0 8px var(--neon-cyan);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.container{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px;max-width:1400px;margin:0 auto}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+.panel h2{font-size:.85rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
+.models-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.model-card{background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:12px;position:relative;transition:all .2s}
+.model-card:hover{border-color:var(--neon-cyan);box-shadow:0 0 12px rgba(6,214,160,.15)}
+.model-card .name{font-size:.8rem;font-weight:600;margin-bottom:4px}
+.model-card .specs{font-size:.65rem;color:var(--muted);margin-bottom:6px}
+.model-card .meta{display:flex;justify-content:space-between;font-size:.65rem}
+.model-card .meta span{color:var(--muted)}
+.status-badge{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}
+.status-online{background:var(--neon-cyan);box-shadow:0 0 6px var(--neon-cyan)}
+.dispatch-form{display:flex;flex-direction:column;gap:10px}
+.dispatch-form textarea{background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);resize:vertical;min-height:80px;font-size:.85rem}
+.dispatch-form select,.dispatch-form button{background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:.85rem}
+.dispatch-form button{background:linear-gradient(135deg,var(--neon-cyan),var(--neon-blue));border:none;font-weight:600;cursor:pointer;transition:opacity .2s}
+.dispatch-form button:hover{opacity:.85}
+.dispatch-form .parallel-btn{background:linear-gradient(135deg,var(--neon-pink),var(--neon-yellow))}
+.task-list{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.task-item{background:#0f172a;border-radius:6px;padding:8px 10px;font-size:.75rem;border-left:3px solid var(--neon-cyan)}
+.task-item .task-header{display:flex;justify-content:space-between;margin-bottom:3px}
+.task-item .task-model{color:var(--neon-cyan);font-weight:600}
+.task-item .task-time{color:var(--muted)}
+.task-item .task-prompt{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.metric-box{background:#0f172a;border-radius:6px;padding:8px;text-align:center}
+.metric-box .val{font-size:1.2rem;font-weight:700;color:var(--neon-cyan)}
+.metric-box .lbl{font-size:.6rem;color:var(--muted);text-transform:uppercase}
+#live-feed{max-height:180px;overflow-y:auto;font-size:.7rem;font-family:'Courier New',monospace;color:var(--neon-cyan)}
+#live-feed div{padding:2px 0;border-bottom:1px solid #1e293b}
+@media(max-width:900px){.container{grid-template-columns:1fr}.models-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="status-dot"></div>
+  <h1>MCP HIVE ORCHESTRATOR</h1>
+  <span style="color:var(--muted);font-size:.75rem" id="conn-status">Connecting...</span>
+</div>
+<div class="container">
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="panel">
+      <h2>Models (9)</h2>
+      <div class="models-grid" id="models-grid"></div>
+    </div>
+    <div class="panel">
+      <h2>Task Queue</h2>
+      <div class="task-list" id="task-list"><div style="color:var(--muted);font-size:.75rem">No tasks yet</div></div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="panel">
+      <h2>Dispatch</h2>
+      <div class="dispatch-form">
+        <select id="model-select"><option value="">Auto-route by type</option></select>
+        <select id="type-select">
+          <option value="default">Type: Default</option>
+          <option value="content_writing">Content Writing</option>
+          <option value="coding">Coding</option>
+          <option value="market_analysis">Market Analysis</option>
+          <option value="research">Research</option>
+          <option value="creative">Creative</option>
+          <option value="speed">Speed</option>
+          <option value="general">General</option>
+          <option value="heavy">Heavy/Complex</option>
+          <option value="balanced">Balanced</option>
+        </select>
+        <textarea id="task-input" placeholder="Enter your task prompt..."></textarea>
+        <button onclick="dispatchSingle()">Dispatch Task</button>
+        <button class="parallel-btn" onclick="dispatchParallel()">Dispatch 3 Parallel Tasks</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Metrics</h2>
+      <div class="metrics">
+        <div class="metric-box"><div class="val" id="m-total">0</div><div class="lbl">Total Tasks</div></div>
+        <div class="metric-box"><div class="val" id="m-latency">0ms</div><div class="lbl">Avg Latency</div></div>
+        <div class="metric-box"><div class="val" id="m-active">0</div><div class="lbl">Active</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Live Feed</h2>
+      <div id="live-feed"></div>
+    </div>
+  </div>
+</div>
+<script>
+let models={},tasks=[];
+const API=location.origin+'/api';
+
+async function loadStatus(){
+  const r=await fetch(`${API}/status`);
+  const d=await r.json();
+  models=d.models;
+  renderModels();
+  const sel=document.getElementById('model-select');
+  sel.innerHTML='<option value="">Auto-route by type</option>';
+  Object.entries(models).forEach(([id,m])=>{sel.innerHTML+=`<option value="${id}">${m.name}</option>`});
+  document.getElementById('m-total').textContent=d.totalTasks;
+}
+
+async function loadTasks(){
+  const r=await fetch(`${API}/tasks`);
+  const d=await r.json();
+  tasks=d.tasks;
+  renderTasks();
+}
+
+function renderModels(){
+  const g=document.getElementById('models-grid');
+  g.innerHTML='';
+  Object.entries(models).forEach(([id,m])=>{
+    g.innerHTML+=`<div class="model-card">
+      <div class="name"><span class="status-badge status-online"></span>${m.name}</div>
+      <div class="specs">${m.specialties.join(', ')}</div>
+      <div class="meta"><span>Tasks: ${m.tasksCompleted}</span><span>${m.avgLatency}ms</span></div>
+    </div>`;
+  });
+}
+
+function renderTasks(){
+  const l=document.getElementById('task-list');
+  if(!tasks.length){l.innerHTML='<div style="color:var(--muted);font-size:.75rem">No tasks yet</div>';return}
+  l.innerHTML='';
+  tasks.forEach(t=>{
+    l.innerHTML+=`<div class="task-item">
+      <div class="task-header"><span class="task-model">${t.modelName||t.model}</span><span class="task-time">${t.latency}ms</span></div>
+      <div class="task-prompt">${t.task||t.prompt}</div>
+    </div>`;
+  });
+}
+
+function addFeed(msg){
+  const f=document.getElementById('live-feed');
+  const d=document.createElement('div');
+  d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`;
+  f.prepend(d);
+  if(f.children.length>50)f.lastChild.remove();
+}
+
+async function dispatchSingle(){
+  const prompt=document.getElementById('task-input').value.trim();
+  if(!prompt)return;
+  const model=document.getElementById('model-select').value;
+  const type=document.getElementById('type-select').value;
+  addFeed(`Dispatching: "${prompt.substring(0,40)}..."`);
+  const body={prompt,type};
+  if(model)body.model=model;
+  const r=await fetch(`${API}/dispatch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  addFeed(`Completed: ${d.modelName} in ${d.latency}ms`);
+  loadTasks();loadStatus();
+  document.getElementById('task-input').value='';
+}
+
+async function dispatchParallel(){
+  addFeed('Dispatching 3 parallel tasks...');
+  const types=[
+    {prompt:'Write a compelling blog post about AI trends',type:'content_writing'},
+    {prompt:'Debug the memory leak in the auth module',type:'coding'},
+    {prompt:'Analyze Q3 market performance for tech sector',type:'market_analysis'}
+  ];
+  const r=await fetch(`${API}/parallel`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tasks:types})});
+  const d=await r.json();
+  addFeed(`All 3 completed in ${d.totalLatency}ms total`);
+  loadTasks();loadStatus();
+}
+
+// SSE
+function connectSSE(){
+  const es=new EventSource(`${API}/events`);
+  es.onopen=()=>{document.getElementById('conn-status').textContent='Live';document.getElementById('conn-status').style.color='var(--neon-cyan)'};
+  es.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.event==='completed')addFeed(`Done: ${d.result.modelName} - ${d.result.latency}ms`);
+    if(d.event==='parallel_complete')addFeed(`Parallel batch complete: ${d.results.length} tasks`);
+  };
+  es.onerror=()=>{document.getElementById('conn-status').textContent='Reconnecting...';document.getElementById('conn-status').style.color='var(--neon-pink)'};
+}
+
+loadStatus();loadTasks();connectSSE();
+</script>
+</body>
+</html>

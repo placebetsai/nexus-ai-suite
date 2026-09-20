@@ -1,0 +1,12 @@
+{
+  "name": "mcp-hive-orchestrator",
+  "version": "1.0.0",
+  "description": "MCP Hive Orchestrator - Central Control Panel for 9 AI Models",
+  "main": "orchestrator.js",
+  "scripts": {
+    "start": "node orchestrator.js",
+    "test": "node test-parallel.js"
+  },
+  "keywords": ["mcp", "hive", "orchestrator", "ai"],
+  "license": "MIT"
+}

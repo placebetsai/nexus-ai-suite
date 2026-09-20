@@ -1,0 +1,118 @@
+{
+  "name": "Joffe Federation MCP Hive",
+  "version": "1.0.0",
+  "description": "Free model hive for billion-dollar app development",
+  "models": {
+    "nemotron-3-ultra": {
+      "provider": "opencode-zen",
+      "model_id": "nemotron-3-ultra-free",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 1000000,
+      "max_output": 65536,
+      "capabilities": ["reasoning", "tool_calling", "code_generation"],
+      "cost": "free",
+      "best_for": ["complex_reasoning", "orchestration", "code_review"]
+    },
+    "muse-spark-1.3": {
+      "provider": "opencode-zen",
+      "model_id": "muse-spark-1.3",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "capabilities": ["reasoning", "multimodal", "code_generation"],
+      "cost": "free",
+      "best_for": ["content_writing", "seo", "product_descriptions"]
+    },
+    "muse-spark-1.2": {
+      "provider": "opencode-zen",
+      "model_id": "muse-spark-1.2",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "capabilities": ["reasoning", "multimodal"],
+      "cost": "free",
+      "best_for": ["analysis", "research", "summarization"]
+    },
+    "nemotron-3.5-lightning": {
+      "provider": "opencode-zen",
+      "model_id": "nemotron-3.5-lightning",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 256000,
+      "max_output": 16384,
+      "capabilities": ["fast_inference", "tool_calling"],
+      "cost": "free",
+      "best_for": ["quick_queries", "real_time_responses", "chat"]
+    },
+    "mimo-v2.5": {
+      "provider": "opencode-zen",
+      "model_id": "mimo-v2.5",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 1000000,
+      "max_output": 32768,
+      "capabilities": ["reasoning", "code_generation"],
+      "cost": "free",
+      "best_for": ["coding", "debugging", "technical_tasks"]
+    },
+    "union-alpha": {
+      "provider": "opencode-zen",
+      "model_id": "union-alpha",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 256000,
+      "max_output": 16384,
+      "capabilities": ["general_purpose"],
+      "cost": "free",
+      "best_for": ["general_tasks", "brainstorming"]
+    },
+    "big-pickle": {
+      "provider": "opencode-zen",
+      "model_id": "big-pickle",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 256000,
+      "max_output": 16384,
+      "capabilities": ["general_purpose"],
+      "cost": "free",
+      "best_for": ["creative_writing", "ideation"]
+    },
+    "ling-3.0-flash-fin": {
+      "provider": "opencode-zen",
+      "model_id": "ling-3.0-flash-fin",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 256000,
+      "max_output": 16384,
+      "capabilities": ["fast_inference", "financial_analysis"],
+      "cost": "free",
+      "best_for": ["market_analysis", "financial_data", "quick_reports"]
+    },
+    "opencode-zen": {
+      "provider": "opencode-zen",
+      "model_id": "opencode-zen",
+      "base_url": "https://opencode.ai/zen/v1",
+      "context_window": 256000,
+      "max_output": 16384,
+      "capabilities": ["general_purpose", "code_generation"],
+      "cost": "free",
+      "best_for": ["general_coding", "assistance"]
+    }
+  },
+  "routing": {
+    "content_writing": "muse-spark-1.3",
+    "seo_optimization": "muse-spark-1.3",
+    "product_descriptions": "muse-spark-1.3",
+    "complex_reasoning": "nemotron-3-ultra",
+    "code_review": "nemotron-3-ultra",
+    "orchestration": "nemotron-3-ultra",
+    "quick_queries": "nemotron-3.5-lightning",
+    "real_time_chat": "nemotron-3.5-lightning",
+    "coding": "mimo-v2.5",
+    "debugging": "mimo-v2.5",
+    "technical_tasks": "mimo-v2.5",
+    "market_analysis": "ling-3.0-flash-fin",
+    "financial_data": "ling-3.0-flash-fin",
+    "research": "muse-spark-1.2",
+    "analysis": "muse-spark-1.2",
+    "general_tasks": "union-alpha",
+    "brainstorming": "big-pickle",
+    "creative_writing": "big-pickle",
+    "general_coding": "opencode-zen"
+  }
+}

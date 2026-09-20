@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fashionistas</string>
+    <string name="tab_closet">Closet</string>
+    <string name="tab_camera">Camera</string>
+    <string name="tab_marketplace">Marketplace</string>
+    <string name="tab_outfits">Outfits</string>
+    <string name="tab_profile">Profile</string>
+    <string name="closet_title">My Closet</string>
+    <string name="add_to_closet">Add to Closet</string>
+    <string name="marketplace_title">Marketplace</string>
+    <string name="trending_title">Trending Now</string>
+    <string name="camera_subtitle">Snap your outfit or browse looks</string>
+    <string name="sync_button">Sync with Marketplace</string>
+    <string name="sell_item">Sell This Item</string>
+    <string name="item_condition">Condition: Like New</string>
+    <string name="item_price">Price</string>
+</resources>

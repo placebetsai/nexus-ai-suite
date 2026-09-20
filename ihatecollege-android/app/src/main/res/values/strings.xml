@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IHateCollege</string>
+    <string name="tab_careers">Careers</string>
+    <string name="tab_lessons">Lessons</string>
+    <string name="tab_progress">Progress</string>
+    <string name="tab_community">Community</string>
+    <string name="tab_profile">Profile</string>
+    <string name="careers_title">Career Paths</string>
+    <string name="lessons_title">Lessons</string>
+    <string name="progress_title">Your Progress</string>
+    <string name="skip_college">Skip college. Start building.</string>
+    <string name="start_lesson">Start Lesson</string>
+    <string name="continue_lesson">Continue</string>
+    <string name="completed">Completed</string>
+    <string name="time_estimate">min read</string>
+    <string name="overall_progress">Overall Progress</string>
+</resources>

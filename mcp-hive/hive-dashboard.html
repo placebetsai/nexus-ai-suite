@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Hive Orchestrator</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--bg2:#11111a;--bg3:#16162a;
+  --neon:#00ff9d;--neon2:#00e0ff;--neon3:#ff00e0;
+  --text:#e0e0e0;--dim:#555;--red:#ff3355;
+  --glass:rgba(15,15,30,0.85);--border:rgba(0,255,157,0.15);
+}
+body{background:var(--bg);color:var(--text);font-family:'Fira Code','SF Mono','Cascadia Code',monospace;overflow-x:hidden;min-height:100vh}
+
+/* Matrix rain canvas */
+#matrix{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;opacity:0.07;pointer-events:none}
+
+/* Layout */
+.app{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:12px;padding:12px;min-height:100vh}
+
+/* Header */
+.header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--glass);border:1px solid var(--border);border-radius:10px;backdrop-filter:blur(12px)}
+.header h1{font-size:1.1rem;color:var(--neon);text-shadow:0 0 20px rgba(0,255,157,0.3);letter-spacing:3px;text-transform:uppercase}
+.header .status{display:flex;gap:16px;font-size:.7rem;color:var(--dim)}
+.header .status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;background:var(--neon);box-shadow:0 0 6px var(--neon);animation:pulse 2s infinite}
+
+/* Panels */
+.panel{background:var(--glass);border:1px solid var(--border);border-radius:10px;padding:14px;backdrop-filter:blur(12px);display:flex;flex-direction:column;overflow:hidden}
+.panel h2{font-size:.75rem;text-transform:uppercase;letter-spacing:2px;color:var(--neon2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+/* Model Grid */
+.models-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.model-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;position:relative;transition:all .3s}
+.model-card:hover{border-color:var(--neon);box-shadow:0 0 15px rgba(0,255,157,0.1)}
+.model-card.active{border-color:var(--neon);box-shadow:0 0 20px rgba(0,255,157,0.15)}
+.model-card .model-name{font-size:.65rem;color:var(--neon);margin-bottom:2px}
+.model-card .model-type{font-size:.55rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.model-card .model-meta{margin-top:6px;display:flex;justify-content:space-between;font-size:.55rem;color:var(--dim)}
+.model-card .status-dot{position:absolute;top:8px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 5px var(--neon)}
+.model-card .status-dot.offline{background:var(--red);box-shadow:0 0 5px var(--red)}
+.model-card .tasks-bar{margin-top:6px;height:3px;background:var(--bg);border-radius:2px;overflow:hidden}
+.model-card .tasks-fill{height:100%;background:linear-gradient(90deg,var(--neon),var(--neon2));border-radius:2px;transition:width .5s}
+
+/* Task Queue */
+.queue-list{flex:1;overflow-y:auto;max-height:200px}
+.queue-item{padding:8px 10px;border-bottom:1px solid rgba(0,255,157,0.06);font-size:.65rem;display:flex;align-items:center;gap:8px;animation:slideIn .3s}
+.queue-item .qi-id{color:var(--neon);min-width:90px}
+.queue-item .qi-type{color:var(--neon2);text-transform:uppercase;font-size:.55rem;padding:1px 5px;background:rgba(0,224,255,0.1);border-radius:3px}
+.queue-item .qi-prompt{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Results Feed */
+.results-feed{flex:1;overflow-y:auto;max-height:300px}
+.result-item{padding:10px;border-bottom:1px solid rgba(0,255,157,0.08);font-size:.65rem;animation:slideIn .3s}
+.result-item .ri-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.result-item .ri-model{color:var(--neon3)}
+.result-item .ri-time{color:var(--dim);font-size:.55rem}
+.result-item .ri-latency{color:var(--neon);font-size:.55rem}
+.result-item .ri-prompt{color:var(--dim);font-size:.6rem;margin-top:3px}
+.result-item .ri-result{color:var(--text);font-size:.6rem;margin-top:3px;padding:6px;background:var(--bg);border-radius:4px;border-left:2px solid var(--neon)}
+.result-item .ri-tokens{color:var(--neon2);font-size:.5rem;margin-top:4px}
+
+/* Activity Log */
+.log-feed{flex:1;overflow-y:auto;max-height:200px}
+.log-entry{padding:5px 8px;font-size:.6rem;border-bottom:1px solid rgba(0,255,157,0.04);display:flex;gap:8px}
+.log-entry .le-ts{color:var(--dim);min-width:85px}
+.log-entry .le-msg{color:var(--neon);opacity:.8}
+
+/* Dispatch Panel */
+.dispatch-panel{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.dispatch-form{display:flex;flex-direction:column;gap:8px}
+.dispatch-form label{font-size:.6rem;color:var(--neon2);text-transform:uppercase;letter-spacing:1px}
+.dispatch-form select,.dispatch-form textarea,.dispatch-form button{background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:.7rem;padding:8px 12px;border-radius:6px;outline:none}
+.dispatch-form select:focus,.dispatch-form textarea:focus{border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,157,0.1)}
+.dispatch-form textarea{min-height:60px;resize:vertical}
+.dispatch-form button{background:linear-gradient(135deg,rgba(0,255,157,0.15),rgba(0,224,255,0.15));border-color:var(--neon);color:var(--neon);cursor:pointer;text-transform:uppercase;letter-spacing:2px;font-weight:bold;transition:all .3s}
+.dispatch-form button:hover{background:linear-gradient(135deg,rgba(0,255,157,0.25),rgba(0,224,255,0.25));box-shadow:0 0 20px rgba(0,255,157,0.2)}
+.batch-controls{display:flex;flex-direction:column;gap:6px}
+.batch-controls button{background:var(--bg2);border:1px solid var(--border);color:var(--neon2);font-size:.6rem;padding:8px;border-radius:6px;cursor:pointer;transition:all .3s;text-transform:uppercase;letter-spacing:1px;font-family:inherit}
+.batch-controls button:hover{border-color:var(--neon2);box-shadow:0 0 10px rgba(0,224,255,0.15)}
+
+/* Metrics Bar */
+.metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.metric-card{background:var(--glass);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;backdrop-filter:blur(12px)}
+.metric-card .mc-value{font-size:1.4rem;color:var(--neon);text-shadow:0 0 15px rgba(0,255,157,0.3)}
+.metric-card .mc-label{font-size:.55rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--neon);border-radius:2px;opacity:.3}
+
+/* Animations */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 5px var(--neon)}50%{box-shadow:0 0 20px var(--neon)}}
+
+@media(max-width:900px){
+  .app{grid-template-columns:1fr}
+  .models-grid{grid-template-columns:repeat(2,1fr)}
+  .metrics{grid-template-columns:repeat(3,1fr)}
+  .dispatch-panel{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <h1>&lt;/&gt; MCP HIVE ORCHESTRATOR</h1>
+    <div class="status">
+      <span><span class="dot" id="connDot"></span> <span id="connStatus">CONNECTING...</span></span>
+      <span>MODELS: <span id="totalModels">9</span></span>
+      <span>ONLINE: <span id="onlineModels">0</span></span>
+      <span>UPTIME: <span id="uptime">0s</span></span>
+    </div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="metric-card"><div class="mc-value" id="mTotal">0</div><div class="mc-label">Tasks Dispatched</div></div>
+    <div class="metric-card"><div class="mc-value" id="mComplete">0</div><div class="mc-label">Completed</div></div>
+    <div class="metric-card"><div class="mc-value" id="mAvg">0</div><div class="mc-label">Avg Latency (ms)</div></div>
+    <div class="metric-card"><div class="mc-value" id="mTokens">0</div><div class="mc-label">Total Tokens</div></div>
+    <div class="metric-card"><div class="mc-value" id="mQueue">0</div><div class="mc-label">In Queue</div></div>
+  </div>
+
+  <!-- Models -->
+  <div class="panel">
+    <h2>[ Models ]</h2>
+    <div class="models-grid" id="modelsGrid"></div>
+  </div>
+
+  <!-- Task Queue -->
+  <div class="panel">
+    <h2>[ Task Queue ]</h2>
+    <div class="queue-list" id="queueList"><div style="color:var(--dim);font-size:.65rem;text-align:center;padding:20px">No tasks queued</div></div>
+  </div>
+
+  <!-- Results Feed -->
+  <div class="panel" style="grid-column:1/-1">
+    <h2>[ Results Feed ]</h2>
+    <div class="results-feed" id="resultsFeed"><div style="color:var(--dim);font-size:.65rem;text-align:center;padding:30px">Awaiting dispatched tasks...</div></div>
+  </div>
+
+  <!-- Dispatch -->
+  <div class="dispatch-panel">
+    <div class="panel dispatch-form">
+      <h2>[ Dispatch Task ]</h2>
+      <label>Task Type</label>
+      <select id="taskType">
+        <option value="content_writing">content_writing (Muse Spark 1.3)</option>
+        <option value="coding">coding (Mimo v2.5)</option>
+        <option value="market_analysis">market_analysis (Ling 3.0 Flash Fin)</option>
+        <option value="research">research (Nemotron 3 Ultra)</option>
+        <option value="creative">creative (Muse Spark 1.2)</option>
+        <option value="speed">speed (Nemotron 3.5 Lightning)</option>
+        <option value="general" selected>general (Union Alpha)</option>
+        <option value="heavy">heavy (Big Pickle)</option>
+        <option value="balanced">balanced (OpenCode Zen)</option>
+      </select>
+      <label>Prompt</label>
+      <textarea id="taskPrompt" placeholder="Enter your prompt..."></textarea>
+      <button onclick="dispatchTask()">DISPATCH TASK</button>
+    </div>
+    <div class="panel batch-controls">
+      <h2>[ Quick Actions ]</h2>
+      <button onclick="dispatchParallel3()">DISPATCH 3 PARALLEL</button>
+      <button onclick="dispatchParallel9()">DISPATCH 9 PARALLEL</button>
+      <button onclick="clearResults()">CLEAR FEED</button>
+      <button onclick="dispatchSample()">DISPATCH SAMPLE SET</button>
+    </div>
+  </div>
+
+  <!-- Activity Log -->
+  <div class="panel" style="grid-column:1/-1">
+    <h2>[ Activity Log ]</h2>
+    <div class="log-feed" id="logFeed"></div>
+  </div>
+</div>
+
+<script>
+// ── Models Data ─────────────────────────────────────────────────────────
+const MODELS = {
+  'muse-spark-1.3':      { name:'Muse Spark 1.3',      type:'content_writing',  color:'#00ff9d' },
+  'mimo-v2.5':           { name:'Mimo v2.5',            type:'coding',           color:'#00e0ff' },
+  'ling-3.0-flash-fin':  { name:'Ling 3.0 Flash Fin',   type:'market_analysis',  color:'#ff00e0' },
+  'nemotron-3-ultra':    { name:'Nemotron 3 Ultra',     type:'research',         color:'#ffd700' },
+  'muse-spark-1.2':      { name:'Muse Spark 1.2',       type:'creative',         color:'#ff6b6b' },
+  'nemotron-3.5-lightning':{name:'Nemotron 3.5 Lightning',type:'speed',          color:'#00ffff' },
+  'union-alpha':         { name:'Union Alpha',           type:'general',          color:'#b388ff' },
+  'big-pickle':          { name:'Big Pickle',            type:'heavy',            color:'#69f0ae' },
+  'opencode-zen':        { name:'OpenCode Zen',          type:'balanced',         color:'#ffab40' },
+};
+
+let stats = { total:0, complete:0, latencies:[], tokens:0 };
+
+// ── Render Models ───────────────────────────────────────────────────────
+function renderModels(data) {
+  const grid = document.getElementById('modelsGrid');
+  grid.innerHTML = '';
+  Object.entries(data).forEach(([id, m]) => {
+    const pct = Math.min((m.tasksHandled || 0) * 10, 100);
+    const info = MODELS[id] || {};
+    grid.innerHTML += `
+      <div class="model-card" data-model="${id}">
+        <div class="status-dot${m.status!=='online'?' offline':''}"></div>
+        <div class="model-name" style="color:${info.color||'var(--neon)'}">${m.name || id}</div>
+        <div class="model-type">${m.type}</div>
+        <div class="model-meta">
+          <span>${m.tasksHandled||0} tasks</span>
+          <span>${m.latency||0}ms</span>
+        </div>
+        <div class="tasks-bar"><div class="tasks-fill" style="width:${pct}%"></div></div>
+      </div>`;
+  });
+}
+
+// ── Update Metrics ──────────────────────────────────────────────────────
+function updateMetrics() {
+  document.getElementById('mTotal').textContent = stats.total;
+  document.getElementById('mComplete').textContent = stats.complete;
+  document.getElementById('mAvg').textContent = stats.latencies.length
+    ? Math.round(stats.latencies.reduce((a,b)=>a+b,0)/stats.latencies.length)
+    : 0;
+  document.getElementById('mTokens').textContent = stats.tokens;
+}
+
+// ── Add Log Entry ───────────────────────────────────────────────────────
+function addLog(ts, msg) {
+  const feed = document.getElementById('logFeed');
+  const d = document.createElement('div');
+  d.className = 'log-entry';
+  d.innerHTML = `<span class="le-ts">${new Date(ts).toLocaleTimeString()}</span><span class="le-msg">${msg}</span>`;
+  feed.prepend(d);
+  if (feed.children.length > 100) feed.removeChild(feed.lastChild);
+}
+
+// ── Add Result ──────────────────────────────────────────────────────────
+function addResult(r) {
+  stats.complete++;
+  stats.latencies.push(r.latency);
+  stats.tokens += r.tokensUsed || 0;
+  updateMetrics();
+
+  const feed = document.getElementById('resultsFeed');
+  if (feed.querySelector('[style]')) feed.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'result-item';
+  const info = MODELS[r.modelId] || {};
+  d.innerHTML = `
+    <div class="ri-header">
+      <span class="ri-model" style="color:${info.color||'var(--neon)'}">${r.modelName} (${r.modelId})</span>
+      <span class="ri-latency">${r.latency}ms</span>
+    </div>
+    <div class="ri-prompt">Prompt: ${r.prompt}</div>
+    <div class="ri-result">${r.result}</div>
+    <div class="ri-tokens">Tokens: ${r.tokensUsed} | Task: ${r.taskId}</div>`;
+  feed.prepend(d);
+  if (feed.children.length > 50) feed.removeChild(feed.lastChild);
+}
+
+// ── SSE Connection ──────────────────────────────────────────────────────
+function connectSSE() {
+  const es = new EventSource('/events');
+  es.addEventListener('connected', () => {
+    document.getElementById('connDot').style.background = 'var(--neon)';
+    document.getElementById('connDot').style.boxShadow = '0 0 6px var(--neon)';
+    document.getElementById('connStatus').textContent = 'CONNECTED';
+  });
+  es.addEventListener('log', (e) => {
+    const d = JSON.parse(e.data);
+    addLog(d.ts, d.msg);
+  });
+  es.addEventListener('result', (e) => {
+    addResult(JSON.parse(e.data));
+  });
+  es.addEventListener('queue', (e) => {
+    const q = JSON.parse(e.data);
+    stats.total++;
+    updateMetrics();
+    const list = document.getElementById('queueList');
+    if (list.querySelector('[style]')) list.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'queue-item';
+    d.innerHTML = `<span class="qi-id">${q.id}</span><span class="qi-type">${q.type}</span><span class="qi-prompt">${q.prompt}</span>`;
+    list.prepend(d);
+  });
+  es.onerror = () => {
+    document.getElementById('connDot').style.background = 'var(--red)';
+    document.getElementById('connStatus').textContent = 'RECONNECTING...';
+  };
+}
+
+// ── Fetch Models periodically ───────────────────────────────────────────
+async function refreshModels() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    renderModels(d);
+    const online = Object.values(d).filter(m => m.status === 'online').length;
+    document.getElementById('onlineModels').textContent = online;
+    document.getElementById('totalModels').textContent = Object.keys(d).length;
+  } catch {}
+}
+
+// ── Dispatch Task ───────────────────────────────────────────────────────
+async function dispatchTask() {
+  const type = document.getElementById('taskType').value;
+  const prompt = document.getElementById('taskPrompt').value.trim() || 'Default task prompt';
+  document.getElementById('taskPrompt').value = '';
+  try {
+    await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ type, prompt }]),
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function dispatchParallel3() {
+  const types = ['content_writing','coding','research'];
+  const prompts = ['Write a blog post about AI hives','Optimize a sorting algorithm','Research quantum computing trends'];
+  try {
+    await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(types.map((t,i) => ({ type:t, prompt:prompts[i] }))),
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function dispatchParallel9() {
+  const types = Object.values(MODELS).map(m => m.type);
+  const prompts = types.map(t => `Task for ${t} model`);
+  try {
+    await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(types.map((t,i) => ({ type:t, prompt:prompts[i] }))),
+    });
+  } catch (e) { console.error(e); }
+}
+
+async function dispatchSample() {
+  const tasks = [
+    { type:'content_writing', prompt:'Write a 500-word article about the future of swarm intelligence' },
+    { type:'coding', prompt:'Implement a concurrent task scheduler in Node.js' },
+    { type:'market_analysis', prompt:'Analyze Q3 2026 semiconductor market trends' },
+  ];
+  try {
+    await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tasks),
+    });
+  } catch (e) { console.error(e); }
+}
+
+function clearResults() {
+  document.getElementById('resultsFeed').innerHTML = '<div style="color:var(--dim);font-size:.65rem;text-align:center;padding:30px">Feed cleared. Awaiting new tasks...</div>';
+}
+
+// ── Matrix Rain ─────────────────────────────────────────────────────────
+(function initMatrix() {
+  const c = document.getElementById('matrix');
+  const ctx = c.getContext('2d');
+  let w, h, cols, drops;
+  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF';
+  function resize() {
+    w = c.width = window.innerWidth;
+    h = c.height = window.innerHeight;
+    cols = Math.floor(w / 14);
+    drops = Array(cols).fill(1);
+  }
+  function draw() {
+    ctx.fillStyle = 'rgba(10,10,15,0.05)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#00ff9d';
+    ctx.font = '12px monospace';
+    for (let i = 0; i < cols; i++) {
+      const ch = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(ch, i * 14, drops[i] * 14);
+      if (drops[i] * 14 > h && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    }
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  setInterval(draw, 45);
+})();
+
+// ── Init ────────────────────────────────────────────────────────────────
+connectSSE();
+refreshModels();
+setInterval(refreshModels, 3000);
+
+(async () => {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('uptime').textContent = Math.floor(d.uptime) + 's';
+  } catch {}
+})();
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('uptime').textContent = Math.floor(d.uptime) + 's';
+    document.getElementById('mQueue').textContent = d.queueLength;
+  } catch {}
+}, 2000);
+</script>
+</body>
+</html>

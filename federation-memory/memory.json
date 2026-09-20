@@ -1,0 +1,93 @@
+{
+  "mission": "MCP HIVE: Decentralized AI agent federation with persistent memory, parallel execution, and unified governance.",
+  "apps": [
+    {
+      "name": "Cannabis Data Hub",
+      "url": "https://cannabis-data-hub.pages.dev",
+      "description": "Agricultural data platform for cannabis industry",
+      "status": "Deployed"
+    },
+    {
+      "name": "Hemp Analytics Dashboard",
+      "url": "https://hemp-analytics.pages.dev",
+      "description": "Real-time hemp market analytics and visualization",
+      "status": "Deployed"
+    },
+    {
+      "name": "Grower Connect",
+      "url": "https://grower-connect.pages.dev",
+      "description": "Community platform connecting cannabis growers",
+      "status": "Deployed"
+    },
+    {
+      "name": "Cannabis Compliance",
+      "url": "https://cannabis-compliance.pages.dev",
+      "description": "Regulatory compliance tracker for cannabis businesses",
+      "status": "Deployed"
+    },
+    {
+      "name": "Strain Database",
+      "url": "https://strain-database.pages.dev",
+      "description": "Comprehensive cannabis strain database with effects data",
+      "status": "Deployed"
+    },
+    {
+      "name": "Market Intelligence",
+      "url": "https://market-intelligence.pages.dev",
+      "description": "Cannabis market pricing and trends intelligence",
+      "status": "Deployed"
+    },
+    {
+      "name": "Lab Results Portal",
+      "url": "https://lab-results.pages.dev",
+      "description": "Cannabis lab testing results and certification",
+      "status": "Deployed"
+    },
+    {
+      "name": "Seed Bank Archive",
+      "url": "https://seed-bank.pages.dev",
+      "description": "Cannabis seed genetics and lineage database",
+      "status": "Deployed"
+    }
+  ],
+  "mcp_hive_models": [
+    "Agent 1 - Memory Keeper (federation-memory)",
+    "Agent 2 - Web Builder (property deployment)",
+    "Agent 3 - Code Guardian (security/quality)",
+    "Agent 4 - Data Analyst (analytics)",
+    "Agent 5 - Deploy Commander (infrastructure)",
+    "Agent 6 - Research Scout (discovery)",
+    "Agent 7 - Orchestrator (coordination)",
+    "Agent 8 - Federation Admin (governance)",
+    "Agent 9 - PMI-CPMAI Certification Agent"
+  ],
+  "cloudflare": {
+    "account_id": "See env vars",
+    "api_token": "Stored in .env",
+    "zone": "pages.dev subdomain",
+    "deployment_method": "Cloudflare Pages with automatic CI/CD"
+  },
+  "github": {
+    "organization": "mcp-hive",
+    "repositories": [
+      "federation-memory",
+      "cannabis-data-hub",
+      "hemp-analytics",
+      "grower-connect",
+      "cannabis-compliance",
+      "strain-database",
+      "market-intelligence",
+      "lab-results",
+      "seed-bank"
+    ],
+    "deployment": "All repos connected to Cloudflare Pages for auto-deploy"
+  },
+  "credentials": {
+    "pmi_cpmai": "PMI-CPMAI Certification Agent - Certified Project Management Institute AI Project Manager"
+  },
+  "status": {
+    "federation_memory_server": "localhost:3002",
+    "state": "OPERATIONAL",
+    "last_verified": "2026-09-19"
+  }
+}

@@ -1,0 +1,32 @@
+# Cloudflare D1 database bindings for all Nexus apps
+# Docs: https://developers.cloudflare.com/d1/
+
+# ─── CreateStuff ───────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "createstuff-db"
+database_id = "cc9ab7ed-b343-4883-bf76-07f8493cba9e"
+
+# ─── Fashionistas ──────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "fashionistas-db"
+database_id = "0c1b88be-00b2-4e25-ae54-d30564190c4d"
+
+# ─── PlaceBets ─────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "placebets-db"
+database_id = "20eb5aaa-2c3a-45ca-be9d-d35c21c9161d"
+
+# ─── MarketPicks ───────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "marketpicks-db"
+database_id = "bcc97511-60b8-4fd7-ad03-f2c458b80c6a"
+
+# ─── IHateCollege ──────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "ihatecollege-db"
+database_id = "b4fb4c53-d3d3-4b67-8aa0-3e8d06823e0b"

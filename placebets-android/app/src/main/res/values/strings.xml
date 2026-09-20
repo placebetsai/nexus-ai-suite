@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PlaceBets</string>
+    <string name="tab_odds">Odds</string>
+    <string name="tab_ai_picks">AI Picks</string>
+    <string name="tab_tracker">Tracker</string>
+    <string name="tab_betslip">Betslip</string>
+    <string name="tab_profile">Profile</string>
+    <string name="odds_title">Live Odds</string>
+    <string name="ai_picks_title">AI Powered Picks</string>
+    <string name="tracker_title">Bet Tracker</string>
+    <string name="win_rate">Win Rate</string>
+    <string name="confidence">Confidence</string>
+    <string name="place_bet">Place Bet</string>
+    <string name="active_bets">Active Bets</string>
+    <string name="settled_bets">Settled Bets</string>
+    <string name="total_profit">Total Profit</string>
+</resources>
