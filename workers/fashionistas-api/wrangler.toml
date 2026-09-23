@@ -1,0 +1,20 @@
+name = "fashionistas-api"
+main = "src/index.js"
+compatibility_date = "2026-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fashionistas-db"
+database_id = "0c1b88be-00b2-4e25-ae54-d30564190c4d"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "fashionistas-images"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "2c710998e6d94970bf922643d4955452"
+preview_id = "2c710998e6d94970bf922643d4955452"
+
+[ai]
+binding = "AI"

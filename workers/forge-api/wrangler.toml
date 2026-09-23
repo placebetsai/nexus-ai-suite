@@ -1,0 +1,23 @@
+name = "forge-api"
+main = "src/index.js"
+compatibility_date = "2026-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "forge-db"
+database_id = "6b468863-8193-4c7b-9da7-33782149762f"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "forge-projects"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "290f893c0e874f25bb8a3947b3ffc2c6"
+preview_id = "290f893c0e874f25bb8a3947b3ffc2c6"
+
+[durable_objects]
+bindings = [{ name = "CHATROOM", class_name = "ChatRoom" }]
+
+[ai]
+binding = "AI"
