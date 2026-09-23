@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<title>CreateStuff — Build websites & apps with AI</title>
+<meta name="description" content="Describe what you want to build. AI designs it, writes every file, and publishes it to the live web — free.">
+<style>
+:root{
+  --bg:#0f1117; --panel:#161a23; --panel2:#1c2130; --card:#1a1f2b; --ink:#e8eaf0; --mut:#8a91a3;
+  --line:#262c3a; --accent:#6d5cff; --accent2:#8b7bff; --good:#3ddc97; --warn:#ffb454; --bad:#ff5d5d;
+  --mono:"SFMono-Regular",ui-monospace,Consolas,"Roboto Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,sans-serif;
+  --shadow:0 12px 40px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.45}
+h1,h2,h3{font-weight:800;letter-spacing:-.02em;margin:.2em 0}
+.wrap{max-width:1100px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 18px calc(70px + env(safe-area-inset-bottom))}
+.hidden{display:none!important}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;font-family:var(--sans);cursor:pointer;transition:transform .06s,filter .15s;margin:4px 0;text-decoration:none;color:var(--ink)}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--accent);color:#fff;width:100%}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-soft{background:var(--panel2);border:1px solid var(--line)}
+.btn-ghost{background:transparent;border:1.5px solid var(--accent);color:var(--accent2)}
+.btn-danger{background:var(--bad);color:#fff}
+.btn-sm{padding:8px 12px;font-size:13px;border-radius:9px}
+.input{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:15px;background:var(--panel);color:var(--ink);outline:none;font-family:var(--sans)}
+.input:focus{border-color:var(--accent)}
+label{font-size:12.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;display:block;margin:14px 0 5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin:12px 0}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#fff;color:#111;padding:11px 18px;border-radius:999px;font-size:14px;z-index:99;opacity:0;transition:opacity .25s;font-weight:600;max-width:88%;text-align:center}
+.toast.show{opacity:1}
+.spinner{border:3px solid rgba(255,255,255,.12);border-top-color:var(--accent);border-radius:50%;width:26px;height:26px;animation:sp .7s linear infinite;margin:22px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.mut{color:var(--mut);font-size:13px}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;background:var(--panel2);border:1px solid var(--line);color:var(--ink);margin:2px 3px 2px 0}
+.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:800;text-transform:capitalize}
+.tag.idle{background:rgba(138,145,163,.15);color:var(--mut)}
+.tag.discovering,.tag.creating_sandbox,.tag.generating,.tag.completed{background:rgba(61,220,151,.15);color:var(--good)}
+.tag.queued,.tag.publishing,.tag.building{background:rgba(255,180,84,.15);color:var(--warn)}
+.tag.error,.tag.failed{background:rgba(255,93,93,.15);color:var(--bad)}
+.hero{border-radius:22px;padding:48px 26px;text-align:center;position:relative;overflow:hidden;background:radial-gradient(120% 180% at 50% -40%,#2a2466 0%,#0f1117 58%);border:1px solid var(--line);margin:10px 0 20px}
+.hero h1{font-size:clamp(30px,6vw,52px);margin:0 0 12px;background:linear-gradient(90deg,#fff,#b9adff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{color:#a9b0c0;font-size:17px;max-width:560px;margin:0 auto}
+.code-demo{font-family:var(--mono);font-size:13px;background:rgba(0,0,0,.4);border:1px solid var(--line);border-radius:12px;padding:16px;margin:20px auto 0;max-width:520px;text-align:left;overflow:auto;max-height:220px}
+.code-demo b{color:var(--accent2)}
+.chip{display:inline-block;padding:7px 15px;border-radius:999px;border:1.4px solid var(--line);font-size:13.5px;font-weight:600;background:var(--card);color:var(--ink);margin:3px 4px 3px 0;cursor:pointer}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:16px;cursor:pointer;transition:.15s;position:relative}
+.pcard:hover{border-color:var(--accent);transform:translateY(-2px)}
+.pcard .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.sheet{position:fixed;inset:0;background:rgba(5,6,10,.6);z-index:60;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(3px)}
+.sheet .body{background:var(--bg);width:100%;max-width:680px;border-radius:22px 22px 0 0;padding:18px 20px calc(20px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto;animation:up .18s ease;border:1px solid var(--line);border-bottom:0}
+@keyframes up{from{transform:translateY(30px);opacity:.4}}
+.chat{display:flex;flex-direction:column;gap:10px;max-height:46vh;overflow:auto;padding:4px}
+.msg{max-width:85%;padding:12px 15px;border-radius:15px;font-size:14.5px;white-space:pre-wrap}
+.msg.ai{background:var(--panel2);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.me{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.msg .ans{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.msg .ans button{text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--ink);font-size:13.5px;cursor:pointer;font-family:var(--sans)}
+.msg .ans button:hover{border-color:var(--accent)}
+.planbox{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px;margin-top:8px}
+.codearea{font-family:var(--mono);background:#0b0d12;color:#d6dce8;border-radius:12px 12px 0 0;padding:16px;width:100%;border:1px solid var(--line);border-bottom:0;min-height:240px;max-height:50vh;overflow:auto;white-space:pre;font-size:13px;line-height:1.55;tab-size:2}
+.tabrow{display:flex;overflow-x:auto;background:#0b0d12;border:1px solid var(--line);border-radius:12px 12px 0 0;border-bottom:0}
+.tabrow span{font-family:var(--mono);font-size:12px;padding:8px 13px;border-right:1px solid var(--line);cursor:pointer;color:var(--mut);white-space:nowrap}
+.tabrow span.on{background:var(--panel2);color:var(--ink)}
+.preview-frame{width:100%;border:1px solid var(--line);border-radius:0 0 12px 12px;min-height:420px;background:#fff}
+.statusline{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:0 0 12px 12px;font-family:var(--mono);font-size:12px;color:var(--mut)}
+.split{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+@media(max-width:860px){.split{grid-template-columns:1fr}}
+.toolbar{display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap}
+.stat b{font-size:22px;display:block}
+.stat span{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.projhead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+nav.tabbar{position:fixed;left:0;right:0;bottom:0;background:rgba(15,17,23,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50}
+nav.tabbar a{flex:1;text-align:center;padding:7px 0 5px;font-size:10px;font-weight:700;color:var(--mut);text-decoration:none}
+nav.tabbar a svg{display:block;margin:0 auto 3px}
+nav.tabbar a.on{color:var(--accent2)}
+.loading-bar{position:fixed;top:0;left:0;right:0;height:3px;background:var(--panel2);z-index:80;overflow:hidden}
+.loading-bar i{display:block;height:100%;background:var(--accent);width:40%;animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="loading-bar hidden" id="loading-bar"><i></i></div>
+<div class="wrap">
+
+  <!-- AUTH -->
+  <section id="view-auth" class="hidden">
+    <div class="hero">
+      <h1>CreateStuff</h1>
+      <p>Describe what you want to build. The AI designs it, writes every file, previews it, and publishes it to the live web — free.</p>
+      <div class="code-demo"><b>&gt;</b> "A landing page for my dog-walking startup, Fluffy Walks, with pricing, testimonials and a booking form."<br><br><span style="color:var(--good)">✓ 14 files created</span> · index.html · styles.css · app.js · booking.html ...<br><span style="color:var(--accent2)">✓ live at</span> <span style="color:var(--warn)">/published/…/public/index.html</span></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;margin:16px auto 4px">
+      <button class="chip on" id="auth-tab-login">Log in</button>
+      <button class="chip" id="auth-tab-signup">Create account</button>
+    </div>
+    <div class="card" style="max-width:480px;margin:0 auto">
+      <div id="auth-login">
+        <label>Email</label><input class="input" id="l-email" type="email" placeholder="you@example.com" autocomplete="email">
+        <label>Password</label><input class="input" id="l-pass" type="password" placeholder="password" autocomplete="current-password">
+        <div style="height:12px"></div>
+        <button class="btn btn-primary" onclick="doLogin()">Log in</button>
+      </div>
+      <div id="auth-signup" class="hidden">
+        <label>Name</label><input class="input" id="s-name" placeholder="Your name">
+        <label>Email</label><input class="input" id="s-email" type="email" placeholder="you@example.com">
+        <label>Password (6+ chars)</label><input class="input" id="s-pass" type="password" placeholder="password">
+        <div style="height:12px"></div>
+        <button class="btn btn-primary" onclick="doSignup()">Create your free account</button>
+        <p class="mut" style="margin-top:10px">Your projects and generated code persist in Cloudflare D1 + R2. No credit card needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <section id="view-app" class="hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#fff">C</div>
+        <div><h2 style="margin:0;font-size:18px" id="app-title">CreateStuff</h2><span class="mut" id="app-sub"></span></div>
+      </div>
+      <button class="btn btn-soft btn-sm" onclick="logout()">Sign out</button>
+    </div>
+    <div id="screen"></div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<nav class="tabbar hidden" id="tabbar">
+  <a data-v="dashboard" href="javascript:go('dashboard')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>My apps</a>
+  <a data-v="new" href="javascript:go('new')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New app</a>
+  <a data-v="about" href="javascript:go('about')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 11v5M12 8h.01"/></svg>About</a>
+</nav>
+
+<script>
+const API = "https://api.createstuff.ai";
+let TOKEN = localStorage.getItem("cs_token") || "";
+let USER = JSON.parse(localStorage.getItem("cs_user") || "null");
+let PROJ = null;      // current project object
+let FILES = [];       // generated files [{path,content}]
+let STATUS = { files: [] };
+
+const $ = (s) => document.querySelector(s);
+const toast = (m, ms=2400) => { const t=$("#toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),ms); };
+const bus = (on) => { const bar=$("#loading-bar"); bar.classList.toggle("hidden",!on); };
+const escapeHtml = (s)=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = () => "";
+
+async function api(path, opts={}){
+  const headers = {"Content-Type":"application/json",...(opts.headers||{})};
+  if (TOKEN) headers["Authorization"] = "Bearer "+TOKEN;
+  const r = await fetch(API+path, {...opts, headers});
+  let d=null; try{ d=await r.json(); }catch{}
+  if (r.status===401){ toast("Session expired — log in again"); setTimeout(()=>logout(),600); throw new Error("unauthorized"); }
+  if (!r.ok) throw new Error(d?.error || "Request failed ("+r.status+")");
+  return d;
+}
+
+/* ============ AUTH ============ */
+async function doLogin(){ bus(true); try{
+  const d = await api("/api/auth/login",{method:"POST",body:JSON.stringify({email:$("#l-email").value.trim(),password:$("#l-pass").value})});
+  afterAuth(d);
+}catch(e){ toast(e.message); }finally{ bus(false); } }
+async function doSignup(){ bus(true); try{
+  const d = await api("/api/auth/register",{method:"POST",body:JSON.stringify({email:$("#s-email").value.trim(),name:$("#s-name").value.trim(),password:$("#s-pass").value})});
+  afterAuth(d);
+}catch(e){ toast(e.message); }finally{ bus(false); } }
+function afterAuth(d){ TOKEN=d.token; USER=d.user; localStorage.setItem("cs_token",TOKEN); localStorage.setItem("cs_user",JSON.stringify(USER)); $("#view-auth").classList.add("hidden"); $("#view-app").classList.remove("hidden"); $("#tabbar").classList.remove("hidden"); go("dashboard"); }
+function logout(){ TOKEN=""; USER=null; localStorage.removeItem("cs_token"); localStorage.removeItem("cs_user"); $("#view-app").classList.add("hidden"); $("#tabbar").classList.add("hidden"); $("#view-auth").classList.remove("hidden"); }
+
+/* ============ NAV ============ */
+const SUBT = { dashboard:["My apps","your projects, live wherever you publish"], new:["Build with AI","describe it — the AI builds it"], about:["About CreateStuff","the free way to make software"] };
+async function go(v){
+  document.querySelectorAll("nav.tabbar a").forEach(a=>a.classList.toggle("on",a.dataset.v===v));
+  const [t,sub]=SUBT[v]||["",""];
+  $("#app-title").textContent=t; $("#app-sub").textContent=sub;
+  const el=$("#screen");
+  if(v==="dashboard") return renderDash(el);
+  if(v==="new") return renderNew(el);
+  if(v==="about") return renderAbout(el);
+}
+
+/* ============ DASHBOARD ============ */
+async function renderDash(el){
+  bus(true); el.innerHTML = `<div class="card"><div class="spinner"></div></div>`;
+  try{
+    const d = await api("/api/projects");
+    const projects = d.projects||[];
+    el.innerHTML = `
+      <div class="card" style="text-align:center;padding:34px 20px">
+        <h2 style="margin:0 0 8px">Start from an idea</h2>
+        <p class="mut" style="margin:0 auto 16px;max-width:480px">Describe any website or app in plain words. The AI discovers your requirements, writes every file, and publishes it to a live URL.</p>
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')">✨ Build something new</button>
+      </div>
+      ${projects.length?`<div style="display:flex;align-items:center;justify-content:space-between"><h3 style="margin:16px 0 4px">Your apps</h3><span class="mut">${projects.length} project${projects.length===1?"":"s"}</span></div><div class="pgrid">${projects.map(pc).join("")}</div>`:`
+      <div class="card" style="text-align:center"><div class="spinner" style="margin-bottom:6px"></div></div>`}`;
+    if (projects.length) el.querySelector(".pgrid").innerHTML = projects.map(pc).join("");
+    else { // fetch again after render for fresh
+      const d2 = await api("/api/projects");
+      const p2 = d2.projects||[];
+      if (p2.length) renderDash(el);
+      else el.innerHTML = el.innerHTML.replace('<div class="card" style="text-align:center"><div class="spinner" style="margin-bottom:6px"></div></div>','<div class="card" style="text-align:center"><p class="mut" style="margin:0">No apps yet — hit “Build something new”.</p></div>');
+    }
+  }catch(e){ el.innerHTML = `<div class="card"><p class="mut" style="margin:0">${escapeHtml(e.message)}</p></div>`; }
+  finally{ bus(false); }
+}
+function pc(p){
+  const st = p.job_state || "idle";
+  return `<div class="pcard" onclick="openProject('${p.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#3a3f52,#6d5cff);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px">${escapeHtml((p.name||"P")[0].toUpperCase())}</div>
+      <span class="tag ${st}">${st}</span>
+    </div>
+    <h3 style="margin:12px 0 2px">${escapeHtml(p.name||"Untitled")}</h3>
+    <p class="mut" style="margin:0 0 6px;font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(p.description||"No description")}</p>
+    <div class="mut" style="font-size:12px">${p.publish_url?`<span style="color:var(--good)">● published</span>`:""} ${p.version||1} rev · ${new Date(p.updated_at||Date.now()).toLocaleDateString()}</div>
+  </div>`;
+}
+
+/* ============ NEW PROJECT (AI flow) ============ */
+function renderNew(el){
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-top:0">Tell the AI what to build</h3>
+      <p class="mut" style="margin-top:0">A few words is enough — the AI will ask clarifying questions only if it needs to.</p>
+      <textarea class="input" id="np-idea" rows="4" placeholder="e.g. A clean landing page for my freelance photography business showing a portfolio grid, services, pricing and a contact form."></textarea>
+      <div class="toolbar" style="justify-content:space-between">
+        <span class="mut" style="font-size:12px">Free to build &amp; publish</span>
+        <button class="btn btn-primary btn-sm" style="width:auto" onclick="startBuild()">→ Build it</button>
+      </div>
+      <div id="np-secondary" class="hidden" style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <p class="mut" style="margin-top:0">Or start with a starter project:</p>
+        <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
+          ${["Personal Portfolio","Landing page","Online store","Blog","Restaurant site","Event ticketing"].map(t=>`<button class="btn btn-soft btn-sm" style="margin:0" onclick="quickProject('${t}')">📄 ${t}</button>`).join("")}
+        </div>
+      </div>
+    </div>`;
+}
+function quickProject(t){
+  const map = { "Personal Portfolio":"A modern one-page portfolio for a creative professional: hero, projects grid, testimonials, contact form.", "Landing page":"A high-converting landing page with a headline, feature grid, pricing and signup CTA.", "Online store":"A clean e-commerce storefront with a product grid, product pages, cart and checkout.", "Blog":"A minimal blog with a homepage listing posts, individual post pages and a subscribe form.", "Restaurant site":"A warm restaurant website with a menu, gallery, hours and reservation button.", "Event ticketing":"An event site with event details, seating tiers, prices and a buy-tickets flow." };
+  $("#np-idea").value = map[t] || t;
+  $("#np-idea").focus();
+  toast("Idea prefilled — hit Build");
+}
+async function startBuild(){
+  const idea = $("#np-idea").value.trim();
+  if (!idea) return toast("Describe what you want to build first");
+  bus(true);
+  try{
+    // create project
+    const name = idea.split(/[.!?\n]/)[0].trim().slice(0,48) || "My Project";
+    const d = await api("/api/projects", {method:"POST", body:JSON.stringify({ name, description: idea })});
+    openProject(d.project.id, true);
+  }catch(e){ toast(e.message); bus(false); }
+}
+
+/* ============ PROJECT STUDIO ============ */
+async function openProject(id, fresh){
+  bus(true);
+  try{
+    const d = await api("/api/projects/"+id);
+    PROJ = d.project;
+    await refreshFiles(id);
+    $("#view-title");
+    $("#app-title").textContent = PROJ.name || "Project";
+    $("#app-sub").textContent = "studio";
+    renderStudio();
+  }catch(e){ toast(e.message); go("dashboard"); }
+  finally{ bus(false); }
+}
+async function refreshFiles(id){
+  try{ const s = await api("/api/projects/"+id+"/status"); STATUS = s; }catch{ STATUS={files:[]}; }
+}
+async function renderStudio(){
+  const el = $("#screen");
+  const files = STATUS.files || [];
+  const p = PROJ;
+  // Prefer freshly-generated in-session files when available
+  const sessionFiles = FILES.filter(f=>f.path && f.content);
+  const displayFiles = sessionFiles.length ? sessionFiles : files;
+  el.innerHTML = `
+    <div class="projhead">
+      <div>
+        <h2 style="margin:0;font-size:20px">${escapeHtml(p.name||"Project")}</h2>
+        <span class="mut">${escapeHtml((p.description||"").slice(0,110))}${(p.description||"").length>110?"…":""}</span>
+      </div>
+      <div>
+        <span class="tag ${p.job_state||"idle"}">${p.job_state||"idle"}</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-primary btn-sm" onclick="buildFlow()">⚡ Build / rebuild with AI</button>
+      <button class="btn btn-soft btn-sm" onclick="modifyFlow()">✏️ Ask AI to modify</button>
+      <button class="btn btn-soft btn-sm" onclick="publishProject()">🚀 Publish live</button>
+      ${STATUS.publishUrl?`<a class="btn btn-soft btn-sm" href="${STATUS.publishUrl}" target="_blank">🔗 View live ↗</a>`:""}
+    </div>
+    <div id="studio-status"></div>
+    ${STATUS.publishUrl?`
+      <div class="card" style="text-align:center;border-color:var(--good)">
+        <p class="mut" style="margin:0 0 8px">This app is published and open to everyone:</p>
+        <a style="font-family:var(--mono);color:var(--good);font-size:13px;word-break:break-all" href="${STATUS.publishUrl}" target="_blank">${escapeHtml(STATUS.publishUrl)}</a>
+        <div style="margin-top:12px"><iframe class="preview-frame" style="min-height:380px" src="${STATUS.publishUrl}"></iframe></div>
+      </div>`:`
+      <div class="card" style="text-align:center">
+        <p class="mut" style="margin:0">Not published yet. Generate your app, preview it, then hit <b style="color:var(--accent2)">🚀 Publish live</b> to get a public URL.</p>
+      </div>`}
+    <div class="card">
+      <h3 style="margin-top:0">Generated code (${displayFiles.length} file${displayFiles.length===1?"":"s"})</h3>
+      ${displayFiles.length?`<div class="tabrow" id="filetabs">${displayFiles.map((f,i)=>`<span class="${i===0?"on":""}" data-i="${i}">${escapeHtml(f.path.split("/").pop()||f.path)}</span>`).join("")}</div><div class="codearea" id="codearea">${escapeHtml((displayFiles[0]?.content||"").slice(0,12000))}</div>
+      <div class="toolbar" style="margin-top:8px">
+        <button class="btn btn-soft btn-sm" onclick="copyAllCode()">📋 Copy all files</button>
+        <button class="btn btn-soft btn-sm" onclick="openLivePreview()">👁️ Live preview</button>
+      </div>` : `<p class="mut" style="margin:0">No files yet — press <b style="color:var(--accent2)">⚡ Build with AI</b> to scaffold the whole project.</p>`}
+    </div>`;
+  if (displayFiles.length) {
+    FILES = displayFiles;
+    renderCodeTabs();
+  }
+  pollStatus();
+  renderStatusLog();
+}
+async function renderStatusLog(){
+  const st = $("#studio-status");
+  if (!st) return;
+  const logs = STATUS.log || [];
+  if (logs.length){
+    const last = logs[logs.length-1];
+    st.innerHTML = `<div class="card" style="padding:12px 16px;font-family:var(--mono);font-size:12.5px;color:var(--mut)"><span class="tag ${STATUS.state||'idle'}" style="margin-right:8px">${STATUS.state||"idle"}</span>${escapeHtml(last?.message||"")}${logs.length>1?` · ${logs.length} steps`:""}</div>`;
+  } else if (STATUS.state && STATUS.state!=="idle") {
+    st.innerHTML = `<div class="card" style="padding:12px 16px;font-family:var(--mono);font-size:12.5px;color:var(--mut)"><span class="tag ${STATUS.state}">${STATUS.state}</span> working…</div>`;
+  }
+}
+function renderCodeTabs(){
+  const area = document.getElementById("codearea");
+  const tb = document.getElementById("filetabs");
+  if (!tb || !area) return;
+  tb.querySelectorAll("span").forEach(s=>{
+    s.onclick = (e)=>{
+      tb.querySelectorAll("span").forEach(x=>x.classList.remove("on"));
+      s.classList.add("on");
+      const i = +s.dataset.i;
+      if (FILES[i]) area.textContent = FILES[i].content && FILES[i].content.length > 60000 ? FILES[i].content.slice(0,60000)+"\n/* …truncated… */" : FILES[i].content || "// no content";
+    };
+  });
+}
+async function copyAllCode(){
+  const files = FILES.filter(f=>f.content && f.path);
+  if (!files.length){ toast("Nothing to copy yet — build first"); return; }
+  try{
+    const all = files.map(f=>`// ---- ${f.path} ----\n${f.content}`).join("\n\n");
+    await navigator.clipboard.writeText(all);
+    toast("Copied full project ✓");
+  }catch(e){ toast("Copy failed — select the text manually"); }
+}
+async function openLivePreview(){
+  const idx = FILES.findIndex(f=>/index\.html$/.test(f.path||""));
+  if (idx<0){ toast("Generate the app first to preview it"); return; }
+  const html = FILES[idx].content || "";
+  window.open("data:text/html;charset=utf-8,"+encodeURIComponent(html), "_blank");
+}
+let pollTimer = null;
+async function pollStatus(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    if (!PROJ || !TOKEN) return clearInterval(pollTimer);
+    try{
+      const s = await api("/api/projects/"+PROJ.id+"/status");
+      const changed = JSON.stringify({state:s.state, files:s.files.map(f=>f.path).join(","), publishUrl: s.publishUrl}) !== JSON.stringify({state:STATUS.state, files:(STATUS.files||[]).map(f=>f.path).join(","), publishUrl: STATUS.publishUrl});
+      STATUS = s;
+      if (changed){ renderStudio(); }
+    }catch{}
+  }, 7000);
+}
+
+/* ============ BUILD / MODIFY ============ */
+function buildFlow(){
+  openSheet(`
+    <h3 style="margin:0 0 2px">Build "${escapeHtml(PROJ?.name||"this")}"</h3>
+    <p class="mut" style="margin-top:0">The AI writes a full multi-file app from your idea. Real code, real files.</p>
+    <label>Your idea / plan</label>
+    <textarea class="input" id="bf-plan" rows="5" placeholder="${escapeHtml(PROJ?.description||"Describe the app to build…")}"></textarea>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" onclick="runBuild()">⚡ Generate project now</button>
+  `);
+}
+async function runBuild(){
+  const plan = $("#bf-plan").value.trim() || PROJ.description;
+  closeSheet();
+  bus(true);
+  toast("Generating your app — this can take ~30 seconds…", 4000);
+  try{
+    const d = await api("/api/ai/generate", {method:"POST", body:JSON.stringify({ projectId: PROJ.id, plan })});
+    if (d.ok === false) { toast(d.error||"Generation failed"); bus(false); return; }
+    const generated = d.files || [];
+    FILES = generated.filter(f=>f.content && f.path);
+    // update status
+    await refreshFiles(PROJ.id);
+    bus(false);
+    toast("Code generated — checkpoints saved ✓");
+    renderStudio();
+    // live preview of freshly built app with real content
+    if (FILES.length) openResultsPreview();
+  }catch(e){ bus(false); toast(e.message); }
+}
+function openResultsPreview(){
+  const idx = FILES.findIndex(f=>/index\.html$/.test(f.path||""));
+  if (idx<0) return;
+  // Build a preview blob that inlines the CSS/JS the AI generated alongside this html
+  const html = FILES[idx].content || "";
+  const inject = FILES.filter(f=>!/index\.html$/.test(f.path||""));
+  openSheet(`
+    <h3 style="margin:0 0 2px">Preview of your new app</h3>
+    <p class="mut" style="margin-top:0">This is the real code the AI just wrote — refresh the page to see it again, or hit Publish for a public URL.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="closeSheet();publishProject()">🚀 Publish live</button>
+      <button class="btn btn-soft btn-sm" onclick="closeSheet()">Close preview</button>
+    </div>
+    <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden">
+      <div class="statusline" style="border-radius:0">public/index.html · ${(html.length/1024).toFixed(1)} KB</div>
+      <iframe class="preview-frame" style="min-height:430px;border-radius:0" sandbox="allow-scripts allow-same-origin" src="${"data:text/html;charset=utf-8,"+encodeURIComponent(html)}"></iframe>
+    </div>`);
+}
+function modifyFlow(){
+  openSheet(`
+    <h3 style="margin:0 0 2px">Ask the AI to change the app</h3>
+    <p class="mut" style="margin-top:0">Describe what to change — the AI rewrites the affected files.</p>
+    <label>Change request</label>
+    <textarea class="input" id="mf-msg" rows="4" placeholder="e.g. Make the hero section bold and dark, add a testimonials row, and change the price to $49/mo"></textarea>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" onclick="runModify()">✏️ Apply change</button>
+  `);
+}
+async function runModify(){
+  const message = $("#mf-msg").value.trim();
+  if (!message) return toast("Describe the change");
+  closeSheet(); bus(true); toast("Applying edit — the AI is rewriting files…", 4000);
+  try{
+    // Pass only in-session file contents; backend falls back to stored ai_context.files.
+    const cur = FILES.filter(f=>f.content);
+    const d = await api("/api/ai/modify", {method:"POST", body:JSON.stringify({ projectId: PROJ.id, message, currentFiles: cur })});
+    if (d.ok === undefined || d.ok === false) { toast("No files to modify yet — build first"); bus(false); return; }
+    if (d.files && d.files.length) FILES = d.files;
+    await refreshFiles(PROJ.id);
+    bus(false);
+    toast("Edit applied ✓");
+    renderStudio();
+  }catch(e){ bus(false); toast(e.message); }
+}
+async function publishProject(){
+  bus(true); toast("Publishing…", 2000);
+  try{
+    // Send real file content only when we hold newly-generated files in this session.
+    // Otherwise the API is handed an empty array and falls back to the stored checkpoint (ai_context.files).
+    const cur = FILES.filter(f=>f.content).length ? FILES : [];
+    const d = await api("/api/ai/publish", {method:"POST", body:JSON.stringify({ projectId: PROJ.id, files: cur })});
+    await refreshFiles(PROJ.id);
+    bus(false);
+    if (d.ok) {
+      toast("Published! Your app is live ✓");
+      renderStudio();
+      setTimeout(()=>{ if (STATUS.publishUrl) window.open(STATUS.publishUrl,"_blank"); }, 800);
+    } else toast(d.error||"Publish failed");
+  }catch(e){ bus(false); toast(e.message); }
+}
+
+/* ============ ABOUT ============ */
+function renderAbout(el){
+  el.innerHTML = `
+    <div class="card">
+      <div class="hero" style="border:0;margin:0 0 14px">
+        <h1>Free AI app-building</h1>
+        <p>Describe an idea. Get a complete, multi-file app with real code, a live preview, and a public URL — all in your own browser, no terminal required.</p>
+      </div>
+      <div class="split">
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">What you can build</h3>
+          ${["Landing pages & marketing sites","Online stores with carts","Portfolio & personal sites","Blogs and content sites","Restaurant / local business sites","Event & ticketing pages"].map(x=>`<p style="margin:8px 0"><span style="color:var(--good)">✓</span> &nbsp;${x}</p>`).join("")}
+        </div>
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">How it works</h3>
+          <ol style="margin:0;padding-left:20px;color:var(--mut)">
+            <li><b style="color:var(--ink)">You describe</b> the idea in plain words</li>
+            <li style="margin-top:8px"><b style="color:var(--ink)">AI discovers</b> requirements — pages, features, style</li>
+            <li style="margin-top:8px"><b style="color:var(--ink)">It generates</b> real HTML/CSS/JS files (checkpointed)</li>
+            <li style="margin-top:8px"><b style="color:var(--ink)">You preview & modify</b> it with simple English edits</li>
+            <li style="margin-top:8px"><b style="color:var(--ink)">Publish</b> → gets a permanent, shareable URL</li>
+          </ol>
+        </div>
+      </div>
+      <div class="card" style="text-align:center;margin-top:14px">
+        <p class="mut" style="margin:0 0 10px">Everything runs free on Cloudflare Workers + D1 + R2. Your code is yours — export it anytime.</p>
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')">Build your first app →</button>
+      </div>
+    </div>`;
+}
+
+/* ============ SHEET + boot ============ */
+function openSheet(html){ const el=document.createElement("div"); el.className="sheet"; el.id="sheet"; el.innerHTML=`<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()">Close</button></div>`; el.addEventListener("click",e=>{if(e.target===el)closeSheet()}); document.body.appendChild(el); }
+function closeSheet(){ const s=$("#sheet"); if(s)s.remove(); }
+
+document.querySelectorAll("#auth-tab-login,#auth-tab-signup").forEach(b=>b.onclick=()=>{
+  const login=b.id==="auth-tab-login";
+  $("#auth-login").classList.toggle("hidden",!login);
+  $("#auth-signup").classList.toggle("hidden",login);
+  document.querySelectorAll("#view-auth .chip").forEach(c=>c.classList.toggle("on",c===b));
+});
+if (TOKEN && USER){ $("#view-auth").classList.add("hidden"); $("#view-app").classList.remove("hidden"); $("#tabbar").classList.remove("hidden"); go("dashboard"); }
+</script>
+</body>
+</html>
