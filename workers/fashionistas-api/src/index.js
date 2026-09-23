@@ -126,7 +126,7 @@ export default {
         return json({ user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email }, token });
       }
       if (path === "/api/blog" && method === "GET") {
-        const posts = await env.DB.prepare("SELECT id, title, slug, excerpt, category, read_time, published_at FROM blog_posts ORDER BY published_at DESC LIMIT 12").all();
+        const posts = await env.DB.prepare("SELECT id, title, slug, excerpt, category, read_time, created_at FROM blog_posts ORDER BY created_at DESC LIMIT 12").all();
         return json({ posts: posts.results });
       }
       if (path.startsWith("/api/images/") && method === "GET") {
