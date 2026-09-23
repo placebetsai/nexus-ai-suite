@@ -39,7 +39,7 @@
 ### Fashionistas1979 account
 | Worker | Blessing | Notes |
 |---|---|---|
-| fashionistas-api | ✅ | Auth + marketplaces work (signup 201, login 200). MISSING many routes the frontend calls (ai/analyze, fees, orders, hauls, analytics, blog, export). |
+| fashionistas-api | ✅ | **REBUILT + REDEPLOYED 2026-09-23.** Full router live: auth (HMAC JWT), listings CRUD + crosspost + sold + platforms, fees/shipping real parse, orders, hauls, analytics, profit/summary, messages templates, export CSV, marketplaces. **ai/analyze = REAL vision** (llama-3.2-11b-vision, base64 image → item JSON, source:"ai"). Blog/image-upload R2. |
 | fashionistas-ai | ⚠️ | Same account, worker-name collision to watch. |
 | ~~createstuff-api~~ | ❌ | **DELETED 2026-09-23.** Zombie (all 401, nothing referenced it). Canonical backend = forge-api on CS account. |
 | marketpicks-ai-api / marketpicks-ai | ⚠️ | MarketPicks APIs. |
@@ -94,5 +94,6 @@ Or use `./deploy.sh pages <project> <dir>` / `./deploy.sh worker <name> <dir>` �
 
 ## Current done/blocked fix agenda (from AUDIT-REPORT.md)
 1. ✅ **CreateStuff backend decided + zombie killed (2026-09-23).** Canonical = **forge-api** on Placebetsai account, served at `api.createstuff.ai` (zone route verified: `api.createstuff.ai/* → forge-api`), backed by **forge-db**. Verified end-to-end: register→login→create project→list all work (JWT, D1 persistence). The dead `createstuff-api` worker (FASH acct) was DELETED — no domain/route referenced it.
-2. **fashionistas-api worker**: add missing routes (ai/analyze, fees/estimate, orders, hauls, analytics, blog, export/*) to match live frontend.
-3. GitHub repos abandoned — deleted remote already. This registry + local git = source of truth.
+2. ✅ **fashionistas-api worker rebuilt (2026-09-23).** All missing routes added + deployed live at `fashionistas-api.fashionistas1979.workers.dev`. Vision AI now REAL (llama-3.2-11b, base64 via prompt+image params) — no canned fallback. Commander: keep worker in `workers/fashionistas-api/` (local source of truth).
+3. **Frontends need professional rebuild** (web-first): Fashionistas → deploy to `fashionistas-ai` Pages; CreateStuff → deploy to `createstuff-app` (custom domain app.createstuff.ai). Then Android.
+4. CreateStuff `workers/forge-api/` clean rebuild exists but NOT deployed (would need JOB_QUEUE/DLQ bindings + queue handler). Prod forge-api at api.createstuff.ai is UNTOUCHED and working — do not overwrite without care.

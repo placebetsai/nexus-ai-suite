@@ -2,31 +2,37 @@
 
 ## What We're Building & Why
 
-**5 billion-dollar SaaS web apps + mobile apps, each appraised at $60K+, deployed on Cloudflare's free/cheap infrastructure.** Built by 9 free AI agents (MCP Hive) working in parallel batches. Every app is production-quality code with real APIs, persistent databases, and cross-linked navigation.
+**Two flagship apps (Fashionistas.ai + CreateStuff.ai) rebuilt for REAL — web first, then Android.** Deployed on Cloudflare's free/cheap infrastructure. No fake scaffolding, no canned fallbacks, no lies. Every feature is a real, live, testable URL on this machine.
 
-**Why:** Prove that free AI agents can build and deploy real, scalable SaaS products worth $60K+ each. Total suite value: $300K+.
+**Why:** Prove free AI agents can build, deploy, and operate real scalable SaaS products. Store everything on THIS computer (no GitHub — origin removed 2026-09-23).
 
 ---
 
-## Live URLs
+## Live URLs (CURRENT — verified 2026-09-23)
 
-### Frontends (Cloudflare Pages)
-| App | URL | Size |
-|-----|-----|------|
-| CreateStuff.ai | https://createstuff-ai.pages.dev | 217KB (107KB HTML + 53KB JS + 56KB CSS) |
-| Fashionistas.ai | https://fashionistas-ai.pages.dev | 228KB (105KB HTML + 59KB JS + 64KB CSS) |
-| PlaceBets.ai | https://placebets-api.pages.dev | 78KB HTML |
-| MarketPicks.ai | https://marketpicks-api.pages.dev | 72KB HTML |
-| IHateCollege.com | https://ihatecollege-com.pages.dev | 76KB HTML |
+### Active Flagship App: Fashionistas.ai
+| Layer | URL |
+|-------|-----|
+| Frontend | https://fashionistas-ai.pages.dev (static shell — rebuild in progress) |
+| **API (REAL, live)** | **https://fashionistas-api.fashionistas1979.workers.dev** |
+| D1 DB | fashionistas-db `0c1b88be-00b2-4e25-ae54-d30564190c4d` (FASH acct) |
+| R2 images | `fashionistas-images` bucket |
+| AI vision | llama-3.2-11b-vision-instruct via workers `AI` binding (REAL, source:"ai") |
 
-### APIs (Cloudflare Workers)
-| API | URL | D1 DB |
-|-----|-----|-------|
-| CreateStuff API | https://createstuff-api.fashionistas1979.workers.dev | createstuff-db |
-| Fashionistas API | https://fashionistas-ai.fashionistas1979.workers.dev | fashionistas-db |
-| PlaceBets API | https://placebets-api-worker.fashionistas1979.workers.dev | placebets-db |
-| MarketPicks API | https://marketpicks-api.pages.dev/api/* | marketpicks-db |
-| IHateCollege API | Pages Functions (ihatecollege-com) | ihatecollege-db |
+**API status:** auth (register/login/JWT), listings CRUD + crosspost/sold/platforms, fees real-calc, shipping real-calc, orders, hauls, analytics, profit/summary, messages templates, export CSV, marketplaces, **ai/analyze = REAL vision** (identifies item type/brand/color/condition/price ranges from a photo via Cloudflare workers AI). Deployed 2026-09-23 (version `09eb5e7e` → `18a784f`).
+
+### Active Flagship App: CreateStuff.ai
+| Layer | URL |
+|-------|-----|
+| Frontend | https://createstuff-app.pages.dev (prod Pages) → custom domain **app.createstuff.ai** |
+| **API (REAL, live, do NOT overwrite)** | **https://api.createstuff.ai** (zone route → forge-api) |
+| D1 DB | forge-db `6b468863-8193-4c7b-9da7-33782149762f` (CS acct) |
+| R2 | `forge-projects` bucket |
+| Bindings | AI, Anthropic, Groq, E2B sandbox, Durable Object ChatRooms, JOB_QUEUE `forge-jobs`, DLQ, JWT |
+
+**CreateStuff status:** forge-api is a real sophisticated backend (register → project → ai/generate returns real multi-file site in ~36s, verified end-to-end at api.createstuff.ai). A clean rebuild exists in `workers/forge-api/` but is NOT deployed (queue bindings). Frontend needs a professional rebuild (in progress).
+
+### Other 3 apps (PlaceBets / MarketPicks / IHateCollege) — earlier build, not part of current rebuild focus.
 
 ### Portfolio Sites
 - https://israeljoffe.com
