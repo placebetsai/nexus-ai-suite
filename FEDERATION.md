@@ -93,7 +93,11 @@ CLOUDFLARE_API_TOKEN=$CF_API_TOKEN CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT_ID npx wran
 Or use `./deploy.sh pages <project> <dir>` / `./deploy.sh worker <name> <dir>` — it routes to the right account automatically.
 
 ## Current done/blocked fix agenda (from AUDIT-REPORT.md)
-1. ✅ **CreateStuff backend decided + zombie killed (2026-09-23).** Canonical = **forge-api** on Placebetsai account, served at `api.createstuff.ai` (zone route verified: `api.createstuff.ai/* → forge-api`), backed by **forge-db**. Verified end-to-end: register→login→create project→list all work (JWT, D1 persistence). The dead `createstuff-api` worker (FASH acct) was DELETED — no domain/route referenced it.
-2. ✅ **fashionistas-api worker rebuilt (2026-09-23).** All missing routes added + deployed live at `fashionistas-api.fashionistas1979.workers.dev`. Vision AI now REAL (llama-3.2-11b, base64 via prompt+image params) — no canned fallback. Commander: keep worker in `workers/fashionistas-api/` (local source of truth).
-3. **Frontends need professional rebuild** (web-first): Fashionistas → deploy to `fashionistas-ai` Pages; CreateStuff → deploy to `createstuff-app` (custom domain app.createstuff.ai). Then Android.
+1. ✅ **CreateStuff backend decided + zombie killed (2026-09-23).** Canonical = **forge-api** on Placebetsai account, served at `api.createstuff.ai` (zone route verified: `api.createstuff.ai/* → forge-api`), backed by **forge-db**. Verified end-to-end. The dead `createstuff-api` worker (FASH acct) was DELETED — no domain/route referenced it.
+2. ✅ **fashionistas-api worker rebuilt (2026-09-23)** + ALL routes live at `fashionistas-api.fashionistas1979.workers.dev`. Vision AI REAL (llama-3.2-11b, base64 via prompt+image params). Blog query fixed (`created_at`). Local source of truth: `workers/fashionistas-api/`.
+3. ✅ **Both frontends REBUILT + deployed (2026-09-23):**
+   - **Fashionistas** → `fashionistas-ai` Pages: https://fashionistas-ai.pages.dev (commit b8b6493)
+   - **CreateStuff** → `createstuff-app` Pages (custom domain app.createstuff.ai): https://app.createstuff.ai → https://createstuff-app.pages.dev (commit b9f07e8)
+   - Local sources: `apps/fashionistas/`, `apps/createstuff/`.
 4. CreateStuff `workers/forge-api/` clean rebuild exists but NOT deployed (would need JOB_QUEUE/DLQ bindings + queue handler). Prod forge-api at api.createstuff.ai is UNTOUCHED and working — do not overwrite without care.
+5. **NEXT: Android phase** (wrap both PWAs with Capacitor → APK), then any remaining polish.

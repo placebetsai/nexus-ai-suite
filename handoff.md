@@ -13,24 +13,31 @@
 ### Active Flagship App: Fashionistas.ai
 | Layer | URL |
 |-------|-----|
-| Frontend | https://fashionistas-ai.pages.dev (static shell — rebuild in progress) |
+| **Frontend (REBUILT + LIVE 2026-09-23)** | **https://fashionistas-ai.pages.dev** |
 | **API (REAL, live)** | **https://fashionistas-api.fashionistas1979.workers.dev** |
 | D1 DB | fashionistas-db `0c1b88be-00b2-4e25-ae54-d30564190c4d` (FASH acct) |
 | R2 images | `fashionistas-images` bucket |
 | AI vision | llama-3.2-11b-vision-instruct via workers `AI` binding (REAL, source:"ai") |
 
-**API status:** auth (register/login/JWT), listings CRUD + crosspost/sold/platforms, fees real-calc, shipping real-calc, orders, hauls, analytics, profit/summary, messages templates, export CSV, marketplaces, **ai/analyze = REAL vision** (identifies item type/brand/color/condition/price ranges from a photo via Cloudflare workers AI). Deployed 2026-09-23 (version `09eb5e7e` → `18a784f`).
+**API status (verified 2026-09-23):** auth (register/login/HMAC-JWT), listings CRUD + crosspost/sold/platforms, fees real-calc, shipping real-calc, orders, hauls, analytics, profit/summary, messages templates (6 AI-written), blog (**6 posts — query fixed to `created_at`**), export CSV (inventory + orders, both REAL), marketplaces (6: Depop/eBay/Poshmark/Mercari/Vinted/Grailed), **ai/analyze = REAL vision** — verified identifying a denim jacket photo as `jean jacket / Light Blue / Outerwear / $30-50 / 80%`. Current deployed version `dd20577e`.
+
+**Frontend (REBUILT + LIVE, commit b8b6493):** mobile-first fashion SPA. Views: auth → **Studio** (analytics hero: listings/sales/profit, revenue chart, by-platform, quick actions) → **Closet** (searchable grid) → **Snap & Sell** (camera/upload → **REAL vision AI identify** → pre-filled listing form w/ AI-optimized title) → **Listing detail** (health score, mark sold w/ profit calc, cross-list picker) → **Sell** (fee calculator, shipping estimate, AI price suggestion) → **More** (orders, profit summary, hauls tracker, buyer message templates, blog, export CSV). Static integrity verified — 61 functions, 0 undefined handlers.
 
 ### Active Flagship App: CreateStuff.ai
 | Layer | URL |
 |-------|-----|
-| Frontend | https://createstuff-app.pages.dev (prod Pages) → custom domain **app.createstuff.ai** |
+| **Frontend (REBUILT + LIVE 2026-09-23)** | **https://app.createstuff.ai** (custom domain → createstuff-app, commit b9f07e8) |
 | **API (REAL, live, do NOT overwrite)** | **https://api.createstuff.ai** (zone route → forge-api) |
 | D1 DB | forge-db `6b468863-8193-4c7b-9da7-33782149762f` (CS acct) |
 | R2 | `forge-projects` bucket |
 | Bindings | AI, Anthropic, Groq, E2B sandbox, Durable Object ChatRooms, JOB_QUEUE `forge-jobs`, DLQ, JWT |
 
-**CreateStuff status:** forge-api is a real sophisticated backend (register → project → ai/generate returns real multi-file site in ~36s, verified end-to-end at api.createstuff.ai). A clean rebuild exists in `workers/forge-api/` but is NOT deployed (queue bindings). Frontend needs a professional rebuild (in progress).
+**CreateStuff status (VERIFIED END-TO-END 2026-09-23):** forge-api is a real sophisticated backend.
+- **AI generate PROVEN on prod:** `/api/ai/generate` on "Fluffy Walks" → real 11,000-char `public/index.html` landing page in 33.5s (real codegen, checkpoints stored).
+- **Publish PROVEN:** → **https://api.createstuff.ai/published/f512836e-85e1-45fd-8ecc-a991f1c71596/public/index.html** = **HTTP 200 public**, real generated site.
+- API surface: `POST /api/auth/register|login` (`{email,name,password}`), `GET|POST /api/projects`, `PUT|DELETE /api/projects/:id`, `GET /api/projects/:id/status`, `POST /api/ai/discover` (conversational requirements), `/api/ai/suggest`, `/api/ai/generate`, `/api/ai/modify`, `/api/ai/publish` (public URL), `/published/{projectId}/{path}` public, GitHub import (OAuth unconfigured → 503).
+
+**CreateStuff frontend (REBUILT + LIVE, commit b9f07e8):** dark Replit-style AI builder. Views: auth → **My apps** (project cards w/ job_state tags, published badge) → **New app** (idea textarea + 6 starter prompts) → **Studio**: ⚡ Build/rebuild with AI (real generate ~30s, live preview of the real generated code), ✏️ Ask AI to modify (edit loop), 🚀 Publish live (public URL + embedded iframe), code file tabs with real content, copy-all, status polling (7s). Static integrity verified — 28 functions, 0 undefined handlers.
 
 ### Other 3 apps (PlaceBets / MarketPicks / IHateCollege) — earlier build, not part of current rebuild focus.
 
