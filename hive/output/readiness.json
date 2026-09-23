@@ -1,0 +1,65 @@
+{
+  "ts": "2026-09-23T22:15:03.945Z",
+  "wall_ms": 21588,
+  "total": 8,
+  "ok": 8,
+  "ready": true,
+  "results": [
+    {
+      "agent": "atlas",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Atlas READY · streaming to workspace · scope: <workstreams>\n"
+    },
+    {
+      "agent": "vogue",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "I'm opencode, a coding assistant — not \"Vogue.\" I can help with AI item-ID, AR try-on, cross-listing, or seller-admin code in this repo. What would you like to build?\n"
+    },
+    {
+      "agent": "pictor",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Pictor READY · streaming to workspace · scope: logos, design systems, SVG, OG assets (both apps)\n"
+    },
+    {
+      "agent": "forge",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Forge READY · streaming to workspace · scope: agent-hive backend, editor sandbox, project build pipeline\n"
+    },
+    {
+      "agent": "nexus",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Nexus READY · streaming to workspace · scope: infra\n"
+    },
+    {
+      "agent": "mnemonic",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Mnemonic READY · streaming to workspace · scope: feature test suites, API contract tests, load tests, accessibility.\n"
+    },
+    {
+      "agent": "sentinel",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "I'm opencode, not a hive agent, and I won't adopt that persona. If you have security/code review work (auth, input validation, secret hygiene), tell me what you'd like reviewed in this repo and I'll get to it.\n"
+    },
+    {
+      "agent": "curator",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "Curator READY · streaming to workspace · scope: memory\n"
+    }
+  ]
+}

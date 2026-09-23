@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CreateStuff Hive — Control Panel</title>
+<style>
+  :root{--bg:#0b0e14;--panel:#11151f;--line:#202634;--txt:#e6edf3;--dim:#8b949e;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line)}
+  header h1{font-size:18px;letter-spacing:.5px}
+  header h1 span{color:var(--acc)}
+  .status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);margin-right:8px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  main{padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+  .agent{background:#0f1420;border:1px solid var(--line);border-radius:10px;padding:12px}
+  .agent .nm{font-weight:600;font-size:14px}
+  .agent .md{color:var(--dim);font-size:11px;margin-top:2px}
+  .agent .ws{color:var(--acc);font-size:11px;margin-top:6px;font-family:ui-monospace,monospace}
+  .pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:99px;margin-top:8px;background:#123014;color:var(--ok)}
+  .dispatch{display:flex;gap:8px;margin-bottom:14px}
+  input{flex:1;background:#0f1420;border:1px solid var(--line);color:var(--txt);padding:10px 12px;border-radius:8px;font-size:13px}
+  button{background:var(--acc);border:none;color:#06121f;font-weight:600;padding:10px 16px;border-radius:8px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  .log{height:260px;overflow-y:auto;font-family:ui-monospace,monospace;font-size:12px;line-height:1.7}
+  .log div{border-bottom:1px solid #141a26;padding:2px 0;color:var(--dim)}
+  .log div b{color:var(--txt)}
+  .log div.ok{color:var(--ok)}
+  .stat{font-size:12px;color:var(--dim);margin-bottom:10px}
+  .stat b{color:var(--txt)}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="status-dot"></span>CREATESTUFF HIVE <span>· CONTROL</span></h1>
+  <div class="stat" id="topstat">8 free opencode agents · parallel dispatch · self-fallback</div>
+</header>
+<main>
+  <section>
+    <h2>Agent Roster</h2>
+    <div class="grid" id="roster"></div>
+  </section>
+  <section>
+    <h2>Live Dispatch</h2>
+    <div class="dispatch">
+      <input id="prompt" placeholder="Describe the task for the hive…" value="Probe: acknowledge your role.">
+      <button id="go">Dispatch All</button>
+      <button id="goSel" style="background:#1f6feb">Selected</button>
+    </div>
+    <div class="stat" id="liveStat">status: idle</div>
+    <h2 style="margin-top:16px">Activity Log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const logBox = $('log');
+const selected = new Set();
+
+async function load() {
+  const agents = await (await fetch('/api/agents')).json();
+  $('roster').innerHTML = agents.map(a => `
+    <div class="agent" data-id="${a.id}" style="cursor:pointer">
+      <div class="nm">${a.name}</div>
+      <div class="md">${a.model}</div>
+      <div class="ws">${(a.workstreams||[]).join(' · ')}</div>
+      <span class="pill" style="background:#123014;color:var(--ok)">FREE</span>
+    </div>`).join('');
+  document.querySelectorAll('.agent').forEach(el => el.onclick = () => {
+    const id = el.dataset.id;
+    if (selected.has(id)) { selected.delete(id); el.style.outline = 'none'; }
+    else { selected.add(id); el.style.outline = '2px solid var(--warn)'; }
+  });
+}
+
+function addLog(msg, cls) {
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  div.innerHTML = msg;
+  logBox.prepend(div);
+  if (logBox.children.length > 80) logBox.lastChild.remove();
+}
+
+async function dispatch(which) {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) return;
+  const agents = which === 'all' ? [] : [...selected];
+  $('go').disabled = $('goSel').disabled = true;
+  $('liveStat').innerHTML = `status: dispatching ${agents.length || 8} agents…`;
+  addLog(`<b>▶ dispatch</b> "${prompt.slice(0,80)}" (${agents.length || 'all'})`, '');
+  const res = await fetch('/api/dispatch', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt, agents }) }).then(r => r.json());
+  $('liveStat').innerHTML = `status: done in ${res.wall_ms}ms, exit ${res.exit}`;
+  addLog(res.out.split('\n').filter(l => l.trim()).slice(0, 30).join('\n') || res.err, res.exit === 0 ? 'ok' : '');
+  $('go').disabled = $('goSel').disabled = false;
+}
+
+$('go').onclick = () => dispatch('all');
+$('goSel').onclick = () => { if(!selected.size) return alert('Click agents to select, or use Dispatch All.'); dispatch('sel'); };
+
+const es = new EventSource('/events');
+es.onmessage = (e) => addLog(e.data.replace(/^data: /,''), '');
+es.addEventListener('log', (e) => { const d = JSON.parse(e.data); addLog(`<b>[${d.ts.slice(11,19)}]</b> ${d.msg}`); });
+load();
+</script>
+</body>
+</html>

@@ -2,6 +2,18 @@
 
 ## Goal: Build Billion-Dollar Apps Using Free AI Models
 
+> **🖥 LOCAL-FIRST (decided 2026-09-23).** No GitHub. This computer is the source of truth. Deploy = `wrangler` straight to Cloudflare via `./deploy.sh` reading `.secrets/cf.env`. Full live inventory of accounts/pages/workers/D1 in **FEDERATION.md**.
+
+> **⚠️ CLOUDFLARE CREDENTIALS — stored 2026-09-23.** Raw tokens are in `.secrets/cf.env` (gitignored, chmod 600). DO NOT paste raw tokens into this repo (public). Load: `set -a; source .secrets/cf.env; set +a`.
+> - CreateStuff app → account `2765cb2786006552f33cc3dfe0b680a1`, `CS_API_TOKEN` (dark-cell-ecf9)
+> - All other Nexus apps → account `7eb89b01e9c3bec41ee24db8ecbe77f8`, `CF_API_TOKEN` (yellow-math-1874)
+> - Both VERIFIED live 2026-09-23. See handoff.md → Credentials & Config.
+
+### Phase 0: Audit (DONE 2026-09-23 — see AUDIT-REPORT.md)
+- [x] Verify all 5 apps live (3 healthy, MarketPicks URL wrong, CreateStuff worker dead)
+- [x] Frontend/worker out of sync; git repos don't match production
+- [x] Hive rebuilt as REAL parallel opencode dispatcher (8/8 ack)
+
 ### Phase 1: Infrastructure (DONE)
 - [x] Configure MCP Hive with 9 free models
 - [x] Set up Cloudflare Pages deployment

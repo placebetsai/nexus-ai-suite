@@ -1,0 +1,21 @@
+{
+  "ts": 1790201680395,
+  "prompt": "Reply with exactly: ACK-<name>",
+  "wall_ms": 6975,
+  "results": [
+    {
+      "agent": "atlas",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "ACK-big-pickle\n"
+    },
+    {
+      "agent": "pictor",
+      "ok": true,
+      "model": "default",
+      "fallback": true,
+      "output": "ACK-big-pickle\n"
+    }
+  ]
+}

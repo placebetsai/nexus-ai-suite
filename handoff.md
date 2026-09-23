@@ -139,10 +139,16 @@ Payments:      Demo checkout flow (Stripe deferred)
 
 ## MCP Hive — 9 Free AI Agents
 
+> **STATUS (2026-09-23): REBUILT AS REAL OPENCODE HIVE — `hive/` (v2).**
+> The old orchestrator was a SIMULATION (random timers/canned strings). The new hive dispatches REAL free opencode agents in parallel with automatic fallback. Verified: 8/8 agents ack in 21.6s, 19/19 readiness tests pass.
+> - Roster: `hive/hive.json` · Briefs: `hive/agents/*.md` · Engine: `hive/dispatch.mjs` · Panel: `hive/server.js` (http://localhost:3141)
+> - Probe run: `node hive/test/readiness.test.mjs` · Dispatch: `node hive/dispatch.mjs "<prompt>" --all`
+> - Zen free models (mimo-v2.5-free etc.) listed in config but need OPENCODE_API_KEY on this box; dispatcher auto-falls back to authenticated default free model. All §9 agents below remain the persona map.
+
 | Agent | Model | Role |
 |-------|-------|------|
 | Atlas | mimo-v2.5-free | Full-stack builder |
-| Vogue | nemotron-3-ultra-free | Fashion specialist |
+| Vogue | muse-spark-1.3-contributor-free | Fashion specialist |
 | Pulse | muse-spark-1.3-contributor-free | Sports data |
 | Ticker | ling-3.0-flash-fin-free | Financial data |
 | Rebel | muse-spark-1.2-contributor-free | Education |
@@ -157,19 +163,36 @@ Payments:      Demo checkout flow (Stripe deferred)
 
 ## Credentials & Config
 
+> **⚠️ CREDENTIALS STORED 2026-09-23 — do NOT lose.**
+> Full secrets live ONLY in `.secrets/cf.env` (gitignored, chmod 600). Raw token values MUST NOT be pasted into this repo — it is PUBLIC.
+
+> **🚫 NO GITHUB — LOCAL-FIRST (DECIDED 2026-09-23).**
+> This machine is the source of truth. Git remote origin REMOVED; repo is local-only. Deploy exclusively via `wrangler` direct to Cloudflare using `./deploy.sh` (auto-routes to the right account) or the manual commands in FEDERATION.md. Both Cloudflare accounts verified working with wrangler 4.137.0.
+
 | Item | Value |
 |------|-------|
 | GitHub Org | placebetsai |
 | GitHub PAT | [REDACTED - see env vars] |
-| Cloudflare Account ID | [REDACTED - see env vars] |
-| Cloudflare API Token | [REDACTED - see env vars] |
+| **CreateStuff Cloudflare Account ID** | `2765cb2786006552f33cc3dfe0b680a1` |
+| CreateStuff API Token | `cfat_...` → **`.secrets/cf.env` → `CS_API_TOKEN`** (token: `dark-cell-ecf9`, created 2026-09-23, VERIFIED live) |
+| CreateStuff R2 | `.secrets/cf.env` → `CS_R2_ACCESS_KEY` / `CS_R2_SECRET` / `CS_R2_ENDPOINT` |
+| **Fashionistas + all Nexus Cloudflare Account ID** | `7eb89b01e9c3bec41ee24db8ecbe77f8` |
+| Fashionistas/Nexus API Token | `cfat_...` → **`.secrets/cf.env` → `CF_API_TOKEN`** (token: `yellow-math-1874`, created 2026-09-23, VERIFIED live) |
+| Fashionistas/Nexus R2 | `.secrets/cf.env` → `CF_R2_ACCESS_KEY` / `CF_R2_SECRET` / `CF_R2_ENDPOINT` |
 | PMI-CPMAI # | 2509803 (expires 9/2/2028) |
 | Node.js | v24.19.0 |
-| Wrangler | 4.135.0 |
+| Wrangler | (install via `npm i -g wrangler`) |
 
-### Wrangler Command (PowerShell)
+### Loading credentials (Linux)
+```bash
+cd /home/joffe/projects/nexus-ai-suite
+set -a; source .secrets/cf.env; set +a
+# CS app deploy:    CLOUDFLARE_API_TOKEN=$CS_API_TOKEN CLOUDFLARE_ACCOUNT_ID=$CS_ACCOUNT_ID npx wrangler ...
+# Nexus apps deploy: CLOUDFLARE_API_TOKEN=$CF_API_TOKEN CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT_ID npx wrangler ...
+```
+
+### Wrangler Command (PowerShell — legacy machine, token now in cf.env)
 ```powershell
-$env:Path = "C:\Program Files\nodejs;" + $env:Path
 $env:CLOUDFLARE_API_TOKEN = "<your-token>"
 $env:CLOUDFLARE_ACCOUNT_ID = "<your-account-id>"
 & "C:\Users\ASUS2\AppData\Roaming\npm\wrangler.cmd" pages deploy . --project-name=NAME

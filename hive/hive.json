@@ -1,0 +1,93 @@
+{
+  "name": "CreateStuff Hive",
+  "mission": "Billion-dollar build corps: free opencode agents in parallel, with automatic fallback",
+  "version": "2.0.0",
+  "provider": "opencode",
+  "fallback_chain": ["opencode-zen/{model}", "big-pickle"],
+  "verified": {
+    "last_readiness_check": "2026-09-23",
+    "agents_acked": 8,
+    "tests_pass": "19/19",
+    "parallel_probe_ms": 21588
+  },
+  "agents": [
+    {
+      "id": "atlas",
+      "name": "Atlas",
+      "role": "Full-stack lead builder (both apps)",
+      "model": "mimo-v2.5-free",
+      "free": true,
+      "workstreams": ["apps/fashionistas", "apps/createstuff"],
+      "status": "provisioned"
+    },
+    {
+      "id": "vogue",
+      "name": "Vogue",
+      "role": "Fashionistas domain specialist: AI item-ID, AR try-on, cross-listing engine, seller admin",
+      "model": "muse-spark-1.3-contributor-free",
+      "free": true,
+      "workstreams": ["apps/fashionistas"],
+      "status": "provisioned"
+    },
+    {
+      "id": "pictor",
+      "name": "Pictor",
+      "role": "Brand identity: logos, design systems, SVG graphics, OG assets (both apps)",
+      "model": "muse-spark-1.2-contributor-free",
+      "free": true,
+      "workstreams": ["brand/fashionistas", "brand/createstuff"],
+      "status": "provisioned"
+    },
+    {
+      "id": "forge",
+      "name": "Forge",
+      "role": "CreateStuff engine: agent-hive backend, editor sandbox, project build pipeline",
+      "model": "nemotron-3-ultra-free",
+      "free": true,
+      "workstreams": ["apps/createstuff"],
+      "status": "provisioned"
+    },
+    {
+      "id": "nexus",
+      "name": "Nexus",
+      "role": "Architecture + deploy: wrangler/workers configs, D1 schema, deploy scripts, CI-free release",
+      "model": "nemotron-3.5-lightning-free",
+      "free": true,
+      "workstreams": ["infra"],
+      "status": "provisioned"
+    },
+    {
+      "id": "mnemonic",
+      "name": "Mnemonic",
+      "role": "QA at scale: feature test suites, API contract tests, load tests, accessibility",
+      "model": "space-bunny-free",
+      "free": true,
+      "workstreams": ["qa"],
+      "status": "provisioned"
+    },
+    {
+      "id": "sentinel",
+      "name": "Sentinel",
+      "role": "Security + code review: auth hardening, input validation, secret hygiene",
+      "model": "jev-1.13-free",
+      "free": true,
+      "workstreams": ["qa"],
+      "status": "provisioned"
+    },
+    {
+      "id": "curator",
+      "name": "Curator",
+      "role": "Federation memory: docs, handoff sync, changelogs, cross-agent knowledge",
+      "model": "mimo-v2.6-flash-free",
+      "free": true,
+      "workstreams": ["memory"],
+      "status": "provisioned"
+    }
+  ],
+  "dispatch": {
+    "parallelism": 8,
+    "timeout_per_task_ms": 240000,
+    "fallback_on_error": true,
+    "workspace": "/home/joffe/projects/nexus-ai-suite"
+  }
+}
