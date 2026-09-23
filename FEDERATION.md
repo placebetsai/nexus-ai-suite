@@ -41,7 +41,7 @@
 |---|---|---|
 | fashionistas-api | ✅ | Auth + marketplaces work (signup 201, login 200). MISSING many routes the frontend calls (ai/analyze, fees, orders, hauls, analytics, blog, export). |
 | fashionistas-ai | ⚠️ | Same account, worker-name collision to watch. |
-| createstuff-api | ❌ | **ALL ROUTES 401** (incl /, /health, /api/auth/signup). Broken — fix first. |
+| ~~createstuff-api~~ | ❌ | **DELETED 2026-09-23.** Zombie (all 401, nothing referenced it). Canonical backend = forge-api on CS account. |
 | marketpicks-ai-api / marketpicks-ai | ⚠️ | MarketPicks APIs. |
 | placebets-api-worker | ✅ | /api/odds/nfl 200. |
 | quorfy-api, quorfy-api-v2 | — | Old experiments. |
@@ -50,7 +50,7 @@
 ### Placebetsai account (CreateStuff)
 | Worker | Blessing | Notes |
 |---|---|---|
-| **forge-api** | ⚠️ | CreateStuff's real backend (forge-db, 7MB — has real data). The cash cow. |
+| **forge-api** | ✅ | **CANONICAL CreateStuff backend.** Served at `api.createstuff.ai` (zone route). Verified register/login/projects work 2026-09-23. Data: forge-db. |
 | placebetsai-cron, placebets-cron, placebets-chatbot-fix, placebetsai-housekeeping | — | Cron/utility for PlaceBets. |
 | marketpicks-ai, marketpicks-ai-api, marketpicks-ai-housekeeping | — | MarketPicks (CS account copy). |
 | joffe-daily-cron, site-cron-trigger | — | Cron. |
@@ -92,8 +92,7 @@ CLOUDFLARE_API_TOKEN=$CF_API_TOKEN CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT_ID npx wran
 
 Or use `./deploy.sh pages <project> <dir>` / `./deploy.sh worker <name> <dir>` — it routes to the right account automatically.
 
-## Current blocked/fix agenda (from AUDIT-REPORT.md)
-1. **createstuff-api worker**: every route 401 → diagnose (CF Access rule vs worker code) → redeploy.
+## Current done/blocked fix agenda (from AUDIT-REPORT.md)
+1. ✅ **CreateStuff backend decided + zombie killed (2026-09-23).** Canonical = **forge-api** on Placebetsai account, served at `api.createstuff.ai` (zone route verified: `api.createstuff.ai/* → forge-api`), backed by **forge-db**. Verified end-to-end: register→login→create project→list all work (JWT, D1 persistence). The dead `createstuff-api` worker (FASH acct) was DELETED — no domain/route referenced it.
 2. **fashionistas-api worker**: add missing routes (ai/analyze, fees/estimate, orders, hauls, analytics, blog, export/*) to match live frontend.
-3. Decide canonical home of CreateStuff backend: forge-api (CS acct) vs createstuff-api (FASH acct) — consolidate, don't run both.
-4. GitHub repos abandoned — deleted remote already. This registry + local git = source of truth.
+3. GitHub repos abandoned — deleted remote already. This registry + local git = source of truth.
