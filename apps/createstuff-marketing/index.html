@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>CreateStuff — Free AI App Builder for Phone &amp; Desktop</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=f5b85fe4e7">
+<!--SEO-START-->
+<meta name="description" content="Describe what you want. CreateStuff writes the code, previews it live and publishes it to a free URL. Import any GitHub repo.">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<link rel="canonical" href="https://createstuff.ai/">
+<meta name="theme-color" content="#06060f">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CreateStuff">
+<meta property="og:title" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<meta property="og:description" content="Describe what you want. CreateStuff writes the code, previews it live and publishes it to a free URL. Import any GitHub repo.">
+<meta property="og:url" content="https://createstuff.ai/">
+<meta property="og:image" content="https://createstuff.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<meta name="twitter:description" content="Describe what you want. CreateStuff writes the code, previews it live and publishes it to a free URL. Import any GitHub repo.">
+<meta name="twitter:image" content="https://createstuff.ai/og.png">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.json">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "CreateStuff", "applicationCategory": "DeveloperApplication", "operatingSystem": "Web", "description": "Describe what you want. CreateStuff writes the code, previews it live and publishes it to a free URL. Import any GitHub repo.", "url": "https://createstuff.ai/", "image": "https://createstuff.ai/og.png", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "publisher": {"@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai", "logo": {"@type": "ImageObject", "url": "https://createstuff.ai/icon.svg"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is CreateStuff.ai?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff is a free AI app builder. Describe what you want, the model writes real HTML, CSS and JavaScript, you preview it live, and you publish to a public URL."}}, {"@type": "Question", "name": "Can I build an app from my phone?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. CreateStuff is phone-first \u2014 the builder, preview and publish flow all work in a mobile browser with no install."}}, {"@type": "Question", "name": "Can CreateStuff work with my GitHub repository?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Connect GitHub or paste a repository URL to import existing code, then keep vibe coding and push changes back."}}, {"@type": "Question", "name": "How is CreateStuff different from Replit?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff is a guided, prompt-to-published flow with a free tier, rather than a dev server you configure yourself."}}, {"@type": "Question", "name": "Is CreateStuff free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes \u2014 there is a free tier that lets you generate, preview and publish projects without a credit card."}}]}</script><!--SEO-END-->
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">⚡</div>
+      <h1>CreateStuff.ai</h1>
+      <p>Free AI App Builder — 9 Agents Working For You</p>
+    </div>
+    <form id="login-form">
+      <div class="form-group"><label id="login-email-label">Email</label><input type="email" id="login-user" placeholder="you@example.com" autocomplete="email" required></div>
+      <div class="form-group" id="login-name-group" style="display:none"><label>Display name</label><input type="text" id="login-name" placeholder="Your name" maxlength="100"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="login-pass" placeholder="6+ characters" autocomplete="current-password" minlength="6" required></div>
+      <div id="login-error" class="login-error" style="display:none"></div>
+      <button type="submit" class="btn-primary btn-full" id="login-submit">Sign In</button>
+    </form>
+    <p class="login-hint">No account yet? <a href="#" id="auth-toggle" style="color:#6d5cff;font-weight:600">Create one free</a></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="app" style="display:none">
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header"><span class="logo-icon-sm">⚡</span><span class="sidebar-brand">CreateStuff</span></div>
+    <nav class="sidebar-nav">
+      <a href="#dashboard" class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>Dashboard</a>
+      <a href="#builder" class="nav-item" data-page="builder"><span class="nav-icon">🔨</span>Hive Builder</a>
+      <a href="#projects" class="nav-item" data-page="projects"><span class="nav-icon">📁</span>My Projects</a>
+      <a href="#templates" class="nav-item" data-page="templates"><span class="nav-icon">📦</span>Templates</a>
+      <a href="#github" class="nav-item" data-page="github"><span class="nav-icon">🐙</span>GitHub</a>
+      <a href="#files" class="nav-item" data-page="files"><span class="nav-icon">🗂️</span>Files & Export</a>
+      <a href="#deploy" class="nav-item" data-page="deploy"><span class="nav-icon">🚀</span>Deploy</a>
+      <a href="#settings" class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span>Settings</a>
+    </nav>
+    <div class="sidebar-footer"><button id="logout-btn" class="btn-logout">🚪 Logout</button></div>
+  </aside>
+
+  <header class="mobile-header">
+    <button id="menu-toggle" class="menu-toggle">☰</button>
+    <span class="mobile-brand">⚡ CreateStuff</span>
+    <button id="mobile-logout" class="btn-icon">🚪</button>
+  </header>
+
+  <main id="main-content" class="main-content">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header"><h1>Welcome back, builder 👋</h1><p class="subtitle">Your AI dev team is ready</p></div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon" style="background:#7c3aed">📁</div><div class="stat-info"><span class="stat-value" data-stat="projects" data-count="0">0</span><span class="stat-label">Total Projects</span></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#3b82f6">🔨</div><div class="stat-info"><span class="stat-value" data-stat="builds" data-count="0">0</span><span class="stat-label">Active Builds</span></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#22c55e">🚀</div><div class="stat-info"><span class="stat-value" data-stat="deployed" data-count="0">0</span><span class="stat-label">Deployed Apps</span></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:#f59e0b">📝</div><div class="stat-info"><span class="stat-value" data-stat="lines" data-count="0">0</span><span class="stat-label">Lines of Code</span></div></div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="card"><h3>Recent Projects</h3><div id="recent-projects" class="recent-list"></div></div>
+        <div class="card"><h3>Quick Actions</h3>
+          <a href="#builder" class="quick-action-btn" data-page="builder">🔨 New Project</a>
+          <a href="#templates" class="quick-action-btn" data-page="templates">📦 Templates</a>
+          <a href="#github" class="quick-action-btn" data-page="github">🐙 GitHub</a>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1rem"><h3>🤖 The Hive Status</h3><div class="hive-status-grid" id="hive-status-dash"></div></div>
+    </div>
+
+    <!-- BUILDER -->
+    <div id="page-builder" class="page">
+      <div class="builder-layout">
+        <div class="builder-chat">
+          <div class="chat-header">
+            <span class="chat-title">🤖 The Hive</span>
+            <div class="agent-status" id="agent-status-bar"><span class="status-dot idle"></span>Agents Idle</div>
+          </div>
+          <div class="chat-messages" id="chat-messages">
+            <div class="msg agent"><div class="msg-avatar">📋</div><div class="msg-content"><strong>Planner Agent</strong><p>Welcome to the Hive! I'm your planning agent. Describe what you want to build, and I'll coordinate the team to make it happen.</p><p>Try: "Build me a restaurant website with online ordering"</p></div></div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Describe what you want to build..." autocomplete="off">
+            <button id="voice-btn" class="btn-icon" title="Voice input">🎙️</button>
+            <button id="send-btn" class="btn-primary">→</button>
+          </div>
+        </div>
+        <div class="builder-preview">
+          <div class="preview-header">
+            <span class="preview-title">Preview</span>
+            <div class="preview-toggle">
+              <button class="preview-mode active" data-mode="phone">📱</button>
+              <button class="preview-mode" data-mode="desktop">🖥️</button>
+            </div>
+          </div>
+          <div class="preview-frame" id="preview-frame">
+            <div class="preview-empty">
+              <span>👁️</span>
+              <p>Your app preview will appear here</p>
+              <p style="font-size:.8rem;color:var(--text3);margin-top:.5rem">Describe what you want to build →</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="agents-bar" id="agents-bar">
+        <div class="agent-chip" data-agent="planner"><span class="agent-dot">📋</span>Planner<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="architect"><span class="agent-dot">🏗️</span>Architect<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="frontend"><span class="agent-dot">🎨</span>Frontend<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="backend"><span class="agent-dot">⚙️</span>Backend<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="style"><span class="agent-dot">✨</span>Style<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="test"><span class="agent-dot">🧪</span>Test<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="deploy"><span class="agent-dot">🚀</span>Deploy<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="git"><span class="agent-dot">🔗</span>Git<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="fix"><span class="agent-dot">🔧</span>Fix<span class="agent-status-text">Idle</span></div>
+      </div>
+    </div>
+
+    <!-- PROJECTS -->
+    <div id="page-projects" class="page">
+      <div class="page-header"><h1>My Projects</h1></div>
+      <div id="projects-grid" class="projects-grid"></div>
+    </div>
+
+    <!-- TEMPLATES -->
+    <div id="page-templates" class="page">
+      <div class="page-header"><h1>Template Gallery</h1><p class="subtitle">Start from a proven template</p></div>
+      <div id="templates-grid" class="templates-grid"></div>
+    </div>
+
+    <!-- GITHUB -->
+    <div id="page-github" class="page">
+      <div class="page-header"><h1>GitHub Integration</h1><p class="subtitle">Connect repos, create new ones, push code</p></div>
+      <div class="card" id="gh-connect"><h3>🔗 Connect GitHub</h3><p style="color:var(--text2);margin-bottom:1rem">Connected via server token. Loading your repositories...</p><button class="btn-primary" onclick="loadGitHubRepos()">Load My Repositories</button></div>
+      <div class="card" id="gh-repos" style="margin-top:1rem"><h3>📦 Your Repositories</h3><div id="repo-list" class="repo-list"></div></div>
+      <div class="card" style="margin-top:1rem">
+        <h3>➕ Create New Repo</h3>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <input type="text" id="new-repo-name" placeholder="my-awesome-app" style="flex:1;min-width:180px;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+          <button class="btn-primary" onclick="createGitHubRepo()">Create Repo</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <h3>⬆ Push File to Repo</h3>
+        <div class="form-group"><label>Repo (owner/name)</label><input type="text" id="push-repo" placeholder="placebetsai/my-app"></div>
+        <div class="form-row">
+          <div class="form-group"><label>File Path</label><input type="text" id="push-path" value="index.html"></div>
+          <div class="form-group"><label>Branch</label><input type="text" id="push-branch" value="main"></div>
+        </div>
+        <div class="form-group"><label>Commit Message</label><input type="text" id="push-msg" value="Update from CreateStuff.ai"></div>
+        <div class="form-group"><label>Content</label><textarea id="push-content" rows="6" placeholder="Paste or auto-fill from current build..."></textarea></div>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn-secondary" onclick="fillPushFromBuild()">Fill from Latest Build</button>
+          <button class="btn-primary" onclick="pushToGitHub()">Push to GitHub</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILES & EXPORT -->
+    <div id="page-files" class="page">
+      <div class="page-header">
+        <h1>Files & Export</h1>
+        <div class="header-actions">
+          <select id="files-project" class="filter-select"></select>
+          <button id="download-zip" class="btn-small">⬇ Download ZIP</button>
+          <button id="save-file-btn" class="btn-small">+ Save File</button>
+        </div>
+      </div>
+      <div class="files-layout">
+        <div class="card">
+          <h3>Project Files</h3>
+          <div id="file-list" class="file-list"></div>
+        </div>
+        <div class="card">
+          <h3>Editor</h3>
+          <div class="form-group"><label>Path</label><input type="text" id="editor-path" value="index.html"></div>
+          <div class="form-group"><label>Content</label><textarea id="editor-content" rows="18" style="font-family:'JetBrains Mono',monospace;font-size:.8rem"></textarea></div>
+          <button id="editor-save" class="btn-primary btn-full">Save File</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEPLOY -->
+    <div id="page-deploy" class="page">
+      <div class="page-header"><h1>Deploy Center</h1><p class="subtitle">Ship your apps to production</p></div>
+      <div id="deploy-cards" class="deploy-grid"></div>
+      <div class="card" style="margin-top:1rem"><h3>🌐 Custom Domain</h3><div style="display:flex;gap:.5rem"><input type="text" id="custom-domain" placeholder="yourapp.com" class="domain-input"><button class="btn-primary" onclick="showToast('Domain configured!')">Configure</button></div></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="page-settings" class="page">
+      <div class="page-header"><h1>Settings</h1></div>
+      <div class="settings-grid">
+        <div class="card"><h3>👤 Profile</h3><div class="form-group"><label>Display Name</label><input type="text" value="admin"></div><div class="form-group"><label>Email</label><input type="email" value="admin@createstuff.ai"></div><button class="btn-primary">Save</button></div>
+        <div class="card"><h3>🎨 Appearance</h3><div class="connection-item"><span>Dark Mode</span><label class="switch"><input type="checkbox" id="theme-toggle" checked><span class="slider"></span></label></div></div>
+        <div class="card"><h3>🔑 API Keys</h3><div class="form-group"><label>AI Provider Key</label><input type="password" placeholder="sk-..."></div><div class="form-group"><label>GitHub Token</label><input type="password" placeholder="ghp_..."></div><button class="btn-primary">Save Keys</button></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast" style="display:none"></div>
+<script src="/app.js?v=f5b85fe4e7"></script>
+</body>
+</html>

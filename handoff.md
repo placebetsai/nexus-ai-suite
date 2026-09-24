@@ -88,6 +88,35 @@ I initially probed wrong paths and reported missing features. The **real** forge
 - **Local mirror backup:** `/home/billionaremaker/Documents/GitHub-Backup/` — bare mirrors of `nexus-ai-suite`, `fashionistas-ai`, `createstuff-ai`, `forge`, `Placebetsai`, `hive`, `joffe-federation-memory` (84 MB).
 - `fashionistas-ai` + `createstuff-ai` stale repos staged with current live files (index.html + robots/sitemap/icon/manifest/og.png) — **commit/push if not already done.**
 
+### 3.7 `createstuff.ai` — tested IN A REAL BROWSER, 10 defects found and fixed
+Earlier work only proved the files were *served*. This section is what happened when the flows were actually **clicked**. Every fix below was re-verified in a browser after redeploy, not merely checked with curl.
+
+| # | Defect (real, observed) | Fix |
+|---|---|---|
+| 1 | Login sent `{username,password}` → forge-api requires `{email,password}` → **400 `{"error":"email, password required"}`**. UI showed a generic "Invalid credentials". | form now sends `{email,password}`; server `error` text surfaced to the user |
+| 2 | **`Demo: admin / Izzy1234` was a lie** — those credentials never existed on forge-api | removed; replaced with a working **Create account** flow → `POST /api/auth/register` |
+| 3 | Welcome line read `user.username` (forge-api returns `user.name`) → `Welcome back, undefined` | reads `display_name \|\| name \|\| username` |
+| 4 | **4-hour browser cache** (`max-age=14400`) made every deploy invisible to returning visitors | added `_headers` (HTML `max-age=0`) **plus** `?v=<md5>` cache-busting on `app.js`/`styles.css` |
+| 5 | Build sent `{plan}` only; `project.id` read off the wrong shape (`{project:{…}}`) → **`generate` 400 `projectId required`** | unwrap `response.project`, hard-fail if missing → `generate` **200** |
+| 6 | **Live preview was a 27-char blank page** — `escapeHtml` never escaped `"` so `srcdoc="…"` truncated at `<html lang=` | escape `"` and `'` → `srcdoc` **27 → 10,151 chars**, `</html>` present |
+| 7 | 6 inline handlers passed ids unquoted (`deleteProject(${p.id})`) → **ReferenceError → dead buttons** (Edit/Clone/Delete/Deploy/Versions/Open-file) | quoted all 6. **`useTemplate` left unquoted on purpose** — numeric ids with `===` |
+| 8 | My own repair patch then dropped the closing `"` on 5 attributes → malformed HTML | re-patched; verified `onclick="fn('uuid')"` renders and fires |
+| 9 | `GET /api/projects` returns `{projects:[…]}` but code treated it as an array → **"My Projects" always empty** | `csProjectList()` unwrap on all 4 sites |
+| 10 | Stat selectors mutated *their own* attribute (`data-count="5"`→`"3"`) → **2nd dashboard load threw `TypeError: null.dataset`**; "Lines of Code" was fabricated (`projects.length * 2400`) | stable `data-stat` keys; all four numbers now computed from real API + real builds |
+| 11 | `parseInt()` on a UUID → `currentProjectId = NaN` on dropdown change; Files page never refetched projects | keep the raw string; always refetch |
+| 12 | `GET /api/builds/:id/versions` has **no route on forge-api** (404) — Versions button dead | shim returns real build history (real prompt, real code length, real timestamp, real `checkpointId`) |
+
+**Browser evidence for the full happy path (not curl — actual clicks):**
+`POST /api/auth/register → 200` · `POST /api/projects → 201 {"project":{id}}` ·
+`POST /api/ai/generate → 200` real `public/index.html` · preview `srcdoc` = 10,151 B ·
+`POST /api/ai/publish → 200 {"publishUrl":…,"checkpointId":"cp-muftvqm2"}` ·
+**live URL `200`, `<title>Photography Portfolio</title>`, 7,621 B** ·
+**Download ZIP → `project-734bd3f1….zip`, 7,753 B, `unzip -t` = "No errors detected", extracted file byte-identical to the live published file** ·
+Clone → `201`, cards 3→4 · Versions panel → `v1 · Built: … · 7621 chars` · `errors: []` throughout.
+
+**Deploy source now lives in the repo:** `apps/createstuff-marketing/` (was only in `/tmp`, which has already been wiped twice this session). Deploy with:
+`./deploy.sh pages createstuff-marketing apps/createstuff-marketing`
+
 ---
 
 ## 4. LIVE URLS (re-verify these; all were 200 this session)
@@ -177,20 +206,46 @@ Both API healths: `fashionistas …/api/health` → `{"ok":true,"version":"3.1.0
 
 ---
 
+## 7b. HIVE ROUND 3 — EVIDENCE IN (`hive/tasks/contract-createstuff.json`, 3/3 ok, 279s)
+
+Dispatched after the `createstuff.ai` fixes in §3.7. All three produced full numbered output.
+
+| Agent | Model | Result | Literal evidence |
+|-------|-------|--------|------------------|
+| **atlas** | `opencode/mimo-v2.6-flash-free` | ✅ **CONTRACT 9/9 MATCH**, `BROKEN_ROUTES: none` | `register→409` `login→200` `projects GET→200` `projects POST→201` `project GET→200` `project/status→200` **`ai/generate→200`** `ai/modify→200` **`ai/publish→200`** |
+| **scribe** | `opencode/space-bunny-free` | ✅ **SEO 3/3 PASS** | fashionistas.ai title **54** / desc **135** · app.createstuff.ai **53 / 128** · createstuff.ai **53 / 125** — every one ≤60 and within 120–160; `canonical` = 1 each; `og:*` all 4 present; `twitter:card` yes; **3** JSON-LD each; robots `200 text/plain` + contains `Sitemap:`; sitemap `application/xml` (7 / 6 / 5 `<url>`); manifest valid JSON |
+| **mnemonic** | `opencode/space-bunny-free` | reported **7/10** — **all 3 FAILs are its own test bug** | verdict below |
+
+**Verdict on mnemonic's three `401` FAILs — verified with my own curl:**
+
+| Endpoint | No token | With token |
+|---|---|---|
+| `GET /api/listings` | `401 {"error":"Unauthorized"}` | **200 `{"listings":[]}`** |
+| `GET /api/export/inventory.csv` | `401` | **200 `id,title,category,price,size,condition,status,photo_url`** |
+| `GET /api/marketplaces` | `401` | **200** Depop `feePct:10`, `api:"deep"` |
+
+The agent's register step returned **201**, but it never sent `Authorization: Bearer` on steps 3–5. The routes are auth-protected and work correctly. **Real regression score: 10/10.**
+
+**Cumulative tally (rounds 1–3):** uptime 16/16 · contract 9/9 (r3) + 25/25 (r1) · fees 24/24 · security 6/6 · features 6/6 · regression 10/10 · **SEO 3/3 (re-audited after the shorten fix)**.
+
+---
+
 ## 8. KNOWN GAPS / OPEN ITEMS
 
-- ⏳ **Stale repos** `placebetsai/fashionistas-ai` + `placebetsai/createstuff-ai` need commit/push of the synced live files.
-- ⚠️ `createstuff.ai` routes `/api/builds`, `/api/templates`, `/api/github/create-repo`, `/api/github/push`, `/api/projects/:id/download.zip` **do not exist on forge-api** → those buttons will 404. Auth, projects and `github/repos` do work. Either implement them on forge-api or remove the UI.
-- ⚠️ `POST /api/ai/analyze` → 400 "image must be base64-encoded image bytes" for tiny inputs (**correct validation**, but confirm with a real image ≥100 chars).
-- ⚠️ `GET /api/projects/:id/preview` → 404 on production (preview is served via `/published/:id/...`).
-- ⏸ **Android/iOS** parked by user decision.
-- ⚠️ `deploy.sh` **worker branch is broken** (see §6.2).
+- ✅ **RESOLVED** — the `createstuff.ai` routes `/api/builds`, `/api/templates`, `/api/github/create-repo`, `/api/github/push`, `/api/projects/:id/download.zip` still **do not exist on forge-api**; they are now served by a **client-side shim in `app.js`** (`csShim()`), each backed by a real call: real `generate`/`publish`, a real in-browser ZIP (CRC32 verified by `unzip -t`), and real `api.github.com` writes using the user's own PAT. See §3.7.
+- ✅ **RESOLVED** — `deploy.sh` worker branch (`cd` into the dir before `wrangler deploy`); `bash -n` passes.
+- ✅ **RESOLVED** — stale `placebetsai/fashionistas-ai` + `placebetsai/createstuff-ai` pushed.
+- ⚠️ **`GET /api/projects/:id/preview` → 404** on production (preview is served via `/published/:id/...`). Unchanged.
+- ⚠️ **forge-api still cannot be deployed from here** — it lives on a *third* Cloudflare account with no token on this machine (`~/.cf-tokens` does not exist; only `CF_*`, `CS_*` are in `.secrets/cf.env`). The local `workers/forge-api` rebuild must **never** be deployed over it.
+- ⚠️ `POST /api/ai/analyze` → 400 "image must be base64-encoded image bytes" for tiny inputs (**correct validation**; confirm with a real image).
+- ⏸ **Android/iOS** parked by user decision (web first).
 - ⚠️ Hive control panel `http://localhost:3141` is **not** systemd-managed — dies on reboot.
+- ⚠️ Pages projects are **direct-upload only (no git connection)** — pushes never deploy. Deploy manually with `./deploy.sh` (see §6).
 - ⚠️ User's sudo password was shared in chat (`Izzy@1299`) — **recommend changing it.**
 
 ---
 
-## 8. HIVE — HOW TO DRIVE IT
+## 9. HIVE — HOW TO DRIVE IT
 
 ```bash
 cd /home/billionaremaker/Documents/Default Project/nexus-ai-suite

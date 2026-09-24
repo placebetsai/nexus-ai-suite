@@ -1,0 +1,17 @@
+{
+  "name": "CreateStuff",
+  "short_name": "CreateStuff",
+  "description": "Describe what you want and CreateStuff writes every file, previews it live and publishes it to a real URL. Import any GitHub repo and vibe code it. Free, no credit card.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06060f",
+  "theme_color": "#06060f",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
