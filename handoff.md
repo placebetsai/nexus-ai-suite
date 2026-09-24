@@ -158,9 +158,27 @@ Both API healths: `fashionistas …/api/health` → `{"ok":true,"version":"3.1.0
 
 ---
 
-## 7. KNOWN GAPS / OPEN ITEMS
+## 7. HIVE ROUND 2 — EVIDENCE IN (`hive/tasks/evidence-rerun.json`, 4/4 ok, 81s)
 
-- ⏳ **Round-2 hive evidence** (`sentinel`, `vogue`, `forge`, `curator`) — they returned empty output in round 1; re-run file is `hive/tasks/evidence-rerun.json`.
+| Agent | Result | Literal evidence |
+|-------|--------|------------------|
+| **sentinel** | ✅ **SECURITY 6/6 PASS** | `401 / 401 / 401 / 201 / 200` — bad token, no token, CSV-no-auth all rejected; SQLi title stored without 500 and table survived |
+| **vogue** | ✅ **FEATURES 6/6 PASS** | all endpoints 200 incl. **`tryon -> 200`** (proves the 500 fix) · `MARKETPLACES: total=24 full=8` |
+| **forge** | reported 6/8 — **both "FAIL"s are test error, not defects** | see verdict below |
+| **curator** | ✅ **WROTE-FILE** | `hive/output/PRIMETIME-STATUS.md` contains exact observed JSON: `fashionistas … "version":"3.1.0"` · `api.createstuff.ai … "version":"3.0.0"` |
+
+**Verdict on forge's `/api/ai/generate` + `/files` "404"s — investigated with my own curl:**
+- `POST /api/ai/generate` with a **valid** projectId → **200 with real file content** (`public/index.html`, 7084 B).
+- `GET /api/projects/:id/files` valid → **200** `{"files":[{"path":"public/index.html","size":7084}]}`.
+- Both routes with **no auth → 401** (route exists; a truly absent route such as `/api/templates` returns 404).
+- **Bogus projectId with valid auth → 404 `{"error":"Not found"}`** ⇒ forge failed to extract `projectId` from the register/project response. **No production defect.**
+
+**Final tally (round 1 + 2):** uptime 16/16 · frontend↔backend contract 25/25 · fee math 24/24 · security 6/6 · features 6/6 · SEO 3/3 (after fix).
+
+---
+
+## 8. KNOWN GAPS / OPEN ITEMS
+
 - ⏳ **Stale repos** `placebetsai/fashionistas-ai` + `placebetsai/createstuff-ai` need commit/push of the synced live files.
 - ⚠️ `createstuff.ai` routes `/api/builds`, `/api/templates`, `/api/github/create-repo`, `/api/github/push`, `/api/projects/:id/download.zip` **do not exist on forge-api** → those buttons will 404. Auth, projects and `github/repos` do work. Either implement them on forge-api or remove the UI.
 - ⚠️ `POST /api/ai/analyze` → 400 "image must be base64-encoded image bytes" for tiny inputs (**correct validation**, but confirm with a real image ≥100 chars).
