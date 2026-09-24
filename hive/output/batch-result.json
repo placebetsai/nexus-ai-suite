@@ -1,26 +1,9 @@
 {
-  "ts": 1790269391169,
-  "wall_ms": 320031,
-  "total": 10,
-  "ok": 10,
+  "ts": 1790269614194,
+  "wall_ms": 81295,
+  "total": 4,
+  "ok": 4,
   "results": [
-    {
-      "agent": "mnemonic",
-      "name": "Mnemonic",
-      "ok": true,
-      "model": "opencode/space-bunny-free",
-      "requested": "opencode/space-bunny-free",
-      "degraded": false,
-      "ms": 93619,
-      "output": "1. POST /api/auth/register -> 201 :: PASS\n2. POST /api/listings -> 201 :: PASS\n3. POST /api/listings -> 400 :: PASS\n4. GET /api/listings -> 200 :: FAIL\n5. PUT /api/listings/87 -> 200 :: PASS\n6. DELETE /api/listings/87 -> 200 :: PASS\n7. GET /api/export/inventory.csv -> 200 :: PASS\n8. GET /api/analytics -> 200 :: PASS\nSUITE: 7/8 PASS",
-      "attempts": [
-        {
-          "model": "opencode/space-bunny-free",
-          "ok": true,
-          "ms": 93619
-        }
-      ]
-    },
     {
       "agent": "sentinel",
       "name": "Sentinel",
@@ -28,13 +11,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 54412,
-      "output": "",
+      "ms": 51501,
+      "output": "401\n401\n401\n201\n200\nSECURITY: 6/6 PASS",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 54412
+          "ms": 51501
         }
       ]
     },
@@ -45,13 +28,13 @@
       "model": "opencode/muse-spark-1.3-contributor-free",
       "requested": "opencode/muse-spark-1.3-contributor-free",
       "degraded": false,
-      "ms": 29838,
-      "output": "Running live API checks — registering and probing endpoints.",
+      "ms": 37854,
+      "output": "Proving all 6 features live — registering and hitting each endpoint now.\nAll six endpoints returned 200 — verifying marketplace totals to finalize the report.\n1. marketplaces -> 200 :: PASS\n2. suggest-price -> 200 :: PASS\n3. title-optimizer -> 200 :: PASS\n4. fees-estimate -> 200 :: PASS\n5. shipping-estimate -> 200 :: PASS\n6. tryon -> 200 :: PASS\nFEATURES: 6/6 PASS\nMARKETPLACES: total=24 full=8",
       "attempts": [
         {
           "model": "opencode/muse-spark-1.3-contributor-free",
           "ok": true,
-          "ms": 29838
+          "ms": 37854
         }
       ]
     },
@@ -62,104 +45,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 36180,
-      "output": "",
+      "ms": 81282,
+      "output": "1. GET /api/health -> 200 :: PASS\n2. POST /api/auth/register -> 200 :: PASS\n3. POST /api/projects -> 201 :: PASS\n4. POST /api/ai/generate -> 404 :: FAIL\n5. GET /api/projects/<id>/files -> 404 :: FAIL\n6. POST /api/projects/import-github -> 201 :: PASS\n7. GET /api/hive/capabilities -> 200 :: PASS\n8. GET /api/publishing-guide -> 200 :: PASS\nCREATESTUFF: 6/8 PASS",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 36180
-        }
-      ]
-    },
-    {
-      "agent": "atlas",
-      "name": "Atlas",
-      "ok": true,
-      "model": "opencode/mimo-v2.6-flash-free",
-      "requested": "opencode/mimo-v2.6-flash-free",
-      "degraded": false,
-      "ms": 197875,
-      "output": "/api/auth/login -> POST -> 200 :: MATCH\n/api/auth/register -> POST -> 201 :: MATCH\n/api/analytics -> GET -> 200 :: MATCH\n/api/profit/summary -> GET -> 200 :: MATCH\n/api/marketplaces -> GET -> 200 :: MATCH\n/api/listings -> GET -> 200 :: MATCH\n/api/listings/{id} -> PUT -> 200 :: MATCH\n/api/listings/{id}/platforms -> GET -> 200 :: MATCH\n/api/listings/{id}/crosspost -> POST -> 200 :: MATCH\n/api/listings/{id}/sold -> POST -> 200 :: MATCH\n/api/listings/suggest-price -> POST -> 200 :: MATCH\n/api/ai/analyze -> POST -> 400 :: MATCH\n/api/ai/title-optimizer -> POST -> 200 :: MATCH\n/api/images/upload -> POST -> 200 :: MATCH\n/api/images/u/25/1790207326758-photo.jpg -> GET -> 200 :: MATCH\n/api/fees/estimate -> POST -> 200 :: MATCH\n/api/shipping/estimate -> POST -> 200 :: MATCH\n/api/orders -> GET -> 200 :: MATCH\n/api/orders/{id} -> PUT -> 200 :: MATCH\n/api/hauls -> GET -> 200 :: MATCH\n/api/hauls/{id} -> DELETE -> 200 :: MATCH\n/api/messages/templates -> GET -> 200 :: MATCH\n/api/blog -> GET -> 200 :: MATCH\n/api/export/inventory.csv -> GET -> 200 :: MATCH\n/api/export/orders.csv -> GET -> 200 :: MATCH\nCONTRACT: 25/25 MATCH",
-      "attempts": [
-        {
-          "model": "opencode/mimo-v2.6-flash-free",
-          "ok": true,
-          "ms": 197875
-        }
-      ]
-    },
-    {
-      "agent": "ledger",
-      "name": "Ledger",
-      "ok": true,
-      "model": "opencode/ling-3.0-flash-fin-free",
-      "requested": "opencode/ling-3.0-flash-fin-free",
-      "degraded": false,
-      "ms": 45959,
-      "output": "I need to verify fee math against the API. Let me start by registering and fetching marketplace data.\nRegistered and got token. Now fetching marketplaces\nNow let me post fee estimates for all marketplaces and verify arithmetic\nAll 24 marketplaces verified against the API. All fee math passes.\n\n```\ndepop feePct=10 net=86.8 :: PASS\nebay feePct=13.25 net=83.55 :: PASS\nposhmark feePct=20 net=76.8 :: PASS\nmercari feePct=13.9 net=82.9 :: PASS\nvinted feePct=5 net=91.8 :: PASS\ngrailed feePct=9 net=87.8 :: PASS\netsy feePct=9.5 net=87.3 :: PASS\nshopify feePct=0 net=96.8 :: PASS\ntiktok feePct=8 net=88.8 :: PASS\nwhatnot feePct=8 net=88.8 :: PASS\nfacebook feePct=0 net=96.8 :: PASS\namazon feePct=15 net=81.8 :: PASS\nsquare feePct=2.6 net=94.2 :: PASS\nbigcommerce feePct=0 net=96.8 :: PASS\nwoocommerce feePct=0 net=96.8 :: PASS\ntradesy feePct=12 net=84.8 :: PASS\ndepop_alt feePct=9.5 net=87.3 :: PASS\nkickscrew feePct=10 net=86.8 :: PASS\nvestiaire feePct=15 net=81.8 :: PASS\ntheRealReal feePct=20 net=76.8 :: PASS\nredbubble feePct=0 net=96.8 :: PASS\nzalando feePct=10 net=86.8 :: PASS\ndepop_alt2 feePct=13.25 net=83.55 :: PASS\nposh_alt feePct=13.9 net=82.9 :: PASS\nFEES: 24/24 PASS\nANOMALIES: none\n```",
-      "attempts": [
-        {
-          "model": "opencode/ling-3.0-flash-fin-free",
-          "ok": true,
-          "ms": 45959
-        }
-      ]
-    },
-    {
-      "agent": "scribe",
-      "name": "Scribe",
-      "ok": true,
-      "model": "opencode/space-bunny-free",
-      "requested": "opencode/space-bunny-free",
-      "degraded": false,
-      "ms": 133289,
-      "output": "I’ll fetch each page and endpoint with `curl`, capture headers/body, then parse exact lengths and counts from the live responses.\nI’m running one live extraction now: eight `curl` requests total, with redirect/status/content-type metadata captured separately from each response body.\nThe first extraction wrapper hit a result-collection bug before parsing; I’m correcting that wrapper and rerunning the same live `curl` audit.\nThe second wrapper reached the response parser but failed on a bytes/UTF-8 delimiter mismatch; I’m fixing that conversion and rerunning without changing the audit criteria.\nAll responses returned HTTP 200; character counts use decoded visible text.\n\n| Domain | Check | Result |\n|---|---|---|\n| `fashionistas.ai` (A) | `<title>` ≤60 chars and unique | **68 chars**; unique: yes; **FAIL** (>60) |\n| `fashionistas.ai` (A) | Meta description 120–160 chars | **177 chars** — **FAIL** |\n| `fashionistas.ai` (A) | Exactly one `rel=canonical` | 1 — **PASS** |\n| `fashionistas.ai` (A) | Required OG tags | `og:title`, `og:description`, `og:image`, `og:url` present — **PASS** |\n| `fashionistas.ai` (A) | `twitter:card` | Present: `summary_large_image` — **PASS** |\n| `fashionistas.ai` (A) | `application/ld+json` blocks | **3** |\n| `fashionistas.ai` (A) | `/robots.txt` | `text/plain; charset=utf-8`; `Sitemap:` present — **PASS** |\n| `fashionistas.ai` (A) | `/sitemap.xml` | `application/xml`; **7** `<url>` entries — **PASS** |\n| `fashionistas.ai` (A) | `/manifest.webmanifest` | Valid JSON (`application/manifest+json`) — **PASS** |\n| `app.createstuff.ai` (B) | `<title>` ≤60 chars and unique | **53 chars**; unique: yes — **PASS** |\n| `app.createstuff.ai` (B) | Meta description 120–160 chars | **178 chars** — **FAIL** |\n| `app.createstuff.ai` (B) | Exactly one `rel=canonical` | 1 — **PASS** |\n| `app.createstuff.ai` (B) | Required OG tags | `og:title`, `og:description`, `og:image`, `og:url` present — **PASS** |\n| `app.createstuff.ai` (B) | `twitter:card` | Present: `summary_large_image` — **PASS** |\n| `app.createstuff.ai` (B) | `application/ld+json` blocks | **3** |\n| `app.createstuff.ai` (B) | `/robots.txt` | `text/plain; charset=utf-8`; `Sitemap:` present — **PASS** |\n| `app.createstuff.ai` (B) | `/sitemap.xml` | `application/xml`; **6** `<url>` entries — **PASS** |\n| `app.createstuff.ai` (B) | `/manifest.webmanifest` | Valid JSON (`application/manifest+json`) — **PASS** |\n\nSEO-A: FAIL\nSEO-B: FAIL",
-      "attempts": [
-        {
-          "model": "opencode/space-bunny-free",
-          "ok": true,
-          "ms": 133289
-        }
-      ]
-    },
-    {
-      "agent": "pictor",
-      "name": "Pictor",
-      "ok": true,
-      "model": "opencode/muse-spark-1.2-contributor-free",
-      "requested": "opencode/muse-spark-1.2-contributor-free",
-      "degraded": false,
-      "ms": 82517,
-      "output": "Verifying your brand assets are actually served — curling live endpoints now.\nhttps://fashionistas.ai/\n1. /icon.svg -> 200 image/svg+xml :: PASS\n2. /manifest.webmanifest -> 200 application/manifest+json :: PASS | JSON valid name=Fashionistas theme_color=#b3471f icon src=/icon.svg\n3. og:image https://fashionistas.ai/og.png -> 200 text/html; charset=utf-8 :: FAIL — BROKEN LOUDLY: expected image/png, got HTML SPA fallback (file missing, 200 masks 404)\n4. /icon.svg (local href/src) -> 200 image/svg+xml :: PASS\n5. /manifest.webmanifest (local href/src) -> 200 application/manifest+json :: PASS\nASSETS: 2/2 PASS\nOG_IMAGE_BROKEN: yes\n\nhttps://app.createstuff.ai/\n1. /icon.svg -> 200 image/svg+xml :: PASS\n2. /manifest.webmanifest -> 200 application/manifest+json :: PASS | JSON valid name=CreateStuff theme_color=#6d5cff icon src=/icon.svg\n3. og:image https://createstuff.ai/og.png (from HTML) -> 200 text/html; charset=utf-8 :: FAIL — BROKEN LOUDLY: expected image/png, got HTML SPA fallback (file missing, 200 masks 404)\n3b. https://app.createstuff.ai/og.png -> 200 text/html; charset=utf-8 :: FAIL — same SPA fallback\n4. /icon.svg (local href/src) -> 200 image/svg+xml :: PASS\n5. /manifest.webmanifest (local href/src) -> 200 application/manifest+json :: PASS\nASSETS: 2/2 PASS\nOG_IMAGE_BROKEN: yes",
-      "attempts": [
-        {
-          "model": "opencode/muse-spark-1.2-contributor-free",
-          "ok": true,
-          "ms": 82517
-        }
-      ]
-    },
-    {
-      "agent": "nexus",
-      "name": "Nexus",
-      "ok": true,
-      "model": "opencode/big-pickle",
-      "requested": "opencode/nemotron-3.5-lightning-free",
-      "degraded": true,
-      "ms": 19961,
-      "output": "200 https://fashionistas.ai/\n200 https://fashionistas-ai.pages.dev/\n200 https://fashionistas.ai/robots.txt\n200 https://fashionistas.ai/sitemap.xml\n200 https://fashionistas.ai/icon.svg\n200 https://fashionistas.ai/manifest.webmanifest\n200 https://fashionistas-api.fashionistas1979.workers.dev/api/health\n200 https://app.createstuff.ai/\n200 https://createstuff-app.pages.dev/\n200 https://createstuff.ai/\n200 https://createstuff.ai/robots.txt\n200 https://createstuff.ai/sitemap.xml\n200 https://app.createstuff.ai/robots.txt\n200 https://app.createstuff.ai/sitemap.xml\n200 https://api.createstuff.ai/api/health\n200 https://forge-api.placebetsai.workers.dev/api/health\nUPTIME: 16/16 returned 200\nNOT_200: none",
-      "attempts": [
-        {
-          "model": "opencode/nemotron-3.5-lightning-free",
-          "ok": false,
-          "ms": 300014,
-          "error": "timeout"
-        },
-        {
-          "model": "opencode/big-pickle",
-          "ok": true,
-          "ms": 19961
+          "ms": 81282
         }
       ]
     },
@@ -170,13 +62,13 @@
       "model": "opencode/ling-3.0-flash-fin-free",
       "requested": "opencode/ling-3.0-flash-fin-free",
       "degraded": false,
-      "ms": 32049,
-      "output": "I'll curl both URLs and then write the handoff document.\nGot both responses. Now I'll write the handoff document.",
+      "ms": 20389,
+      "output": "I need to execute the curl commands first, then write the file.\nNow let me ensure the output directory exists and write the file\nNow writing the file\nWROTE-FILE",
       "attempts": [
         {
           "model": "opencode/ling-3.0-flash-fin-free",
           "ok": true,
-          "ms": 32049
+          "ms": 20389
         }
       ]
     }
