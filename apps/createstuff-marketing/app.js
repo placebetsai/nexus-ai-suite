@@ -615,8 +615,19 @@ async function loadGitHubRepos() {
   try {
     const data = await api('/api/github/repos');
     const repos = data.repos || [];
+    const status = document.getElementById('gh-status');
+    // forge-api reports connected:false with its own message — surface it instead
+    // of hiding the connect card and implying an authorised session exists.
+    if (data.connected === false) {
+      document.getElementById('gh-connect').style.display = 'block';
+      document.getElementById('gh-repos').style.display = 'block';
+      if (status) status.textContent = data.message || 'GitHub not connected.';
+      list.innerHTML = `<div class="empty-state"><p>${escapeHtml(data.message || 'GitHub not connected.')}</p></div>`;
+      return;
+    }
     document.getElementById('gh-connect').style.display = 'none';
     document.getElementById('gh-repos').style.display = 'block';
+    if (status) status.textContent = 'Connected — showing your repositories.';
     if (!repos.length) {
       list.innerHTML = '<div class="empty-state"><p>No repositories found.</p></div>';
       return;
@@ -1050,6 +1061,13 @@ function showToast(msg) {
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 3000);
 }
+
+// Inline onclick="..." handlers in HTML resolve against `window`, but this file
+// is an IIFE, so bare function declarations are unreachable from them. These three
+// were referenced from index.html/app.js templates and threw ReferenceError.
+window.loadGitHubRepos = loadGitHubRepos;
+window.renderPage = renderPage;
+window.showToast = showToast;
 
 document.addEventListener('DOMContentLoaded', init);
 })();

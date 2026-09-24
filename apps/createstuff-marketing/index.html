@@ -7,7 +7,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=f5b85fe4e7">
+<link rel="stylesheet" href="/styles.css?v=8cdb620acb">
 <!--SEO-START-->
 <meta name="description" content="Describe what you want. CreateStuff writes the code, previews it live and publishes it to a free URL. Import any GitHub repo.">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
@@ -161,7 +161,7 @@
     <!-- GITHUB -->
     <div id="page-github" class="page">
       <div class="page-header"><h1>GitHub Integration</h1><p class="subtitle">Connect repos, create new ones, push code</p></div>
-      <div class="card" id="gh-connect"><h3>🔗 Connect GitHub</h3><p style="color:var(--text2);margin-bottom:1rem">Connected via server token. Loading your repositories...</p><button class="btn-primary" onclick="loadGitHubRepos()">Load My Repositories</button></div>
+      <div class="card" id="gh-connect"><h3>🔗 Connect GitHub</h3><p id="gh-status" style="color:var(--text2);margin-bottom:1rem">Authorize GitHub to list your repositories, or use a personal access token to push code.</p><button class="btn-primary" onclick="loadGitHubRepos()">Load My Repositories</button></div>
       <div class="card" id="gh-repos" style="margin-top:1rem"><h3>📦 Your Repositories</h3><div id="repo-list" class="repo-list"></div></div>
       <div class="card" style="margin-top:1rem">
         <h3>➕ Create New Repo</h3>
@@ -230,6 +230,6 @@
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
-<script src="/app.js?v=f5b85fe4e7"></script>
+<script src="/app.js?v=8cdb620acb"></script>
 </body>
 </html>
