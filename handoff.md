@@ -88,7 +88,7 @@ I initially probed wrong paths and reported missing features. The **real** forge
 - **Local mirror backup:** `/home/billionaremaker/Documents/GitHub-Backup/` — bare mirrors of `nexus-ai-suite`, `fashionistas-ai`, `createstuff-ai`, `forge`, `Placebetsai`, `hive`, `joffe-federation-memory` (84 MB).
 - `fashionistas-ai` + `createstuff-ai` stale repos staged with current live files (index.html + robots/sitemap/icon/manifest/og.png) — **commit/push if not already done.**
 
-### 3.7 `createstuff.ai` — tested IN A REAL BROWSER, 10 defects found and fixed
+### 3.7 `createstuff.ai` — tested IN A REAL BROWSER, 14 defects found and fixed
 Earlier work only proved the files were *served*. This section is what happened when the flows were actually **clicked**. Every fix below was re-verified in a browser after redeploy, not merely checked with curl.
 
 | # | Defect (real, observed) | Fix |
@@ -105,6 +105,10 @@ Earlier work only proved the files were *served*. This section is what happened 
 | 10 | Stat selectors mutated *their own* attribute (`data-count="5"`→`"3"`) → **2nd dashboard load threw `TypeError: null.dataset`**; "Lines of Code" was fabricated (`projects.length * 2400`) | stable `data-stat` keys; all four numbers now computed from real API + real builds |
 | 11 | `parseInt()` on a UUID → `currentProjectId = NaN` on dropdown change; Files page never refetched projects | keep the raw string; always refetch |
 | 12 | `GET /api/builds/:id/versions` has **no route on forge-api** (404) — Versions button dead | shim returns real build history (real prompt, real code length, real timestamp, real `checkpointId`) |
+| 13 | GitHub page **statically claimed "Connected via server token"** while the API said `{connected:false}`; `loadGitHubRepos()` then *hid* the connect card, so the real message ("GitHub not connected. Click Connect GitHub to authorize.") was never shown | accurate status line; honors `connected:false`, surfaces the server message, keeps the connect affordance |
+| 14 | **3 dead buttons**: `app.js` is an IIFE, but inline `onclick` resolves against `window` → `loadGitHubRepos`, `renderPage`, `showToast` all threw `ReferenceError` (broke *Load My Repositories*, every **Recent Project** tile, and *Configure*) | all three exposed on `window`. Audited all **14** inline handlers: **3 dead → 0 dead** |
+
+**All three repaired buttons re-verified in the browser after deploy:** Recent Project tile `#dashboard → #projects` · Load My Repositories shows the real server message · Configure fires the toast — `errors: []` in every case.
 
 **Browser evidence for the full happy path (not curl — actual clicks):**
 `POST /api/auth/register → 200` · `POST /api/projects → 201 {"project":{id}}` ·
