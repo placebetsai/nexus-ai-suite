@@ -50,12 +50,15 @@ case "$ACTION" in
     NAME="${2:?usage: ./deploy.sh worker <worker-name> [dir]}"
     DIR="${3:-.}"
     echo ">> Deploying Worker '$NAME' from '$DIR'"
+    # wrangler reads the worker name from wrangler.toml inside DIR. Passing the
+    # directory as a positional arg makes wrangler treat it as the script name
+    # ("You need to provide the name of your worker"), so cd into it first.
     if [[ "$NAME" == forge* || "$NAME" == createstuff-api || "$NAME" == placebetsai-* || "$NAME" == placebets-cron* || "$NAME" == joffe-* ]]; then
-      CLOUDFLARE_API_TOKEN="$CS_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CS_ACCOUNT_ID" \
-        npx wrangler deploy "$DIR"
+      ( cd "$DIR" && CLOUDFLARE_API_TOKEN="$CS_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CS_ACCOUNT_ID" \
+        npx wrangler deploy )
     else
-      CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
-        npx wrangler deploy "$DIR"
+      ( cd "$DIR" && CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
+        npx wrangler deploy )
     fi
     ;;
   *)
