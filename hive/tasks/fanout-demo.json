@@ -1,0 +1,42 @@
+[
+  {
+    "agent": "atlas",
+    "prompt": "List the 5 most important files a single-file SPA for a resale app must contain, and the 3 most common bugs when the frontend calls a REST API. Under 120 words, bullet list only."
+  },
+  {
+    "agent": "vogue",
+    "prompt": "Give 6 bullet points on how an AI should identify a clothing item from one photo (category, brand, color, material, condition, size). Be specific about what is visible vs inferred. Under 120 words."
+  },
+  {
+    "agent": "pictor",
+    "prompt": "Specify a color palette for a premium fashion resale web app: give exact hex values for background, card, ink, muted, accent, success, danger. Then one line on typography. Under 100 words."
+  },
+  {
+    "agent": "forge",
+    "prompt": "List the REST endpoints an AI app-builder backend needs for: auth, project CRUD, code generation, file storage, preview, publish. Format: METHOD /path — one per line. Under 120 words."
+  },
+  {
+    "agent": "nexus",
+    "prompt": "Give a Cloudflare Workers + D1 deployment checklist as a terse bullet list (wrangler.toml bindings, deploy command, verification). Under 100 words."
+  },
+  {
+    "agent": "mnemonic",
+    "prompt": "Write 6 API contract test assertions (method, path, expected status) for a resale app's listings endpoint, including the unauthenticated case. Bullet list. Under 100 words."
+  },
+  {
+    "agent": "sentinel",
+    "prompt": "List the top 5 security flaws in an HMAC bearer-token auth implementation that stores passwords as salted SHA-256. One line each with the fix. Under 100 words."
+  },
+  {
+    "agent": "curator",
+    "prompt": "Write a 6-line handoff template for an AI agent resuming work mid-project (state, verified, blocked, next, files, warnings). Under 90 words."
+  },
+  {
+    "agent": "ledger",
+    "prompt": "Compute seller net take-home for a $50 sale on: Depop (10% + 3.3%+$0.45 processing), eBay (13.25% + processing), Poshmark (20% flat for $50). Show net $ per platform. Under 100 words."
+  },
+  {
+    "agent": "scribe",
+    "prompt": "Write an SEO title tag (max 60 chars) and meta description (max 155 chars) for a web app that turns closet photos into multi-marketplace listings with AI. Two lines only."
+  }
+]

@@ -1,39 +1,42 @@
 #!/usr/bin/env node
 /**
- * CreateStuff Hive Dispatcher
- * Runs registered opencode agents in PARALLEL, each free model with
- * automatic fallback to the known-good default model.
+ * Nexus Hive Dispatcher — parallel execution across ALL free OpenCode models.
+ *
+ * v3.0 (2026-09-24)
+ *   FIXED: model ids now use the `opencode/` prefix (the old `opencode-zen/`
+ *          prefix errored on every call, so all agents silently fell back to
+ *          the default model and "parallelism" was an illusion of 1 model).
+ *   ADDED: real per-model fallback chains, concurrency cap, honest reporting
+ *          of which model actually served each task.
  *
  * Usage:
- *   node hive/dispatch.mjs                     # status/readiness probe (all agents ack)
- *   node hive/dispatch.mjs "prompt here" --agents atlas,vogue
- *   node hive/dispatch.mjs "prompt here" --all
- *   node hive/dispatch.mjs "prompt here" --file task-batch.json   # [{agent, prompt}]
+ *   node hive/dispatch.mjs                          # readiness probe (all agents)
+ *   node hive/dispatch.mjs "prompt" --all           # same prompt to every agent
+ *   node hive/dispatch.mjs "prompt" --agents atlas,vogue
+ *   node hive/dispatch.mjs --file batch.json        # [{agent, prompt}] fan-out
+ *   node hive/dispatch.mjs --models                 # list verified free models
  */
 import { spawn } from 'node:child_process';
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadHive, freeModelIds, modelsForAgent, cleanOutput } from './models.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const HIVE = JSON.parse(readFileSync(join(__dirname, 'hive.json'), 'utf8'));
-const FALLBACK = 'default';
+const HIVE = loadHive();
 const OUT = join(__dirname, 'output');
 mkdirSync(OUT, { recursive: true });
 
-function log(msg) {
-  console.log(`[HIVE] ${msg}`);
-}
+const log = (m) => console.error(`[HIVE] ${m}`);
 
-function runAgent(model, prompt, timeoutMs) {
-  return new Promise((resolve) => {
-    // Fallback uses the authenticated default provider (no --model), which is
-    // the only guaranteed-free execution path on this box. Forcing a model id
-    // routes through the zen gateway and needs OPENCODE_API_KEY.
-    const args = model === 'default' ? ['run', prompt] : ['run', '--model', model, prompt];
+/** Run one opencode call. Resolves with {ok, model, output, ms, error}. */
+export function runModel(fullModelId, prompt, timeoutMs, cwd = ROOT) {
+  return new Promise((resolvePromise) => {
+    const args = fullModelId === 'default' ? ['run', prompt] : ['run', '--model', fullModelId, prompt];
+    const t0 = Date.now();
     const child = spawn('opencode', args, {
-      cwd: ROOT,
+      cwd,
       env: { ...process.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -41,107 +44,159 @@ function runAgent(model, prompt, timeoutMs) {
     let err = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      resolve({ ok: false, model, error: 'timeout', output: out });
+      resolvePromise({ ok: false, model: fullModelId, error: 'timeout', output: cleanOutput(out), ms: Date.now() - t0 });
     }, timeoutMs);
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (err += d));
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolvePromise({ ok: false, model: fullModelId, error: `spawn: ${e.message}`, output: '', ms: Date.now() - t0 });
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) {
-        resolve({ ok: false, model, error: `exit ${code}: ${err.slice(-200)}`, output: out });
+      const ms = Date.now() - t0;
+      const cleaned = cleanOutput(out);
+      if (code !== 0 || /Unexpected server error|err_[a-z0-9]+/.test(cleaned)) {
+        resolvePromise({
+          ok: false,
+          model: fullModelId,
+          error: code !== 0 ? `exit ${code}: ${cleanOutput(err).slice(-300)}` : 'gateway error',
+          output: cleaned,
+          ms,
+        });
       } else {
-        resolve({ ok: true, model, output: out.slice(-2000) });
+        resolvePromise({ ok: true, model: fullModelId, output: cleaned, ms });
       }
     });
   });
 }
 
+/** Dispatch one agent: primary model → fallback → default. Always reports the truth. */
 async function dispatchOne(agent, prompt, timeoutMs) {
-  const primary = `opencode-zen/${agent.model}`;
-  log(`→ ${agent.name} (${primary})`);
-  const first = await runAgent(primary, prompt, timeoutMs);
-  if (first.ok) {
-    log(`✓ ${agent.name} done via ${primary}`);
-    return { agent: agent.id, ok: true, model: primary, output: first.output };
+  const { primary, fallback } = modelsForAgent(agent);
+  const chain = [...new Set([primary, fallback, 'default'])];
+  const attempts = [];
+  for (const model of chain) {
+    const r = await runModel(model, prompt, timeoutMs);
+    attempts.push({ model, ok: r.ok, ms: r.ms, error: r.error });
+    if (r.ok) {
+      return {
+        agent: agent.id,
+        name: agent.name,
+        ok: true,
+        model: r.model,
+        requested: primary,
+        degraded: r.model !== primary,
+        ms: r.ms,
+        output: r.output,
+        attempts,
+      };
+    }
+    log(`${agent.name} failed on ${model} (${r.error}) → next in chain`);
   }
-  log(`  ${agent.name} failed on ${primary}: ${first.error} → falling back to default free model`);
-  const second = await runAgent('default', prompt, timeoutMs);
-  if (second.ok) {
-    log(`✓ ${agent.name} done via default free model (fallback)`);
-    return { agent: agent.id, ok: true, model: 'default', fallback: true, output: second.output };
-  }
-  log(`✗ ${agent.name} failed on fallback too`);
-  return { agent: agent.id, ok: false, error: second.error };
+  return { agent: agent.id, name: agent.name, ok: false, model: null, requested: primary, attempts, error: 'all models failed' };
+}
+
+/** Bounded concurrency so we don't fork-bomb the box. */
+async function mapPool(items, limit, fn) {
+  const results = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function parseArgs(argv) {
-  const args = { prompt: '', agents: [], all: false, file: null };
+  const args = { prompt: '', agents: [], all: false, file: null, models: false, limit: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--all') args.all = true;
-    else if (a === '--agents') args.agents = argv[++i].split(',');
+    else if (a === '--models') args.models = true;
+    else if (a === '--agents') args.agents = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--file') args.file = argv[++i];
+    else if (a === '--limit') args.limit = parseInt(argv[++i], 10);
     else args.prompt = a;
   }
   return args;
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
-  const args = parseArgs(argv);
+  const args = parseArgs(process.argv.slice(2));
 
-  if (args.file) {
-    const batch = JSON.parse(readFileSync(args.file, 'utf8'));
-    const items = batch.map((t) => ({ agent: HIVE.agents.find((a) => a.id === t.agent), prompt: t.prompt }));
-    const results = await Promise.all(
-      items.map((it) => dispatchOne(it.agent, it.prompt, HIVE.dispatch.timeout_per_task_ms))
-    );
-    writeFileSync(join(OUT, 'batch-result.json'), JSON.stringify({ ts: Date.now(), results }, null, 2));
-    console.log('\n' + JSON.stringify({ ts: Date.now(), results }, null, 2));
+  if (args.models) {
+    console.log(JSON.stringify({ prefix: 'opencode/', free_models: freeModelIds(HIVE) }, null, 2));
     return;
   }
 
+  const limit = args.limit || HIVE.dispatch.parallelism;
+  const timeout = HIVE.dispatch.timeout_per_task_ms;
+
+  // ── FAN-OUT: [{agent, prompt}] each agent gets its own task ──────────────
+  if (args.file) {
+    const batch = JSON.parse(readFileSync(args.file, 'utf8'));
+    const items = batch.map((t) => ({
+      agent: HIVE.agents.find((a) => a.id === t.agent),
+      prompt: t.prompt,
+    })).filter((x) => x.agent);
+    log(`Fanning ${items.length} tasks across ${new Set(items.map((i) => i.agent.id)).size} agents (pool=${limit})`);
+    const t0 = Date.now();
+    const results = await mapPool(items, limit, (it) => dispatchOne(it.agent, it.prompt, timeout));
+    const wall = Date.now() - t0;
+    const ok = results.filter((r) => r.ok).length;
+    const payload = { ts: Date.now(), wall_ms: wall, total: results.length, ok, results };
+    writeFileSync(join(OUT, 'batch-result.json'), JSON.stringify(payload, null, 2));
+    console.log(`\n=== FAN-OUT: ${ok}/${results.length} ok in ${wall}ms ===`);
+    console.log(JSON.stringify(results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, degraded: r.degraded, ms: r.ms })), null, 2));
+    return;
+  }
+
+  // ── READINESS PROBE ──────────────────────────────────────────────────────
   if (!args.prompt) {
-    // Readiness probe: prompt omitted → each agent just acknowledges and reports its assignment.
     const probes = HIVE.agents.map((a) => ({
       agent: a,
       prompt:
         `You are hive agent "${a.name}" — ${a.role}. ` +
-        `Respond with exactly one line: "<name> READY · streaming to workspace · scope: <workstreams>". Nothing else.`,
+        `Reply with exactly one line and nothing else: "${a.name} READY · scope: ${a.workstreams.join(', ')}".`,
     }));
-    log(`Probing ${probes.length} agents in parallel (timeout ${HIVE.dispatch.timeout_per_task_ms}ms each)`);
+    log(`Probing ${probes.length} agents in parallel (pool=${limit}, timeout ${timeout}ms)`);
     const t0 = Date.now();
-    const results = await Promise.all(
-      probes.map((p) => dispatchOne(p.agent, p.prompt, 90000))
-    );
+    const results = await mapPool(probes, limit, (p) => dispatchOne(p.agent, p.prompt, HIVE.dispatch.probe_timeout_ms));
     const wall = Date.now() - t0;
     const ok = results.filter((r) => r.ok).length;
-    const status = { ts: new Date().toISOString(), wall_ms: wall, total: results.length, ok, ready: ok === results.length, results };
+    const primaryOnly = results.filter((r) => r.ok && !r.degraded).length;
+    const status = { ts: new Date().toISOString(), wall_ms: wall, total: results.length, ok, primary_ok: primaryOnly, ready: ok === results.length, results };
     writeFileSync(join(OUT, 'readiness.json'), JSON.stringify(status, null, 2));
-    console.log(`\n=== HIVE READINESS: ${ok}/${results.length} agents ack in ${wall}ms => ${status.ready ? 'READY' : 'NOT READY'} ===`);
-    console.log(JSON.stringify(results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, fallback: r.fallback || false })), null, 2));
+    console.log(`\n=== HIVE READINESS: ${ok}/${results.length} acked · ${primaryOnly} on primary model · ${wall}ms => ${status.ready ? 'READY' : 'NOT READY'} ===`);
+    console.log(JSON.stringify(results.map((r) => ({ agent: r.agent, name: r.name, ok: r.ok, model: r.model, degraded: r.degraded || false, ms: r.ms, first_line: (r.output || '').split('\n')[0] })), null, 2));
     return;
   }
 
-  if (args.prompt) {
-    let targets = args.all ? HIVE.agents : HIVE.agents.filter((a) => args.agents.includes(a.id));
-    if (!args.all && args.agents.length === 0) {
-      log('No agents selected. Use --all or --agents atlas,vogue,...');
-      process.exit(1);
-    }
-    log(`Dispatching ${targets.length} agent(s) in parallel: ${targets.map((t) => t.name).join(', ')}`);
-    const t0 = Date.now();
-    const results = await Promise.all(
-      targets.map((a) => dispatchOne(a, args.prompt, HIVE.dispatch.timeout_per_task_ms))
-    );
-    const wall = Date.now() - t0;
-    writeFileSync(join(OUT, 'dispatch-result.json'), JSON.stringify({ ts: Date.now(), prompt: args.prompt, wall_ms: wall, results }, null, 2));
-    console.log(`\n=== ${results.filter((r) => r.ok).length}/${results.length} agents completed in ${wall}ms ===`);
-    console.log(JSON.stringify(results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, fallback: r.fallback || false })), null, 2));
+  // ── ONE PROMPT → MANY AGENTS ────────────────────────────────────────────
+  let targets = args.all ? HIVE.agents : HIVE.agents.filter((a) => args.agents.includes(a.id));
+  if (!args.all && args.agents.length === 0) {
+    log('No agents selected. Use --all or --agents atlas,vogue');
+    process.exit(1);
   }
+  log(`Dispatching ${targets.length} agent(s) in parallel: ${targets.map((t) => t.name).join(', ')}`);
+  const t0 = Date.now();
+  const results = await mapPool(targets, limit, (a) => dispatchOne(a, args.prompt, timeout));
+  const wall = Date.now() - t0;
+  const ok = results.filter((r) => r.ok).length;
+  writeFileSync(join(OUT, 'dispatch-result.json'), JSON.stringify({ ts: Date.now(), prompt: args.prompt, wall_ms: wall, results }, null, 2));
+  console.log(`\n=== ${ok}/${results.length} agents completed in ${wall}ms ===`);
+  console.log(JSON.stringify(results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, degraded: r.degraded || false, ms: r.ms })), null, 2));
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// argv[1] may be relative (e.g. "hive/dispatch.mjs"), so resolve before comparing.
+const invokedPath = process.argv[1] ? pathToFileURL(realpathSync(process.argv[1])).href : '';
+if (import.meta.url === invokedPath) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
