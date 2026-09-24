@@ -1,0 +1,15 @@
+{
+  "ts": 1790211256337,
+  "results": [
+    {
+      "agent": "vogue",
+      "ok": false,
+      "error": "exit null: \u001b[0m\n> build · big-pickle\n\u001b[0m\n\u001b[0m→ \u001b[0mRead apps/fashionistas/index.html\n\u001b[0m→ \u001b[0mRead apps/fashionistas/index.html\u001b[90m [offset=783]\u001b[0m\n"
+    },
+    {
+      "agent": "forge",
+      "ok": false,
+      "error": "exit null: y.` }],\n\u001b[0m\n\u001b[0m✱ \u001b[0mGrep \"ai/generate|ai/modify|ai/publish|header|x-byok|openai|apiKey|Authorization|OPENAI\"\u001b[90m in workers/forge-api · 4 matches\u001b[0m\n\u001b[0m→ \u001b[0mRead workers/forge-api/src/index.js\n"
+    }
+  ]
+}

@@ -79,7 +79,51 @@ a.link{color:var(--accent);font-weight:700;text-decoration:none}
 .tag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px}
 .tag.active{background:#e2efe7;color:var(--good)}
 .tag.sold{background:#fbe4e1;color:var(--bad)}
+.gfab{position:fixed;right:14px;bottom:calc(80px + env(safe-area-inset-bottom));z-index:70;width:54px;height:54px;border-radius:999px;border:0;background:var(--ink);color:#fff;box-shadow:0 10px 24px rgba(20,10,5,.28);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1;padding:0}
+.gfab b{font-size:18px}
+.gfab span{font-size:8px;font-weight:700;letter-spacing:.02em;opacity:.92}
+.gfab:active{transform:scale(.94)}
+.guide-overlay{position:fixed;inset:0;background:rgba(15,10,5,.62);z-index:90;display:flex;align-items:center;justify-content:center;padding:18px}
+.guide-card{background:var(--bg);border-radius:22px;width:100%;max-width:420px;max-height:84vh;overflow:auto;padding:18px 18px 16px;box-shadow:0 18px 60px rgba(0,0,0,.35);animation:up .18s ease;position:relative}
+.guide-x{position:absolute;top:8px;right:10px;border:0;background:transparent;color:var(--mut);font-size:22px;cursor:pointer;line-height:1;padding:4px}
+.guide-dots{display:flex;gap:6px;justify-content:center;margin:14px 0 2px}
+.guide-dots i{width:8px;height:8px;border-radius:99px;background:#d9d2c7;transition:all .2s}
+.guide-dots i.on{background:var(--accent);width:22px}
+.guide-nav{display:flex;gap:10px;margin-top:16px}
+.guide-nav .btn{flex:1;margin:0;white-space:nowrap}
+.guide-nav .btn-ghost{flex:0 0 auto}
+.guide-mp{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:12px;padding:9px 11px;cursor:pointer;background:#fff;font-size:13px;font-weight:700;margin:4px 0;width:100%;text-align:left}
+.guide-mp.on{border-color:var(--accent);background:#fdf1ea}
+.guide-copy{width:100%;min-height:64px;font-size:11px;font-family:ui-monospace,Menlo,Consolas,monospace;background:#1b1b1f;color:#e9e3d7;border:0;border-radius:10px;padding:10px;white-space:pre-wrap;word-break:break-word}
+.guide-ol{margin:8px 0 0;padding-left:18px;font-size:13.5px;color:var(--ink)}
+.guide-ol li{margin:5px 0}
 footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
+
+/* ================= HIVE GUIDE A→Z ================= */
+#hc-fab{position:fixed;right:14px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:80;display:flex;align-items:center;gap:7px;background:var(--ink);color:#fff;border:0;border-radius:999px;padding:9px 15px 9px 9px;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.22);text-decoration:none;-webkit-tap-highlight-color:transparent}
+#hc-fab .hc-q{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:99px;background:var(--accent);font-size:14px;font-weight:900}
+#hc-overlay{position:fixed;inset:0;background:rgba(20,12,6,.55);z-index:90;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)}
+#hc-overlay.hidden{display:none!important}
+#hc-card{width:100%;max-width:640px;background:var(--bg);border-radius:22px 22px 0 0;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 40px rgba(0,0,0,.28);animation:up .18s ease}
+.hc-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 16px 6px}
+.hc-badge{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:10px;background:var(--accent);color:#fff;font-weight:900;font-size:14px;margin-right:8px}
+.hc-title{font-size:18px;letter-spacing:-.01em}
+.hc-x{border:0;background:transparent;color:var(--mut);font-size:21px;padding:4px 8px;cursor:pointer;font-weight:800}
+.hc-sub{padding:0 18px 4px;font-size:12px;color:var(--mut)}
+.hc-body{flex:1 1 auto;overflow:auto;padding:8px 18px 4px}
+.hc-body p{margin:.45em 0}
+.hc-steps{margin:.3em 0 .6em;padding-left:20px}
+.hc-steps li{margin:.32em 0;font-size:13.5px}
+.hc-live{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0;font-size:13.5px}
+.hc-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;margin:8px 0}
+.hc-act{margin:8px 0 2px}
+.hc-dots{display:flex;justify-content:center;gap:5px;padding:8px 16px 6px;flex-wrap:wrap}
+.hc-dot{width:7px;height:7px;border-radius:99px;background:#d8d0c4;transition:.2s}
+.hc-dot.on{background:var(--accent);width:16px}
+.hc-nav{display:flex;gap:10px;padding:8px 16px calc(14px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line)}
+.hc-btn-back,.hc-btn-next{flex:1;border:0;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer}
+.hc-btn-back{background:#eee9e0;color:var(--ink)}
+.hc-btn-next{background:var(--ink);color:#fff}
 </style>
 </head>
 <body>
@@ -139,6 +183,29 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
 <!-- toast -->
 <div class="toast" id="toast"></div>
 
+<!-- hive guide A→Z -->
+<button id="hc-fab" onclick="hcToggle()" title="Open the A→Z tour">
+  <span class="hc-q">?</span>Guide A→Z
+</button>
+<div id="hc-overlay" class="hidden" role="dialog" aria-label="Hive Guide A to Z">
+  <div id="hc-card">
+    <div class="hc-top">
+      <div>
+        <span class="hc-badge" id="hc-letter">A</span>
+        <b class="hc-title" id="hc-title">Welcome</b>
+      </div>
+      <button class="hc-x" onclick="hcSuspend()" aria-label="Pause tour">✕</button>
+    </div>
+    <div class="hc-sub" id="hc-sub"></div>
+    <div class="hc-body" id="hc-body"></div>
+    <div class="hc-dots" id="hc-dots"></div>
+    <div class="hc-nav">
+      <button class="hc-btn-back" id="hc-back" onclick="hcStep(-1)">✕ Close</button>
+      <button class="hc-btn-next" id="hc-next" onclick="hcStep(1)">Next →</button>
+    </div>
+  </div>
+</div>
+
 <!-- bottom tabs -->
 <nav class="tabbar hidden" id="tabbar">
   <a data-v="home" href="javascript:go('home')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21h-6v-6h-6v6H3z"/></svg>Home</a>
@@ -147,6 +214,10 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
   <a data-v="sell" href="javascript:go('sell')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.5 9.5c-.6-1-1.6-1.5-2.5-1.5s-1.9.5-1.9 1.4c0 2 4.4 1.2 4.4 3.2 0 1-.9 1.4-2.5 1.4-1 0-2-.5-2.5-1.5"/></svg>Sell</a>
   <a data-v="more" href="javascript:go('more')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>More</a>
 </nav>
+
+<!-- Hive Guide: floating help + A→Z onboarding overlay -->
+<button class="gfab" id="guide-fab" onclick="openGuide()" aria-label="Help A to Z"><b>?</b><span>Help A→Z</span></button>
+<div class="guide-overlay hidden" id="guide-overlay"><div class="guide-card" id="guide-card"></div></div>
 
 <script>
 const API = "https://fashionistas-api.fashionistas1979.workers.dev";
@@ -845,14 +916,527 @@ async function useSample(){
   } catch(e){ toast("Sample unavailable"); }
 }
 
+/* ================= HIVE GUIDE (A→Z onboarding walkthrough) ================= */
+const GUIDE_MPS = {
+  depop:   { name:"Depop",    icon:"🛍️", url:"https://www.depop.com/register",   fields:["title","brand","category","size","condition","price","description"], note:"Depop rewards honest sizing — keep your real measurements in the description.",
+    steps:["Download the Depop app or visit depop.com — sign up free with email, Google or Apple.","Fill your profile: avatar, location, and 'fast shipping, easy to work with'.","Answer buyer messages quickly and ship within 2-3 days to build standing.","Paste the listing content below into 'Sell an item' and attach your photos."] },
+  ebay:    { name:"eBay",     icon:"📦", url:"https://signup.ebay.com/",         fields:["title","brand","category","size","condition","price","description"], note:"Fill eBay's item specifics (brand/size/color) to rank higher in search.",
+    steps:["Go to ebay.com (or the app) and tap Register.","Create a personal or business account — free; selling needs a linked payout method.","Verify your email and add payout details so sales settle.","Use the item specifics below — eBay boosts complete listings in search."] },
+  poshmark:{ name:"Poshmark", icon:"👗", url:"https://poshmark.com/signup",      fields:["title","brand","category","size","condition","price","description"], note:"Poshmark bundles encourage bigger sales — mention bundle discounts in your bio.",
+    steps:["Install Poshmark or open poshmark.com.","Sign up and pick 'Sell items' during onboarding.","Give your closet a name you'll remember.","Poshmark ships with their own label — your AI price range already accounts for it."] },
+  mercari: { name:"Mercari",  icon:"💰", url:"https://www.mercari.com/signup/",  fields:["title","brand","category","size","condition","price","description"], note:"Mercari is offer-heavy — aim for the top of your AI price range.",
+    steps:["Install Mercari or visit mercari.com.","Create an account and tap + to Sell.","Pick the same category the AI identified for you.","Price near your AI range; Mercari auto-surfaces priced listings to buyers."] },
+  vinted:  { name:"Vinted",   icon:"🔄", url:"https://www.vinted.com/signup",    fields:["title","brand","category","size","condition","price","description"], note:"Set ~10% headroom on Vinted so offers land at your target price.",
+    steps:["Create a free Vinted account (app or web).","Set your default size and select your country.","Post clear photos plus the AI description and condition.","Accept fair offers quickly — Vinted buyers negotiate a lot."] },
+  grailed: { name:"Grailed",  icon:"👕", url:"https://www.grailed.com/signup",   fields:["title","brand","category","size","condition","price","description"], note:"Grailed buyers want measurements + tag photos — add them to the description.",
+    steps:["Join Grailed (streetwear & menswear focus).","Complete profile verification to unlock selling.","Detail authenticity: tags, flaws, provenance in the description.","Ship with tracking within a few days to keep your seller standing."] }
+};
+
+const GUIDE_STEPS = [
+  { title:"Welcome to the Hive", emoji:"🐝",
+    body:"Fashionistas is free forever on Cloudflare's free tier — photos, listings and orders, no credit card. It's also bring-your-own-AI-key optional: bring one later if you want to, but you don't need it to start. Snap a clothing item and the AI identifies it, suggests a price, and cross-lists to 6 marketplaces without a single API integration.",
+    action:null },
+  { title:"Create your free account", emoji:"🔑",
+    body:"One tap opens the real sign-up form behind this card: username + email + password and you're in. Your photos and listings live on Cloudflare D1 + R2. Prefer to poke around first? Tap 'Log in as demo seller' on the auth screen.",
+    action:{ label:"Open the sign-up form →", fn:()=>guideAccount() } },
+  { title:"Snap any clothing item", emoji:"📸",
+    body:"On the Snap screen, tap the dashed camera zone and your phone camera opens — or pick from your gallery. Tip: flat lay, natural light, tags visible. The photo stays yours on Cloudflare R2.",
+    action:{ label:"Open the Snap camera →", fn:()=>guideSnap() } },
+  { title:"AI vision identifies it", emoji:"🤖",
+    body:"Workers AI vision reads brand, category, size, condition and confidence — then suggests a resale price range and drafts your listing. Watch it happen live: the guide launches a real sample scan for you right now.",
+    action:{ label:"Scan a real sample now →", fn:()=>guideAIScan() } },
+  { title:"Cross-list — no API needed", emoji:"🌐", kind:"marketplaces",
+    body:"No integrations, no developer tools. Pick a marketplace below to see exactly how to open your account, then tap 'Generate listing content' — it builds real JSON + CSV from your current listing that you paste by hand in seconds.",
+    action:null },
+  { title:"Take the listing live", emoji:"🚀",
+    body:"From any listing, tick the marketplaces and tap 'Cross-list' — the app records per-platform status (ready / live / sold) so you always know what went where. The button below runs the real cross-post on the listing you're looking at right now.",
+    action:{ label:"Cross-post current listing →", fn:()=>guideCrosspost() } },
+  { title:"Mark sold & track profit", emoji:"💰",
+    body:"When an item sells, record the sold price, platform fee, shipping and cost of goods — the Profit screen turns it into net profit automatically. One tap opens the real 'Mark as sold' sheet on your current listing.",
+    action:{ label:"Open 'Mark as sold' →", fn:()=>guideMarkSold() } }
+];
+
+let G = { i:0, mp:"depop", mode:"json", payload:null };
+
+function closeGuide(){ $("#guide-overlay").classList.add("hidden"); localStorage.setItem("fash_guide_seen","1"); }
+function openGuide(){ $("#guide-overlay").classList.remove("hidden"); guideRender(); }
+function guideGo(i){ G.i = Math.max(0, Math.min(GUIDE_STEPS.length-1, i)); guideRender(); }
+function guideNext(){ if (G.i >= GUIDE_STEPS.length-1) return closeGuide(); G.i++; guideRender(); }
+function guideBack(){ guideGo(G.i-1); }
+function guidePause(msg){ closeGuide(); toast(msg || "Action launched — tap '? Help A→Z' to resume the tour whenever you're ready."); }
+function guideRequireAuth(idx){ if (TOKEN && USER) return true; toast("You need a free account for this part — jumping to step 2 to create one."); guideGo(1); return false; }
+function guideStepAction(i){ const s = GUIDE_STEPS[i]; if (s && s.action) s.action(); }
+function guidePickMP(id){ G.mp = id; G.payload = null; guideRender(); }
+function guideMode(m){ G.mode = m; guideRender(); }
+function guideCopyNow(){ if (G.payload) copyText(G.mode === "json" ? G.payload.json : G.payload.csv); }
+
+function guideRender(){
+  const s = GUIDE_STEPS[G.i];
+  const total = GUIDE_STEPS.length;
+  const dots = `<div class="guide-dots">${GUIDE_STEPS.map((_,k)=>`<i class="${k===G.i?'on':''}"></i>`).join("")}</div>`;
+  const nav = `
+    <div class="guide-nav">
+      <button class="btn btn-ghost btn-sm" onclick="guideBack()" style="${G.i===0?'visibility:hidden':''}">Back</button>
+      <button class="btn btn-primary" onclick="${G.i===total-1?'closeGuide()':'guideNext()'}">${G.i===total-1?'Finish ✓':'Next →'}</button>
+    </div>`;
+  let mid = "";
+  if (s.kind === "marketplaces") mid = guideMPBlock();
+  else if (s.action) mid = `<div style="height:12px"></div><button class="btn btn-accent" onclick="guideStepAction(${G.i})">${s.action.label}</button>`;
+  $("#guide-card").innerHTML = `
+    <button class="guide-x" onclick="closeGuide()" aria-label="Close">×</button>
+    <h3 style="margin:2px 0 2px;font-size:20px">${s.emoji} ${escapeHtml(s.title)}</h3>
+    <p class="mut" style="margin:8px 0 4px">Step ${G.i+1} of ${total}</p>
+    <div style="font-size:14px">${s.body}</div>
+    ${mid}
+    ${dots}
+    ${nav}`;
+}
+
+function guideMPBlock(){
+  const ids = Object.keys(GUIDE_MPS);
+  const chips = `<div style="margin:12px 0 4px">${ids.map(id=>`<button class="guide-mp ${id===G.mp?'on':''}" onclick="guidePickMP('${id}')">${GUIDE_MPS[id].icon} <span style="flex:1">${GUIDE_MPS[id].name}</span><span class="mut" style="font-size:11px">${id===G.mp?'✓ Pick this one':'tap'}</span></button>`).join("")}</div>`;
+  const cfg = GUIDE_MPS[G.mp];
+  const stepsHtml = `<ol class="guide-ol">${cfg.steps.map(x=>`<li>${x}</li>`).join("")}</ol>`;
+  const genBtn = `<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="guideCopyListing('${G.mp}')">📋 Generate listing content for ${cfg.name}</button>`;
+  let payload = "";
+  if (G.payload){
+    const v = G.mode === "json" ? G.payload.json : G.payload.csv;
+    payload = `
+      <div style="height:10px"></div>
+      <div class="two">
+        <button class="btn btn-soft btn-sm" style="${G.mode==='json'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('json')">JSON</button>
+        <button class="btn btn-soft btn-sm" style="${G.mode==='csv'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('csv')">CSV</button>
+      </div>
+      <label>${G.mode==='json'?'Copy JSON':'Copy CSV'} — paste into ${cfg.name}</label>
+      <textarea class="guide-copy" readonly>${escapeAttr(v)}</textarea>
+      <button class="btn btn-accent btn-sm" style="width:100%;margin-top:6px" onclick="guideCopyNow()">📋 Copy to clipboard</button>
+      <p class="mut" style="font-size:12px;margin:8px 0 0">Generated from your real listing — paste it into ${cfg.name} and tweak.</p>`;
+  }
+  return `<a class="link" href="${cfg.url}" target="_blank" rel="noopener">Open ${cfg.name} & create your account ↗</a>
+    ${stepsHtml}
+    ${genBtn}
+    ${payload}
+    <p class="mut" style="font-size:12px;margin:10px 0 0">💡 ${cfg.note}</p>`;
+}
+
+function guideListingData(){
+  const ai = CURRENT.ai || {};
+  const l = CURRENT.listing || (S.listings && S.listings[0]) || ai;
+  const brand = l.brand || ai.brand || "";
+  const title = l.title || titleCase(((brand && brand!=="Unknown")?brand+" ":"") + (l.type||ai.type||l.category||"clothing item"));
+  const size = l.size || ai.sizeHint || l.sizeHint || "";
+  const category = l.category || ai.category || "Tops";
+  const condition = l.condition || ai.condition || "Good";
+  const color = l.color || ai.color || "";
+  const price = Math.round(l.price != null ? Number(l.price) : (Number(ai.priceMin)||Number(ai.priceMax)||30));
+  const desc = l.description || defaultDesc({ brand, color, sizeHint: size, condition });
+  return { title, brand, category, size, condition, color, price, desc, photo: l.photo_url || ai._preview || null, id: l.id || null };
+}
+
+async function guideCopyListing(mpId){
+  G.mp = mpId;
+  const cfg = GUIDE_MPS[mpId];
+  let fee = null;
+  try { const mp = await api("/api/marketplaces"); S.markets = mp.marketplaces; fee = (S.markets||[]).find(m=>m.id===mpId)?.feePct ?? null; } catch(e){}
+  const d = guideListingData();
+  const payload = {
+    marketplace: cfg.name, platform_link: cfg.url, platform_fee_pct: fee,
+    title: d.title, brand: d.brand, category: d.category, size: d.size,
+    condition: d.condition, color: d.color, price: d.price,
+    description: d.desc, photo_url: d.photo, listing_id: d.id,
+    generated_by: "Fashionistas Hive Guide"
+  };
+  const esc = (v)=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const head = cfg.fields.concat(["photo_url","listing_id"]);
+  const row = cfg.fields.map(k=> k==="price" ? money(payload.price) : payload[k]).concat([payload.photo_url, payload.listing_id]);
+  G.payload = { json: JSON.stringify(payload, null, 2), csv: head.map(esc).join(",") + "\n" + row.map(esc).join(",") };
+  G.mode = "json";
+  guideRender();
+}
+
+function guideAccount(){
+  if (TOKEN && USER) { guidePause("You're already signed in ✓ — open the Snap step whenever you're set."); return; }
+  authTab("signup");
+  guidePause("The real sign-up form is open behind this tour — create your account, then tap '? Help A→Z' to continue step by step.");
+}
+function guideSnap(){
+  if (!guideRequireAuth(2)) return;
+  closeGuide(); go("snap");
+  toast("📸 Snap screen is open — tap the dashed zone to take or upload a photo.");
+}
+function guideAIScan(){
+  if (!guideRequireAuth(3)) return;
+  closeGuide(); go("snap");
+  setTimeout(()=>{ toast("🤖 AI is scanning the sample — watch the screen."); useSample(); }, 450);
+}
+async function guideCrosspost(){
+  if (!guideRequireAuth(5)) return;
+  let l = CURRENT.listing;
+  if (!l) l = (S.listings || [])[0];
+  if (!l) { guidePause("No listing yet — use the Snap step to create one first."); go("snap"); return; }
+  closeGuide();
+  try {
+    if (!CURRENT.listing) await openListing(l.id);
+    document.querySelectorAll("#xl-pick input").forEach(i=>i.checked=true);
+    await crosspost(CURRENT.listing.id);
+  } catch(e){ toast(e.message); }
+}
+async function guideMarkSold(){
+  if (!guideRequireAuth(6)) return;
+  let l = CURRENT.listing;
+  if (!l) l = (S.listings || [])[0];
+  if (!l) { guidePause("No listing yet — use the Snap step to create one first."); go("snap"); return; }
+  closeGuide();
+  try {
+    if (!CURRENT.listing) await openListing(l.id);
+    await loadMarketplaces();
+    soldSheet(CURRENT.listing.id);
+  } catch(e){ toast(e.message); }
+}
+
+/* ================= HIVE GUIDE A→Z (guided onboarding) ================= */
+const HC_KEY = "fash_guided";
+let HC_I = parseInt(localStorage.getItem("fash_guide_i") || "0", 10) || 0;
+let HC_CACHE = {};
+let HC_LID = null;
+let HC_CACHE_B64 = null;
+
+async function safeApi(path){
+  try { const r = await fetch(API + path, { headers: { Authorization: "Bearer " + TOKEN } }); if (!r.ok) return null; return await r.json(); } catch(e){ return null; }
+}
+
+const MKT_CARD = {
+  "Depop":{
+    tags:"#vintage #thrift #y2k #resale #rework",
+    cats:{Tops:"Shirts & Tops",Bottoms:"Trousers & Jeans",Dresses:"Dresses",Outerwear:"Jackets & Coats",Shoes:"Footwear",Accessories:"Accessories"},
+    steps:["Install the Depop app and sign up with your email (free).","Tap the + Sell tab — set title, size, price and category from your copied payload.","Add up to 5 product tags — reuse the tags included in the copy helper.","First 10 listings per week are free; a small fee applies after that.","Ship with a Depop label or your own courier, then mark shipped in the app."]
+  },
+  "eBay":{
+    tags:"vintage,thrift,resale,pre-owned",
+    cats:{Tops:"Tops & Shirts",Bottoms:"Jeans & Trousers",Dresses:"Dresses",Outerwear:"Jackets & Coats",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Go to ebay.com/sell or open the eBay app and register as a seller.","Choose 'List an item' and pick the Clothing category from your payload.","Set the condition, a fixed price, and 1 business-day handling.","Paste your description; add condition notes + measurements for trust.","Offers are enabled by default so buyers can nudge toward your AI-suggested price."]
+  },
+  "Poshmark":{
+    tags:"",
+    cats:{Tops:"Tops",Bottoms:"Bottoms",Dresses:"Dresses",Outerwear:"Outerwear",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Download Poshmark and sign up — you get a closet URL (posh.mk/…).","Tap + to list: pick Category, Brand, Size and Price from the payload.","Paste the description in, add 1 great cover shot.","Share new items to 'Parties' right after listing for first-day reach.","Sales ship with the flat $7.95 Poshmark label — print from the app."]
+  },
+  "Mercari":{
+    tags:"",
+    cats:{Tops:"Tops",Bottoms:"Bottoms",Dresses:"Dresses",Outerwear:"Outerwear",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Install Mercari and verify your phone + payout method in Settings.","Tap the big + to make a listing — choose the condition from your payload.","Paste title + description, set the price from the copy helper.","Mercari suggests a price — compare it with your AI-suggested range.","Leave Smart Pricing off at first; switch it on once you know demand."]
+  },
+  "Vinted":{
+    tags:"",
+    cats:{Tops:"Tops",Bottoms:"Bottoms",Dresses:"Dresses",Outerwear:"Outerwear",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Install Vinted and sign up (EU/INTL sizing is expected).","Upload photos from the app — web upload is limited.","Add size (EU/INTL), condition, and paste the description.","Buyers pay a small protection fee; your price is what you keep.","Enable shipping methods in Settings so orders can be dispatched."]
+  },
+  "Grailed":{
+    tags:"",
+    cats:{Tops:"Tops",Bottoms:"Bottoms",Dresses:"Dresses",Outerwear:"Outerwear",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Sign up at grailed.com — the menswear-focused marketplace.","Create a listing: include brand + measurements from the payload.","Set an Original (retail) price and your resale price.","Flat-lays on plain backgrounds position best in feed.","Approve offers or run 'List & Promote' after your first sale."]
+  },
+  "Fashionistas":{
+    tags:"",
+    cats:{Tops:"Tops",Bottoms:"Bottoms",Dresses:"Dresses",Outerwear:"Outerwear",Shoes:"Shoes",Accessories:"Accessories"},
+    steps:["Already done — this app is your Fashionistas storefront.","Every item lives in your Closet; cross-posting here is native.","No API needed: your account already holds everything."]
+  }
+};
+
+function hcAct(label, fn){ return `<button class="btn btn-accent hc-act" style="width:100%" onclick="${fn}">${label}</button>`; }
+
+function hcMarketStep(mkt){
+  const p = MKT_CARD[mkt];
+  return {
+    id: null,
+    title: mkt + " setup",
+    sub: "open an account · copy-paste listing",
+    render: async ()=>{
+      const l = await hcPickListing();
+      if (l && !l.fake) HC_LID = l.id;
+      let src = "from a demo sample (list your own to use yours)";
+      if (l && l.fake && l.unsaved) src = "from your just-scanned item — save it to keep";
+      if (l && !l.fake) src = "from your real listing <b>" + escapeHtml(l.title) + "</b>";
+      return `
+        <p class="mut" style="margin:0 0 4px;text-transform:uppercase;font-size:11px"><b>Opening an account, step by step</b></p>
+        <ol class="hc-steps">${p.steps.map(s=>`<li>${s}</li>`).join("")}</ol>
+        <p class="mut">When your first item is ready, the <b>copy helper</b> builds the exact content for <b>${mkt}</b> ${src}:</p>
+        <div class="two">${hcAct("📋 Copy JSON","hcCopyJson('"+mkt+"')")}${hcAct("📊 Copy CSV","hcCopyCsv('"+mkt+"')")}</div>
+        <p class="mut">Paste title/price/size/category into ${mkt}'s list form and the description into the description box. No API keys involved.</p>`;
+    }
+  };
+}
+
+const HC_STEPS = [
+  { id:"A", title:"Welcome to the Hive", sub:"5-minute guided tour",
+    render: ()=>`
+      <p>Fashionistas.ai turns one photo into listings on <b>Depop, eBay, Poshmark, Mercari, Vinted, Grailed &amp; Fashionistas</b> — then tracks every sale and profit.</p>
+      <p class="mut">It's <b>free</b> — no credit card. The AI works out of the box, and if you <b>bring your own AI key</b> later it uses that instead. Nothing here needs a developer or an API.</p>
+      <p class="mut">You'll follow A through T, one <b>real</b> action at a time. Tap Next to begin.</p>` },
+  { id:"B", title:"Your five tabs", sub:"the command center",
+    render: ()=>`
+      <p>The bottom bar has five places you'll live in:</p>
+      <p>🏠 <b>Home</b> — live listings, sales, net profit<br>👕 <b>Closet</b> — every item you own or sell<br>📸 <b>Snap</b> — camera + AI identification<br>💵 <b>Sell</b> — pricing, fees, shipping<br>☰ <b>More</b> — orders, profit, blog, CSV export</p>
+      <p class="mut">Go on, tap the tabs — then come back and hit Next.</p>`,
+    onShow:()=>{ if (TOKEN) go("home"); } },
+  { id:"C", title:"One free account", sub:"30 seconds, no card",
+    render: ()=>{
+      if (USER) return `<p>You're already in as <b>${escapeHtml(USER.username)}</b> — everything from here is live and saved to your account.</p><p class="mut">Data and photos persist in Cloudflare D1 + R2. Press Next to keep following along.</p>`;
+      return `<p>Every brand-new seller starts here: an account (username · email · password). No credit card — ever.</p>
+      ${hcAct("⚡ Try the real demo login","hcDemoLogin()")}
+      <p class="mut">Or tap <b>Create account</b> under the logo above the form and make your own. Those login/signup buttons are the <b>real</b> ones.</p>`;
+    } },
+  { id:"D", title:"Your studio", sub:"home screen, live",
+    render: ()=>`<p><b>Home</b> is your command center: active listings, sales, net profit, revenue by platform, quick actions.</p><p class="mut">Press Next — time to snap your first <b>real</b> item.</p>`,
+    onShow:()=>{ if (TOKEN) go("home"); } },
+  { id:"E", title:"Snap a photo", sub:"camera or camera roll",
+    render: ()=>`
+      <p>Every listing starts with one photo of the garment — on a rail, flat on the bed, or on a hanger against a wall.</p>
+      ${hcAct("📸 Open the camera","hcCam(true)")}
+      ${hcAct("🖼️ Or upload from your roll","hcCam(false)")}
+      <p class="mut">Both call the real photo handler <code>onPhoto()</code> → <code>analyzeImage()</code>, exactly like the Snap tab.</p>`,
+    onShow:()=>{ if (TOKEN) go("snap"); } },
+  { id:"F", title:"No photo handy?", sub:"real sample image",
+    render: ()=>`
+      <p>The app ships a <b>real sample photo</b> that flows through the exact same AI vision pipeline:</p>
+      ${hcAct("🖼️ Try the real sample","hcSample()")}
+      <p class="mut"><code>useSample()</code> loads it, encodes it, and calls the AI — zero canned previews.</p>` },
+  { id:"G", title:"AI identifies it", sub:"live vision run",
+    render: async ()=>{
+      try {
+        const d = await api("/api/ai/analyze", { method:"POST", body: JSON.stringify({ image: await hcSampleB64() }) });
+        if (d.source === "error") throw new Error(d.error);
+        CURRENT.guide = d;
+        return `<div class="hc-live">
+          <p style="margin-top:0"><b>${escapeHtml(d.type||"Item")}</b></p>
+          <div><span class="pill">${escapeHtml(d.brand||"Unknown brand")}</span><span class="pill">${escapeHtml(d.color||"")}</span><span class="pill">${escapeHtml(condFull(d.condition)||"Good")}</span><span class="pill conf">${d.confidence||0}% confident</span></div>
+          <p class="mut" style="margin:8px 0 0">That's the <b>real</b> analyzer output — it suggests <b>${money(d.priceMin)} – ${money(d.priceMax)}</b> resale in <b>${escapeHtml(d.category||"Tops")}</b>.${d.sizeHint?" Likely size: <b>"+escapeHtml(d.sizeHint)+"</b>.":""}</p>
+        </div>`;
+      } catch(e){
+        return `<p class="mut">The live vision call is busy — it runs the moment you snap on the Snap screen. Try the sample there instead:</p>${hcAct("🖼️ Try sample on Snap","hcSample()")}`;
+      }
+    } },
+  { id:"H", title:"AI price suggestion", sub:"real comps",
+    render: async ()=>{
+      try {
+        const a = CURRENT.ai || CURRENT.guide || {};
+        const d = await api("/api/listings/suggest-price", { method:"POST", body: JSON.stringify({ category:a.category||"Tops", brand:a.brand||"", condition:a.condition||"Good" }) });
+        return `<div class="hc-live">
+          <div class="three" style="text-align:center">
+            <div><b>${money(d.lowPrice)}</b><br><span class="mut">Low</span></div>
+            <div><b style="color:var(--accent)">${money(d.suggestedPrice)}</b><br><span class="mut">Suggest</span></div>
+            <div><b>${money(d.highPrice)}</b><br><span class="mut">High</span></div>
+          </div>
+          <p class="mut" style="margin:8px 0 0">Live pricing engine — ${escapeHtml(d.compsNote||"based on comparable sold listings.")}</p>
+        </div>`;
+      } catch(e){ return `<p class="mut">Pricing AI is busy — you'll see the same suggestion on the Snap result the moment your item is analyzed.</p>`; }
+    } },
+  { id:"I", title:"The listing form", sub:"real description",
+    render: async ()=>{
+      const a = Object.assign({}, CURRENT.ai || CURRENT.guide || {}, await hcPickListing());
+      const desc = defaultDesc(a);
+      return `<p>AI pre-fills the whole listing form — including a description built by the app's own <code>defaultDesc()</code>. Yours looks like:</p>
+        <textarea class="input hc-code" rows="5" readonly>${escapeHtml(desc)}</textarea>
+        ${hcAct("✏️ Open the real listing form","hcListing()")}
+        <p class="mut">Title, category, price, size, condition — all ready to tweak and save to your Closet.</p>`;
+    } },
+  { id:"J", title:"Cross-listing, the honest way", sub:"no APIs needed",
+    render: ()=>`
+      <p><b>Cross-listing</b> = one item advertised on every marketplace at once. Each one below gets its own copy-paste package — <b>JSON or CSV</b> your phone can share in seconds.</p>
+      <p class="mut">No developer API keys. You open a normal seller account, paste the content, and publish — the copy helper builds each platform's exact fields for you.</p>
+      <p class="mut"><b>Fashionistas</b> is native to this app (no copying) — highlighted a few steps down.</p>` },
+  hcMarketStep("Depop"),
+  hcMarketStep("eBay"),
+  hcMarketStep("Poshmark"),
+  hcMarketStep("Mercari"),
+  hcMarketStep("Vinted"),
+  hcMarketStep("Grailed"),
+  { id:"Q", title:"Go live on Fashionistas", sub:"native — no copying",
+    render: async ()=>{
+      const l = await hcPickListing();
+      if (!l || l.fake) return `<p class="mut">The cross-post panel appears on a real listing. List your first item, then return here — it will already be cued.</p>${hcAct("📸 List an item now","hcCam(true)")}`;
+      HC_LID = l.id;
+      const d = await safeApi("/api/listings/" + l.id + "/platforms");
+      const line = (d && d.platforms && d.platforms.length)
+        ? d.platforms.map(p=>`&#8226; ${escapeHtml(platformName(p.platform))}: <span class="tag active">${escapeHtml(p.status||"ready")}</span>`).join("<br>")
+        : `<p class="mut" style="margin:0">Not cross-posted yet — the panel below is the real one.</p>`;
+      return `
+        <p>On Fashionistas (this app) your item is already <b>live in your Closet</b> — no copying. For the rest, it's one tap from the listing panel:</p>
+        ${hcAct("🚀 Open the real cross-post panel", "hcCrossPost()")}
+        <div class="hc-live">${line}</div>`;
+    } },
+  { id:"R", title:"Live & tracked", sub:"cross-post status",
+    render: async ()=>{
+      const l = await hcPickListing();
+      if (l && !l.fake){
+        HC_LID = l.id;
+        const d = await safeApi("/api/listings/" + l.id + "/platforms");
+        const pstat = (d && d.platforms && d.platforms.length)
+          ? d.platforms.map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><b>${escapeHtml(platformName(p.platform))}</b><span class="tag ${escapeHtml((p.status||"ready")==="sold"?"sold":"active")}">${escapeHtml(p.status||"ready")}</span></div>`).join("")
+          : `<p class="mut" style="margin:0">Once you cross-post, each marketplace's status updates here in real time.</p>`;
+        return `<p>One press of <code>crosspost()</code> flags every selected marketplace:</p><div class="hc-live">${pstat}</div><div class="hc-live"><b style="display:block;margin-bottom:4px">Listing health (live)</b>${qualityBars(l)}</div>`;
+      }
+      return `<p class="mut">List an item to watch its live status and health score update.</p>${hcAct("📸 List an item","hcCam(true)")}`;
+    } },
+  { id:"S", title:"Mark sold → profit", sub:"orders & P&L auto",
+    render: async ()=>{
+      const l = await hcPickListing();
+      return `<p>When something sells, tap <b>✓ Mark sold</b>: sold price, platform, fee, shipping, cost of goods — the app computes <b>net profit</b> and files the order automatically.</p>
+      ${(l && !l.fake) ? hcAct("✓ See the real Mark-sold form","hcSold()") : ""}
+      ${hcAct("📈 Live profit dashboard","hcProfit()")}
+      <div style="margin-top:8px">${hcAct("🧾 Orders — real screen","ordersScreen()")}</div>
+      <p class="mut">Profit analytics are computed only from your real sold orders.</p>`;
+    } },
+  { id:"T", title:"You made it — A→Z done", sub:"caught up & exporting",
+    render: ()=>`
+      <p><b>Welcome to the Hive.</b> Reopen this tour anytime from the <b>'? Help A→Z'</b> button above the tab bar.</p>
+      <p class="mut">Final power move — your data is yours:</p>
+      <div class="two">${hcAct("📦 Inventory CSV","guideExport('export/inventory.csv')")}${hcAct("🧾 Orders CSV","guideExport('export/orders.csv')")}</div>
+      <p class="mut">Real comma-separated CSV pulled from your Cloudflare data — paste straight into Sheets/Excel. Happy flipping.</p>` }
+];
+
+async function hcPickListing(){
+  try { if (!S.listings || !S.listings.length){ const d = await api("/api/listings"); S.listings = d.listings || []; } } catch(e){}
+  const l = (S.listings||[]).find(x=>x.status!=="sold") || CURRENT.listing || (S.listings||[])[0];
+  if (l) return l;
+  const a = Object.assign({}, CURRENT.ai || CURRENT.guide || {});
+  if (a.type) return Object.assign({ id:"cur", title:titleCase((a.brand && a.brand!=="Unknown" ? a.brand+" " : "") + (a.type||"Clothing item")), price:a.priceMin, size:a.sizeHint, category:a.category, condition:a.condition, brand:a.brand, color:a.color, sizeHint:a.sizeHint, fake:true, unsaved:true }, a);
+  return { id:"demo", title:"Sample: Levi's Trucker Jacket", price:48, size:"M", category:"Outerwear", condition:"Good", brand:"Levi's", color:"Denim blue", sizeHint:"M", fake:true };
+}
+
+async function hcBuildPayload(mkt, kind){
+  const p = MKT_CARD[mkt] || MKT_CARD["Depop"];
+  const l = await hcPickListing();
+  const brand = l.brand || "";
+  const color = l.color || "";
+  const size = l.size || l.sizeHint || "M";
+  const cond = l.condition || "Good";
+  const price = Number(l.price != null ? l.price : (l.priceMin || 0)) || 0;
+  const title = l.title || titleCase((brand && brand!=="Unknown" ? brand+" " : "") + (l.type || "Clothing item"));
+  const cat = p.cats[l.category] || l.category || "Tops";
+  const desc = defaultDesc(Object.assign({}, l, { brand, color, sizeHint:size, condition:cond }));
+  const payload = {
+    marketplace: mkt, title, price, size, category:cat, brand, color, condition:cond,
+    tags: p.tags,
+    description: desc,
+    how_to_paste: "Open " + mkt + " → start a new listing → paste title, price and size into the matching fields and the description into the description box. No API key needed."
+  };
+  if (kind === "csv"){
+    const keys = ["marketplace","title","price","size","category","brand","color","condition","tags","description"];
+    return keys.join(",") + "\n" + keys.map(k=>'"' + String(payload[k] ?? "").replace(/"/g,'""') + '"').join(",");
+  }
+  return JSON.stringify(payload, null, 2);
+}
+
+async function hcCopyJson(mkt){
+  const buf = await hcBuildPayload(mkt, "json");
+  try { await copyText(buf); toast(mkt + " JSON copied ✓"); } catch(e){ toast("Copy failed — JSON ready on screen"); }
+}
+async function hcCopyCsv(mkt){
+  const buf = await hcBuildPayload(mkt, "csv");
+  try { await copyText(buf); toast(mkt + " CSV copied ✓"); } catch(e){ toast("Copy failed — CSV ready on screen"); }
+}
+
+function hcStart(){ hcOpen(HC_I); }
+function hcToggle(){ $("#hc-overlay").classList.contains("hidden") ? hcOpen(HC_I) : hcSuspend(); }
+function hcOpen(i){
+  HC_I = Math.max(0, Math.min(i, HC_STEPS.length - 1));
+  $("#hc-overlay").classList.remove("hidden");
+  hcRender();
+}
+function hcSuspend(){ $("#hc-overlay").classList.add("hidden"); }
+function hcEnd(){ hcSuspend(); localStorage.setItem(HC_KEY, "1"); toast("Tour complete — ask anytime with '? Help A→Z'"); }
+async function hcStep(dir){
+  HC_I += dir;
+  if (HC_I < 0) return hcSuspend();
+  if (HC_I >= HC_STEPS.length) return hcEnd();
+  localStorage.setItem("fash_guide_i", HC_I);
+  try { if (HC_STEPS[HC_I].onShow) await HC_STEPS[HC_I].onShow(); } catch(e){}
+  hcRender();
+}
+async function hcRender(){
+  const st = HC_STEPS[HC_I];
+  $("#hc-letter").textContent = st.id || (HC_I + 10).toString(36).toUpperCase();
+  $("#hc-title").textContent = st.title;
+  $("#hc-sub").innerHTML = st.sub ? `<span class="tag active">${escapeHtml(st.sub)}</span>` : "";
+  $("#hc-dots").innerHTML = HC_STEPS.map((s,i)=>`<i class="hc-dot ${i===HC_I?"on":""}"></i>`).join("");
+  $("#hc-back").innerHTML = HC_I === 0 ? "✕ Close" : "← Back";
+  $("#hc-next").textContent = HC_I === HC_STEPS.length - 1 ? "Finish ✓" : "Next →";
+  const body = $("#hc-body");
+  body.innerHTML = `<div class="card" style="margin:6px 0"><div class="spinner"></div></div>`;
+  try {
+    let html = HC_CACHE[HC_I];
+    if (html == null){ html = await st.render(); HC_CACHE[HC_I] = html; }
+    body.innerHTML = html;
+  } catch(e){ body.innerHTML = `<p class="mut">This step hit a snag — tap Next to continue the tour.</p>`; }
+}
+
+function hcDemoLogin(){ hcSuspend(); demoLogin(); toast("Signed in as demo — tap '? Help A→Z' to resume"); }
+function hcCam(cam){
+  if (!TOKEN) return toast("Create your free account first (step C) — then snap");
+  hcSuspend();
+  go("snap");
+  setTimeout(()=>{ const f = $("#file"); if (!f) return toast("Snap screen isn't ready yet"); if (!cam) f.removeAttribute("capture"); f.click(); }, 350);
+}
+function hcSample(){
+  if (!TOKEN) return toast("Create your free account first (step C) — then try the sample");
+  hcSuspend(); go("snap"); setTimeout(()=>useSample(), 350);
+}
+function hcListing(){
+  hcSuspend();
+  if (CURRENT.ai) return toListingForm();
+  go("snap"); toast("Snap an item first — the AI result opens the listing form");
+}
+function hcCrossPost(){
+  if (!HC_LID) return toast("List an item first — the panel appears on its detail screen");
+  hcSuspend(); openListing(HC_LID); toast("Tick a marketplace, then cross-list — that calls the real crosspost()");
+}
+function hcSold(){
+  if (!HC_LID) return toast("Need a real listing first");
+  hcSuspend(); soldSheet(HC_LID);
+}
+function hcProfit(){ hcSuspend(); profitScreen(); }
+async function guideExport(p){
+  hcSuspend();
+  try {
+    const r = await fetch(API + "/api/" + p, { headers: { Authorization: "Bearer " + TOKEN } });
+    const t = await r.text();
+    try { await copyText(t); toast("Real CSV copied — paste into Sheets/Excel ✓"); }
+    catch(e){ window.open(API + "/api/" + p, "_blank"); }
+  } catch(e){ toast("Export failed"); }
+  return false;
+}
+async function hcSampleB64(){
+  if (HC_CACHE_B64) return HC_CACHE_B64;
+  const url = "https://fashionistas-api.fashionistas1979.workers.dev/api/images/u/25/1790207326758-photo.jpg";
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise((res, rej)=>{ img.onload = res; img.onerror = () => rej(new Error("sample unreachable")); img.src = url; });
+  const c = document.createElement("canvas");
+  c.width = img.width; c.height = img.height;
+  c.getContext("2d").drawImage(img, 0, 0);
+  const b64 = c.toDataURL("image/jpeg", .85).split(",")[1];
+  HC_CACHE_B64 = b64;
+  return b64;
+}
+
+if (!localStorage.getItem(HC_KEY)){
+  setTimeout(()=>{
+    if ($("#hc-overlay").classList.contains("hidden"))
+      hcOpen(parseInt(localStorage.getItem("fash_guide_i") || "0", 10) || 0);
+  }, 900);
+}
+
 /* ================= boot ================= */
-document.querySelectorAll("#auth-tab-login,#auth-tab-signup").forEach(b=>b.onclick=()=>{
-  const login = b.id==="auth-tab-login";
+function authTab(which){
+  const login = which === "login";
   $("#auth-login").classList.toggle("hidden", !login);
   $("#auth-signup").classList.toggle("hidden", login);
-  document.querySelectorAll("#view-auth .chip").forEach(c=>c.classList.toggle("on", c===b));
-});
+  document.querySelectorAll("#view-auth .chip").forEach(c=>c.classList.toggle("on", c.id === "auth-tab-" + (login?"login":"signup")));
+}
+document.querySelectorAll("#auth-tab-login,#auth-tab-signup").forEach(b=>b.onclick=()=>authTab(b.id==="auth-tab-login"?"login":"signup"));
 if (TOKEN && USER) { $("#view-auth").classList.add("hidden"); $("#view-app").classList.remove("hidden"); $("#tabbar").classList.remove("hidden"); go("home"); }
+if (!localStorage.getItem("fash_guide_seen")) setTimeout(openGuide, 650);
 </script>
 </body>
 </html>
