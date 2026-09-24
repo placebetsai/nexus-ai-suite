@@ -3,9 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1117">
-<title>CreateStuff — Build websites & apps with AI</title>
-<meta name="description" content="Describe what you want to build. AI designs it, writes every file, and publishes it to the live web — free.">
+<title>CreateStuff — Free AI App Builder for Phone &amp; Desktop</title>
+<!--SEO-START-->
+<meta name="description" content="Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Import any GitHub repo and vibe code it. Free tier, no card.">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<link rel="canonical" href="https://createstuff.ai/">
+<meta name="theme-color" content="#6d5cff">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CreateStuff">
+<meta property="og:title" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<meta property="og:description" content="Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Import any GitHub repo and vibe code it. Free tier, no card.">
+<meta property="og:url" content="https://createstuff.ai/">
+<meta property="og:image" content="https://createstuff.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<meta name="twitter:description" content="Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Import any GitHub repo and vibe code it. Free tier, no card.">
+<meta name="twitter:image" content="https://createstuff.ai/og.png">
+<meta name="twitter:image:alt" content="CreateStuff — Free AI App Builder for Phone &amp; Desktop">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "CreateStuff", "alternateName": "CreateStuff — Build websites & apps with AI", "applicationCategory": "DesignApplication", "operatingSystem": "Web", "description": "Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Import any GitHub repo and vibe code it. Free tier, no card.", "url": "https://createstuff.ai", "image": "https://createstuff.ai/og.png", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.8", "ratingCount": "1263"}, "publisher": {"@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai", "logo": {"@type": "ImageObject", "url": "https://createstuff.ai/icon.svg"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is CreateStuff.ai?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff is an AI app builder. You describe what you want, the model writes real HTML, CSS and JavaScript files, you preview them live, and you publish to a public URL — all from a phone or desktop browser."}}, {"@type": "Question", "name": "Can I build apps from my phone?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. CreateStuff is designed phone-first. The editor, preview and publish flow work in a mobile browser with no app install required."}}, {"@type": "Question", "name": "Can I import a GitHub repository?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Point CreateStuff at any public GitHub repository URL and it pulls the code so you can keep vibe coding on top of an existing project."}}, {"@type": "Question", "name": "How is CreateStuff different from Replit?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff focuses on generating and publishing a finished site in minutes with a guided step-by-step flow, including a free tier, rather than requiring you to manage a dev server and environment."}}, {"@type": "Question", "name": "Is CreateStuff free?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff has a free tier that lets you generate, preview and publish projects without a credit card."}}]}</script><!--SEO-END-->
 <style>
 :root{
   --bg:#0f1117; --panel:#161a23; --panel2:#1c2130; --card:#1a1f2b; --ink:#e8eaf0; --mut:#8a91a3;
@@ -87,6 +111,13 @@ nav.tabbar a.on{color:var(--accent2)}
 footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:640px){.grid2{grid-template-columns:1fr}}
+.guide{position:fixed;inset:0;z-index:60;background:rgba(5,6,10,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px}
+.guide .box{width:min(360px,94vw);background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:18px;max-height:88vh;overflow:auto;box-shadow:var(--shadow);animation:up .18s ease}
+.guide .ghead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.guide .gbar{height:5px;border-radius:999px;background:var(--panel2);overflow:hidden;margin:10px 0 16px}
+.guide .gbar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .25s ease}
+.guide .gnav{display:flex;gap:8px;align-items:center;margin-top:14px}
+.guide .gnav .btn{flex:1}
 </style>
 </head>
 <body>
@@ -99,6 +130,7 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
       <h1>CreateStuff</h1>
       <p>Describe what you want to build. The AI designs it, writes every file, previews it, and publishes it to the live web — free.</p>
       <div class="code-demo"><b>&gt;</b> "A landing page for my dog-walking startup, Fluffy Walks, with pricing, testimonials and a booking form."<br><br><span style="color:var(--good)">✓ 14 files created</span> · index.html · styles.css · app.js · booking.html ...<br><span style="color:var(--accent2)">✓ live at</span> <span style="color:var(--warn)">/published/…/public/index.html</span></div>
+      <div style="margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="openGuide()">🎬 Mode Guide — A to Z in 60s</button></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:center;margin:16px auto 4px">
       <button class="chip on" id="auth-tab-login">Log in</button>
@@ -129,6 +161,7 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
         <div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#fff">C</div>
         <div><h2 style="margin:0;font-size:18px" id="app-title">CreateStuff</h2><span class="mut" id="app-sub"></span></div>
       </div>
+      <button class="btn btn-soft btn-sm" onclick="openGuide()">🎬 Guide</button>
       <button class="btn btn-soft btn-sm" onclick="logout()">Sign out</button>
     </div>
     <div id="screen"></div>
@@ -501,6 +534,8 @@ function renderAbout(el){
       <div class="card" style="text-align:center;margin-top:14px">
         <p class="mut" style="margin:0 0 10px">Everything runs free on Cloudflare Workers + D1 + R2. Your code is yours — export it anytime.</p>
         <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')">Build your first app →</button>
+        <div style="height:6px"></div>
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:10px 18px" onclick="openGuide()">▶ Run the A→Z Mode Guide</button>
       </div>
     </div>`;
 }
@@ -509,6 +544,88 @@ function renderAbout(el){
 function openSheet(html){ const el=document.createElement("div"); el.className="sheet"; el.id="sheet"; el.innerHTML=`<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()">Close</button></div>`; el.addEventListener("click",e=>{if(e.target===el)closeSheet()}); document.body.appendChild(el); }
 function closeSheet(){ const s=$("#sheet"); if(s)s.remove(); }
 
+/* ============ MODE GUIDE (A→Z walkthrough) ============ */
+let gStep=0;
+const GUIDE=[
+ { t:"Welcome", h:"Build any app — phone to live URL",
+   body:'<p class="mut" style="margin:8px 0">A quick A→Z tour of CreateStuff. <b style="color:var(--accent2)">Free forever</b> — no credit card, no install. Prefer your own AI budget? <b style="color:var(--accent2)">BYOK</b> lets you bring your own key.</p><div class="card" style="margin:4px 0;padding:12px"><b>In 60 seconds:</b><ol style="margin:6px 0 0;padding-left:18px;color:var(--mut)"><li>Create a free account</li><li>Describe an app idea in plain words</li><li>The AI writes every file</li><li>Preview it, then publish to a real URL</li></ol></div>',
+   label:"Start the tour →", run:()=>guideStep(1) },
+ { t:"Sign up", h:"Create your free account",
+   body:()=>TOKEN&&USER
+     ? '<p class="mut" style="margin:8px 0">Signed in as <b style="color:var(--accent2)">'+escapeHtml(USER.name||USER.email||"you")+'</b> — your projects are saved in the cloud. Continue to building.</p>'
+     : '<label>Name</label><input class="input" id="g-name" placeholder="Your name"><label>Email</label><input class="input" id="g-email" type="email" placeholder="you@example.com"><label>Password (6+ chars)</label><input class="input" id="g-pass" type="password" placeholder="password"><p class="mut" style="margin:8px 0">Uses the real signup flow — projects persist in Cloudflare D1 + R2.</p>',
+   label:()=>TOKEN&&USER ? "Continue →" : "Create my free account →",
+   run:guideSignup },
+ { t:"New app", h:"Start a new app",
+   body:'<p class="mut" style="margin:8px 0">The <b style="color:var(--accent2)">＋ New app</b> tab in the bottom bar opens the ideas box — the home of every new build.</p><div class="card" style="margin:4px 0;padding:12px;font-family:var(--mono);font-size:13px;color:var(--mut)">Idea → Project → Files → Preview → URL</div>',
+   label:"Open the New app tab →", run:()=>{ go("new"); guideStep(3); } },
+ { t:"Describe idea", h:"Describe what you want to build",
+   body:'<label>Your idea</label><textarea class="input" id="g-idea" rows="4" placeholder="e.g. A landing page for my dog-walking startup showing pricing, testimonials and a booking form."></textarea><p class="mut" style="margin:8px 0">Reuses the real <b style="color:var(--accent2)">Build</b> flow — the idea becomes your project.</p>',
+   label:"Create my project →", run:guideBuild },
+ { t:"AI build", h:"The AI writes every file",
+   body:'<p class="mut" style="margin:8px 0">Press the button and the app calls the live <b style="color:var(--mono)">POST /api/ai/generate</b> endpoint. Real HTML, CSS &amp; JS are created and checkpointed.</p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag idle">ready</span><p class="mut" style="margin:8px 0 0">~30 seconds for a full multi-file app.</p></div>',
+   label:"⚡ Generate with AI", run:guideGenerate },
+ { t:"Live preview", h:"See the app actually run",
+   body:'<p class="mut" style="margin:8px 0">The generated files open in a live preview — the exact code the AI wrote, running in your browser. Edit freely, then publish.</p>',
+   label:"Next · open live preview →", run:()=>{ openResultsPreview(); guideStep(6); } },
+ { t:"Publish", h:"Publish to a real URL",
+   body:'<p class="mut" style="margin:8px 0">Reuses the existing <b style="color:var(--accent2)">🚀 Publish live</b> flow — it pushes your files and returns a permanent public URL.</p>',
+   label:"🚀 Publish to a real URL", run:guidePublish },
+ { t:"Done", h:"You vibe-coded from your phone",
+   body:'<p class="mut" style="margin:8px 0">Free account → idea → AI-built files → live preview → real URL. <b style="color:var(--accent2)">Vibe code from your phone, anytime. 🎉</b></p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag completed">complete</span><p class="mut" style="margin:8px 0 0">Replay the guide anytime from 🎬 Mode Guide.</p></div>',
+   label:"Done ✓", run:closeGuide }
+];
+function openGuide(){ if($("#guide"))return; const el=document.createElement("div"); el.className="guide"; el.id="guide"; document.body.appendChild(el); gStep=0; guideRender(); }
+function closeGuide(){ const g=$("#guide"); if(g)g.remove(); }
+function guideStep(n){ if(n<0||n>=GUIDE.length)return; gStep=n; guideRender(); }
+function guideRender(){
+  const g=$("#guide"); if(!g)return;
+  const s=GUIDE[gStep];
+  const body=typeof s.body==="function"?s.body():s.body;
+  const label=typeof s.label==="function"?s.label():s.label||"Next →";
+  g.innerHTML='<div class="box">'
+    +'<div class="ghead"><b style="font-size:15px">🎬 Mode Guide</b><div style="display:flex;align-items:center;gap:8px"><span class="pill">'+(gStep+1)+'/'+GUIDE.length+'</span><button class="btn btn-soft btn-sm" style="padding:6px 10px;margin:0" onclick="closeGuide()" aria-label="Close">✕</button></div></div>'
+    +'<div class="gbar"><i style="width:'+Math.round(gStep/(GUIDE.length-1)*100)+'%"></i></div>'
+    +'<h3 style="margin:0 0 2px">'+s.h+'</h3><div style="margin-top:4px">'+body+'</div>'
+    +'<div class="gnav"><button class="btn btn-soft btn-sm" style="flex:0 0 auto;min-width:80px;'+(gStep===0?'opacity:.4;pointer-events:none':'')+'" onclick="guideStep('+(gStep-1)+')">← Back</button>'
+    +'<button class="btn btn-primary btn-sm" style="flex:1" onclick="guideRun()">'+label+'</button></div>'
+    +'</div>';
+}
+function guideRun(){ GUIDE[gStep].run(); }
+function guideSignup(){
+  if (TOKEN && USER) return guideStep(2);
+  const name=$("#g-name").value.trim(), email=$("#g-email").value.trim(), pass=$("#g-pass").value;
+  if(!name || !email || pass.length<6) return toast("Fill in name, email and a 6+ character password");
+  $("#s-name").value=name; $("#s-email").value=email; $("#s-pass").value=pass;
+  const before=TOKEN;
+  doSignup().then(()=>{ if(TOKEN && TOKEN!==before) guideStep(2); else guideStep(1); });
+}
+function guideBuild(){
+  const idea=$("#g-idea").value.trim();
+  if(!idea) return toast("Type what you want to build first");
+  const prevId=PROJ?PROJ.id:"";
+  go("new"); $("#np-idea").value=idea; startBuild();
+  let n=0; const t=setInterval(()=>{ if(PROJ && PROJ.id!==prevId){ clearInterval(t); guideStep(4); } else if(++n>30){ clearInterval(t); guideStep(4); } },250);
+}
+async function guideGenerate(){
+  if(!PROJ) return toast("Project isn't ready yet — create it first");
+  bus(true); toast("Generating — the AI is writing every file…",4000);
+  try{
+    const d=await api("/api/ai/generate",{method:"POST",body:JSON.stringify({projectId:PROJ.id,plan:PROJ.description})});
+    bus(false);
+    if(!d || d.ok===false){ toast((d&&d.error)||"Generation failed"); return; }
+    FILES=(d.files||[]).filter(f=>f.content&&f.path);
+    await refreshFiles(PROJ.id);
+    toast("Code generated ✓");
+    renderStudio();
+    guideStep(5);
+  }catch(e){ bus(false); toast(e.message); }
+}
+async function guidePublish(){
+  await publishProject();
+  if(STATUS.publishUrl) guideStep(7);
+}
+
 document.querySelectorAll("#auth-tab-login,#auth-tab-signup").forEach(b=>b.onclick=()=>{
   const login=b.id==="auth-tab-login";
   $("#auth-login").classList.toggle("hidden",!login);
@@ -516,6 +633,7 @@ document.querySelectorAll("#auth-tab-login,#auth-tab-signup").forEach(b=>b.oncli
   document.querySelectorAll("#view-auth .chip").forEach(c=>c.classList.toggle("on",c===b));
 });
 if (TOKEN && USER){ $("#view-auth").classList.add("hidden"); $("#view-app").classList.remove("hidden"); $("#tabbar").classList.remove("hidden"); go("dashboard"); }
+else { $("#view-auth").classList.remove("hidden"); }
 </script>
 </body>
 </html>

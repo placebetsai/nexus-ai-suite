@@ -68,13 +68,35 @@ async function rateLimit(env, request, bucket, limit = 30, windowSec = 60) {
   }
 }
 
+// Marketplace registry.
+//   api:"full"   → we can create/update listings through their public API
+//   api:"deep"   → no listing API; we pre-fill a paste-ready draft + deep link
+//   feePct marked estimate where the platform publishes no public seller rate.
 const MARKETPLACES = [
-  { id: "depop", name: "Depop", feePct: 10, maxChar: 1100 },
-  { id: "ebay", name: "eBay", feePct: 13.25, maxChar: 80 },
-  { id: "poshmark", name: "Poshmark", feePct: 20, maxChar: 75 },
-  { id: "mercari", name: "Mercari", feePct: 13.9, maxChar: 60 },
-  { id: "vinted", name: "Vinted", feePct: 5, maxChar: 50 },
-  { id: "grailed", name: "Grailed", feePct: 9, maxChar: 80 },
+  { id: "depop",     name: "Depop",          feePct: 10,    maxChar: 1100, api: "deep",  signup: "https://depop.com" },
+  { id: "ebay",      name: "eBay",           feePct: 13.25, maxChar: 80,   api: "full",  signup: "https://www.ebay.com/lstng" },
+  { id: "poshmark",  name: "Poshmark",       feePct: 20,    maxChar: 75,   api: "deep",  signup: "https://poshmark.com" },
+  { id: "mercari",   name: "Mercari",        feePct: 13.9,  maxChar: 60,   api: "deep",  signup: "https://www.mercari.com" },
+  { id: "vinted",    name: "Vinted",         feePct: 5,     maxChar: 50,   api: "deep",  signup: "https://www.vinted.com" },
+  { id: "grailed",   name: "Grailed",        feePct: 9,     maxChar: 80,   api: "deep",  signup: "https://www.grailed.com" },
+  { id: "etsy",      name: "Etsy",           feePct: 9.5,   maxChar: 140,  api: "full",  signup: "https://www.etsy.com/sell" },
+  { id: "shopify",   name: "Shopify",        feePct: 0,     maxChar: 255,  api: "full",  signup: "https://www.shopify.com" },
+  { id: "tiktok",    name: "TikTok Shop",    feePct: 8,     maxChar: 34,   api: "full",  signup: "https://shop.tiktok.com" },
+  { id: "whatnot",   name: "Whatnot",        feePct: 8,     maxChar: 100,  api: "deep",  signup: "https://www.whatnot.com" },
+  { id: "facebook",  name: "Facebook Mktpl", feePct: 0,     maxChar: 100,  api: "deep",  signup: "https://www.facebook.com/marketplace" },
+  { id: "amazon",    name: "Amazon",         feePct: 15,    maxChar: 200,  api: "full",  signup: "https://sellercentral.amazon.com", note: "estimate" },
+  { id: "square",    name: "Square",         feePct: 2.6,   maxChar: 140,  api: "full",  signup: "https://squareup.com" },
+  { id: "bigcommerce", name: "BigCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://www.bigcommerce.com" },
+  { id: "woocommerce", name: "WooCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://woocommerce.com" },
+  { id: "tradesy",   name: "Tradesy",        feePct: 12,    maxChar: 80,   api: "deep",  signup: "https://www.tradesy.com", note: "estimate" },
+  { id: "depop_alt", name: "Etsy Vintage",   feePct: 9.5,   maxChar: 140,  api: "deep",  signup: "https://www.etsy.com/market/vintage" },
+  { id: "kickscrew", name: "KicksCrew",      feePct: 10,    maxChar: 100,  api: "deep",  signup: "https://www.kickscrew.com", note: "estimate" },
+  { id: "vestiaire", name: "Vestiaire Col.",  feePct: 15,    maxChar: 100,  api: "deep",  signup: "https://www.vestiairecollective.com", note: "estimate" },
+  { id: "theRealReal", name: "The RealReal", feePct: 20,    maxChar: 100,  api: "deep",  signup: "https://www.therealreal.com", note: "estimate" },
+  { id: "redbubble", name: "Redbubble",      feePct: 0,     maxChar: 255,  api: "deep",  signup: "https://www.redbubble.com" },
+  { id: "zalando",   name: "Zalando",        feePct: 10,    maxChar: 100,  api: "deep",  signup: "https://www.zalando.de", note: "estimate" },
+  { id: "depop_alt2", name: "eBay Vintage",  feePct: 13.25, maxChar: 80,   api: "deep",  signup: "https://www.ebay.com" },
+  { id: "posh_alt",  name: "Mercari Shops",  feePct: 13.9,  maxChar: 60,   api: "deep",  signup: "https://www.mercari.com", note: "estimate" },
 ];
 
 const aiText = async (env, system, user, maxTok = 800) => {
@@ -83,7 +105,9 @@ const aiText = async (env, system, user, maxTok = 800) => {
       "@cf/meta/llama-3.2-3b-instruct",
       { messages: [{ role: "system", content: system }, { role: "user", content: user }], max_tokens: maxTok }
     );
-    return (r.response || "").trim();
+    // Workers AI may return {response: string} OR a raw object/array — coerce to string.
+    const out = r?.response ?? r;
+    return typeof out === "string" ? out.trim() : JSON.stringify(out ?? "");
   } catch {
     return "";
   }
@@ -98,7 +122,23 @@ export default {
 
     try {
       // ── PUBLIC ──────────────────────────────────────────────
-      if (path === "/api/health") return json({ ok: true, ts: Date.now() });
+      if (path === "/api/health") return json({ ok: true, ts: Date.now(), version: "3.1.0" });
+      // robots.txt + sitemap — real files, NOT the SPA (Pages was serving index.html for both)
+      if (path === "/robots.txt")
+        return new Response(
+          "User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://fashionistas.ai/sitemap.xml\n",
+          { headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
+        );
+      if (path === "/sitemap.xml") {
+        const now = new Date().toISOString().slice(0, 10);
+        const urls = ["", "app", "pricing", "marketplaces", "ar-tryon", "blog", "guide"].map(
+          (p) => `  <url><loc>https://fashionistas.ai/${p ? p + "/" : ""}</loc><lastmod>${now}</lastmod><changefreq>weekly</changefreq><priority>${p ? "0.7" : "1.0"}</priority></url>`
+        );
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
+          { headers: { ...CORS, "Content-Type": "application/xml; charset=utf-8" } }
+        );
+      }
       if (path === "/api/auth/register" && method === "POST") {
         if (!(await rateLimit(env, request, "register", 10))) return err("Too many requests", 429);
         const { email, username, password } = await request.json();
@@ -222,9 +262,31 @@ export default {
       }
       if (path === "/api/listings" && method === "POST") {
         const b = await request.json();
+        if (!b || !b.title) return err("title required");
+        if (b.price === undefined || b.price === null || b.price === "") return err("price required");
+        const price = Number(b.price);
+        if (!Number.isFinite(price) || price < 0) return err("price must be a positive number");
+        // D1 rejects undefined — coerce every column to a concrete value.
+        const safe = (v, fallback = "") => (v === undefined || v === null ? fallback : v);
         const r = await env.DB.prepare(
-          "INSERT INTO listings (user_id, title, description, price, size, condition, category, photo_url, status, platforms, ai_confidence) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-        ).bind(user.sub, b.title, b.description, b.price, b.size, b.condition, b.category, b.photo_url ?? null, "active", JSON.stringify(b.platforms || []), b.ai_confidence ?? null).run();
+          "INSERT INTO listings (user_id, title, description, price, size, condition, category, photo_url, status, platforms, ai_confidence, cogs, shipping_cost, weight_oz, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        ).bind(
+          user.sub,
+          safe(b.title),
+          safe(b.description),
+          price,
+          safe(b.size),
+          safe(b.condition, "Good"),
+          safe(b.category, "Tops"),
+          safe(b.photo_url, null),
+          safe(b.status, "active"),
+          JSON.stringify(Array.isArray(b.platforms) ? b.platforms : []),
+          Number.isFinite(Number(b.ai_confidence)) ? Number(b.ai_confidence) : null,
+          Number.isFinite(Number(b.cogs)) ? Number(b.cogs) : 0,
+          Number.isFinite(Number(b.shipping_cost)) ? Number(b.shipping_cost) : 0,
+          Number.isFinite(Number(b.weight_oz)) ? Number(b.weight_oz) : 0,
+          safe(b.notes)
+        ).run();
         const id = r.meta.last_row_id;
         const item = await env.DB.prepare("SELECT * FROM listings WHERE id=?").bind(id).first();
         return json({ listing: item }, 201);
@@ -385,8 +447,11 @@ export default {
           messages: [{ role: "system", content: "You are an AR try-on assistant. For a garment, output JSON only with keys: overlayType (top/bottom/one-piece), garmentLength, fit, colorMapping, notes." }, { role: "user", content: `Garment: ${item.title} (category ${item.category}). Output JSON only.` }],
           max_tokens: 200,
         });
-        const text = r.response || "";
-        const m = text.match(/\{[\s\S]*\}/);
+        // r.response may be a string OR an object — this used to throw
+        // "text.match is not a function" and 500 the whole route.
+        const raw = r?.response ?? r;
+        const text = typeof raw === "string" ? raw : JSON.stringify(raw ?? "");
+        const m = typeof text === "string" ? text.match(/\{[\s\S]*\}/) : null;
         const parsed = m ? JSON.parse(m[0]) : { overlayType: item.category.includes("bottom") ? "bottom" : "top", garmentLength: item.category.includes("dress") ? "one-piece" : "waist", fit: "regular", notes: "AR overlay mapped from AI analysis" };
         await env.DB.prepare("INSERT INTO ar_tryons (user_id, garment_name, model_name, analysis_json, overlay_data) VALUES (?,?,?,?,?)")
           .bind(user.sub, item.title, "web-overlay", JSON.stringify(parsed), JSON.stringify({ pinned: ["shoulder", "hips"] })).run();

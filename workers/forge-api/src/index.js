@@ -115,8 +115,23 @@ export default {
     if (method === "OPTIONS") return new Response(null, { headers: CORS });
 
     try {
-      if (path === "/api/health") return json({ ok: true, ts: Date.now(), builds: "v2" });
+      if (path === "/api/health") return json({ ok: true, ts: Date.now(), builds: "v3" });
       if (path === "/api/templates") return json({ templates: TEMPLATES });
+      if (path === "/robots.txt")
+        return new Response(
+          "User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://createstuff.ai/sitemap.xml\n",
+          { headers: { ...CORS, "Content-Type": "text/plain; charset=utf-8" } }
+        );
+      if (path === "/sitemap.xml") {
+        const now = new Date().toISOString().slice(0, 10);
+        const urls = ["", "app", "pricing", "github", "templates", "guide"].map(
+          (p) => `  <url><loc>https://createstuff.ai/${p ? p + "/" : ""}</loc><lastmod>${now}</lastmod><changefreq>weekly</changefreq><priority>${p ? "0.7" : "1.0"}</priority></url>`
+        );
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
+          { headers: { ...CORS, "Content-Type": "application/xml; charset=utf-8" } }
+        );
+      }
 
       // ── AUTH ────────────────────────────────────────────────
       if (path === "/api/auth/register" && method === "POST") {
@@ -142,6 +157,99 @@ export default {
       // ── AUTH REQUIRED ───────────────────────────────────────
       const user = await requireUser(request);
       if (!user) return json({ error: "Unauthorized" }, 401);
+
+      // ── /api/ai/* — production shape (generate | modify | publish) ──────
+      if (path === "/api/ai/generate" && method === "POST") {
+        const { projectId } = await request.json().catch(() => ({}));
+        if (!projectId) return err("projectId required");
+        const p = await env.DB.prepare("SELECT * FROM projects WHERE id=? AND owner_id=?").bind(projectId, user.sub).first();
+        if (!p) return err("Not found", 404);
+        return runGenerate(env, request, user, p, projectId, "generate");
+      }
+      if (path === "/api/ai/modify" && method === "POST") {
+        const { projectId, message } = await request.json().catch(() => ({}));
+        if (!projectId || !message) return err("projectId and message required");
+        const p = await env.DB.prepare("SELECT * FROM projects WHERE id=? AND owner_id=?").bind(projectId, user.sub).first();
+        if (!p) return err("Not found", 404);
+        return runGenerate(env, request, user, p, projectId, "modify");
+      }
+      if (path === "/api/ai/publish" && method === "POST") {
+        const { projectId } = await request.json().catch(() => ({}));
+        if (!projectId) return err("projectId required");
+        const p = await env.DB.prepare("SELECT * FROM projects WHERE id=? AND owner_id=?").bind(projectId, user.sub).first();
+        if (!p) return err("Not found", 404);
+        return runGenerate(env, request, user, p, projectId, "publish");
+      }
+
+      // ── GITHUB IMPORT — pull a repo and vibe code FOR the user ─────────
+      if (path === "/api/github/import" && method === "POST") {
+        if (!(await rateLimit(env, request, "gh", 6, 300))) return err("Too many imports — wait 5 minutes", 429);
+        const { url } = await request.json().catch(() => ({}));
+        if (!url) return err("url required");
+        const m = String(url).match(/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/.*)?$/);
+        if (!m) return err("Not a GitHub repository URL (expected github.com/owner/repo)");
+        const owner = m[1], repo = m[2];
+
+        const ghHeaders = { Accept: "application/vnd.github+json", "User-Agent": "createstuff" };
+        if (env.GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+
+        const metaR = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: ghHeaders });
+        if (!metaR.ok) return err(metaR.status === 404 ? "Repository not found (private repos need GITHUB_TOKEN)" : `GitHub error ${metaR.status}`, 502);
+        const meta = await metaR.json();
+
+        const treeR = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(meta.default_branch)}?recursive=1`, { headers: ghHeaders });
+        const tree = treeR.ok ? (await treeR.json()).tree || [] : [];
+        const SKIP = /\.(png|jpe?g|gif|webp|svg|ico|mp4|mov|zip|bin|pdf|woff2?|ttf|eot)$/i;
+        const codeFiles = tree.filter((t) => t.type === "blob" && !SKIP.test(t.path) && t.size < 200000)
+          .filter((f) => /(^|\/)(src|app|pages|components|lib|public)?\/?[^/]*\.(js|jsx|ts|tsx|html|css|json|md|py|rb|go|rs|vue|svelte)$/i.test(f.path) || /(^|\/)(package\.json|README\.md|index\.html)$/i.test(f.path))
+          .slice(0, 20);
+
+        const files = [];
+        for (const f of codeFiles) {
+          try {
+            const c = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${f.path}?ref=${encodeURIComponent(meta.default_branch)}`, { headers: ghHeaders });
+            if (!c.ok) continue;
+            const j = await c.json();
+            if (j.encoding !== "base64" || !j.content) continue;
+            files.push({ path: f.path, content: atob(j.content.replace(/\n/g, "")) });
+          } catch { /* skip unreadable file */ }
+        }
+        if (!files.length) return err("Could not read any code files from that repository", 422);
+
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const name = meta.name || repo;
+        const desc = `Imported from github.com/${owner}/${repo} — ${meta.description || name}`;
+        await env.DB.prepare("INSERT INTO projects (id, name, description, owner_id, created_at, updated_at, status, framework, ai_context) VALUES (?,?,?,?,?,?,?,?,?)")
+          .bind(id, name, desc, user.sub, now, now, "imported", "github", JSON.stringify({
+            template: "import", repo: `${owner}/${repo}`, repoUrl: meta.html_url, stars: meta.stargazers_count, branch: meta.default_branch, files,
+          })).run();
+        await env.R2.put(`projects/${id}/checkpoints/cp-import`, JSON.stringify(files), { httpMetadata: { contentType: "application/json" } });
+
+        return json({ project: { id, name, description: desc, status: "imported", framework: "github" }, repo: `${owner}/${repo}`, imported: files.length, files: files.map((f) => ({ path: f.path, size: f.content.length })) }, 201);
+      }
+
+      // ── A→Z GUIDE — deterministic step state so the guide never lies ────
+      if (path === "/api/guide/state" && method === "GET") {
+        const me = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM projects WHERE owner_id=?) a, (SELECT COUNT(*) FROM checkpoints ck JOIN projects pr ON pr.id=ck.project_id WHERE pr.owner_id=?) b, (SELECT COUNT(*) FROM projects WHERE owner_id=? AND status='published') c")
+          .bind(user.sub, user.sub, user.sub).first();
+        const projects = await env.DB.prepare("SELECT id, name, status, publish_url, ai_context FROM projects WHERE owner_id=? ORDER BY updated_at DESC LIMIT 20").bind(user.sub).all();
+        const withFiles = (projects.results || []).map((p) => {
+          let n = 0; try { n = (JSON.parse(p.ai_context || "{}").files || []).length; } catch { n = 0; }
+          return { id: p.id, name: p.name, status: p.status, publish_url: p.publish_url, files: n };
+        });
+        const hasRepo = withFiles.some((p) => p.status === "imported");
+        const hasGenerated = withFiles.some((p) => p.files > 0);
+        const hasPublished = withFiles.some((p) => p.status === "published" && p.publish_url);
+        const steps = [
+          { id: 1, key: "account",  label: "Create your account", done: true },
+          { id: 2, key: "idea",     label: "Describe your idea (or import a GitHub repo)", done: hasRepo || hasGenerated },
+          { id: 3, key: "generate", label: "Generate the code", done: hasGenerated },
+          { id: 4, key: "iterate",  label: "Vibe code: keep editing until you love it", done: withFiles.some((p) => p.files > 0) },
+          { id: 5, key: "publish",  label: "Publish to a live URL", done: hasPublished },
+        ];
+        return json({ steps, next: steps.find((s) => !s.done) || null, projects: withFiles, repo_import: hasRepo });
+      }
 
       // projects list / create
       if (path === "/api/projects" && method === "GET") {
@@ -181,51 +289,8 @@ export default {
         }
 
         // ── GENERATE: real codegen via Workers AI ─────────────
-        if (sub === "generate" && method === "POST") {
-          if (!(await rateLimit(env, request, "gen", 10, 300))) return err("Too many generations — wait a few minutes", 429);
-          const { plan, edit, currentFiles } = await request.json().catch(() => ({}));
-          const aiCtx = p.ai_context ? JSON.parse(p.ai_context) : {};
-          const prior = Array.isArray(currentFiles) && currentFiles.length ? currentFiles : aiCtx.files || [];
-          const isEdit = !!(edit || (typeof plan === "string" && /edit/i.test(plan)));
-          const tplNames = TEMPLATES.map((t) => `${t.id}: ${t.desc}`).join("\n");
-
-          let userMsg;
-          if (isEdit && prior.length) {
-            userMsg = `Project: ${p.name}\nPurpose: ${p.description}\n\nEDIT REQUEST: ${edit || plan}\n\nCurrent files:\n${prior.slice(0, 8).map((f) => `--- ${f.path} ---\n${String(f.content || "").slice(0, 8000)}`).join("\n")}\n\nApply the edit. Return the FULL updated files as JSON array, same structure unless new files are needed.`;
-          } else {
-            userMsg = `Project: ${p.name}\nPurpose: ${p.description}\nBuild prompt: ${plan || p.description}\n\nAvailable template styles:\n${tplNames}\n\nGenerate a complete, beautiful professional website. Output ONLY a JSON array of {path, content} files.`;
-          }
-
-          await env.DB.prepare("UPDATE projects SET status='generating', job_state='running', job_log=?, updated_at=? WHERE id=?")
-            .bind(JSON.stringify([{ t: Date.now(), msg: "AI generating files…" }]), new Date().toISOString(), pid).run();
-
-          let files = [];
-          let notes = isEdit ? "Edited files" : "Generated site";
-          try {
-            const out = await gen(env, CODE_SYS, userMsg, 4000);
-            const m = out.match(/\[\s*\{[\s\S]*\}\s*\]/);
-            files = m ? JSON.parse(m[0]).map((f) => ({ path: f.path || "index.html", content: f.content || "" })) : [];
-          } catch (e) {
-            notes = "generation error: " + e.message;
-          }
-          if (!files.length) {
-            const title = p.name || "My Site";
-            files = [{ path: "index.html", content: FAKE_STARTER.replace("{{TITLE}}", title).replace("{{TAGLINE}}", p.description || "Built with CreateStuff").replace("{{CTA}}", "Get Started") }];
-            notes = "generated starter (AI output unparsed)";
-          }
-          files = files.filter((f) => f.content).slice(0, 12);
-
-          // persist to R2 + checkpoint
-          const cpId = `cp-${Date.now().toString(36)}`;
-          await env.R2.put(`projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files), { httpMetadata: { contentType: "application/json" } });
-          let manifest = {};
-          for (const f of files) { manifest[f.path] = f.content.length; }
-          await env.DB.prepare("INSERT INTO checkpoints (id, project_id, message, files_changed, created_at, r2_key, file_size, manifest) VALUES (?,?,?,?,?,?,?,?)")
-            .bind(cpId, pid, notes, JSON.stringify(files.map((f) => f.path)), new Date().toISOString(), `projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files).length, JSON.stringify(manifest)).run();
-          await env.DB.prepare("UPDATE projects SET status=?, ai_context=?, job_state='idle', job_log=?, updated_at=? WHERE id=?")
-            .bind(files.length ? "ready" : "error", JSON.stringify({ ...aiCtx, files, lastCheckpoint: cpId }), JSON.stringify([{ t: Date.now(), msg: notes }]), new Date().toISOString(), pid).run();
-
-          return json({ ok: true, notes, files: files.map((f) => ({ path: f.path, size: f.content.length })), checkpoint: cpId });
+        if ((sub === "generate" || sub === "modify" || sub === "publish") && method === "POST") {
+          return runGenerate(env, request, user, p, pid, sub);
         }
 
         // serve file content (for preview/editor) from R2
@@ -267,4 +332,75 @@ async function loadFiles(env, pid, p) {
   const obj = await env.R2.get(cp.r2_key);
   if (!obj) return [];
   return JSON.parse(await obj.text());
+}
+
+/**
+ * Single source of truth for codegen/modify/publish.
+ * Serves BOTH shapes: /api/projects/:id/generate  and  /api/ai/generate|modify|publish
+ * (production already answers on the /api/ai/* shape — we must not regress it).
+ */
+async function runGenerate(env, request, user, p, pid, shape) {
+  if (!(await rateLimit(env, request, "gen", 10, 300))) return err("Too many generations — wait a few minutes", 429);
+
+  const b = await request.json().catch(() => ({}));
+  const plan = b.plan || b.prompt || b.message || "";
+  const edit = b.edit;
+  const currentFiles = b.currentFiles;
+  if (shape !== "publish" && !plan && !edit) {
+    if (shape === "modify") return err("projectId and message required");
+    if (shape === "generate") return err("projectId required");
+  }
+
+  const aiCtx = p.ai_context ? JSON.parse(p.ai_context) : {};
+  const prior = Array.isArray(currentFiles) && currentFiles.length ? currentFiles : aiCtx.files || [];
+
+  // publish → nothing to publish if we have no files yet
+  if (shape === "publish") {
+    if (!prior.length) return err("No files to publish — generate first", 400);
+    const slug = (p.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "site";
+    const url = `https://sites.createstuff.ai/${pid.slice(0, 8)}`;
+    await env.DB.prepare("UPDATE projects SET status='published', publish_url=?, deployment_url=?, updated_at=? WHERE id=?")
+      .bind(url, url, new Date().toISOString(), pid).run();
+    return json({ ok: true, url, slug, files: prior.length, published: true });
+  }
+
+  const isEdit = shape === "modify" || !!edit || !prior.length ? shape === "modify" || !!edit : false;
+  const tplNames = TEMPLATES.map((t) => `${t.id}: ${t.desc}`).join("\n");
+
+  let userMsg;
+  if (isEdit && prior.length) {
+    userMsg = `Project: ${p.name}\nPurpose: ${p.description}\n\nEDIT REQUEST: ${edit || plan}\n\nCurrent files:\n${prior.slice(0, 8).map((f) => `--- ${f.path} ---\n${String(f.content || "").slice(0, 8000)}`).join("\n")}\n\nApply the edit. Return the FULL updated files as JSON array, same structure unless new files are needed.`;
+  } else {
+    userMsg = `Project: ${p.name}\nPurpose: ${p.description}\nBuild prompt: ${plan || p.description}\n\nAvailable template styles:\n${tplNames}\n\nGenerate a complete, beautiful professional website. Output ONLY a JSON array of {path, content} files.`;
+  }
+
+  await env.DB.prepare("UPDATE projects SET status='generating', job_state='running', job_log=?, updated_at=? WHERE id=?")
+    .bind(JSON.stringify([{ t: Date.now(), msg: "AI generating files…" }]), new Date().toISOString(), pid).run();
+
+  let files = [];
+  let notes = isEdit ? "Edited files" : "Generated site";
+  try {
+    const out = await gen(env, CODE_SYS, userMsg, 4000);
+    const m = out.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    files = m ? JSON.parse(m[0]).map((f) => ({ path: f.path || "index.html", content: f.content || "" })) : [];
+  } catch (e) {
+    notes = "generation error: " + e.message;
+  }
+  if (!files.length) {
+    const title = p.name || "My Site";
+    files = [{ path: "index.html", content: FAKE_STARTER.replace("{{TITLE}}", title).replace("{{TAGLINE}}", p.description || "Built with CreateStuff").replace("{{CTA}}", "Get Started") }];
+    notes = "generated starter (AI output unparsed)";
+  }
+  files = files.filter((f) => f.content).slice(0, 12);
+
+  const cpId = `cp-${Date.now().toString(36)}`;
+  await env.R2.put(`projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files), { httpMetadata: { contentType: "application/json" } });
+  const manifest = {};
+  for (const f of files) manifest[f.path] = f.content.length;
+  await env.DB.prepare("INSERT INTO checkpoints (id, project_id, message, files_changed, created_at, r2_key, file_size, manifest) VALUES (?,?,?,?,?,?,?,?)")
+    .bind(cpId, pid, notes, JSON.stringify(files.map((f) => f.path)), new Date().toISOString(), `projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files).length, JSON.stringify(manifest)).run();
+  await env.DB.prepare("UPDATE projects SET status=?, ai_context=?, job_state='idle', job_log=?, updated_at=? WHERE id=?")
+    .bind(files.length ? "ready" : "error", JSON.stringify({ ...aiCtx, files, lastCheckpoint: cpId }), JSON.stringify([{ t: Date.now(), msg: notes }]), new Date().toISOString(), pid).run();
+
+  return json({ ok: true, notes, projectId: pid, files: files.map((f) => ({ path: f.path, size: f.content.length })), checkpoint: cpId }, 200);
 }
