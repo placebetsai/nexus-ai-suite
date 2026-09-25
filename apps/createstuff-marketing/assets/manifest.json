@@ -1,0 +1,100 @@
+[
+  {
+    "file": "README.md",
+    "type": "doc",
+    "use": "Asset index and brand tokens.",
+    "bytes": 2578,
+    "animated": false
+  },
+  {
+    "file": "build-workspace-illustration.svg",
+    "type": "illustration",
+    "use": "1200x800 prompt/source/preview workflow illustration (kept).",
+    "bytes": 11277,
+    "animated": false
+  },
+  {
+    "file": "createstuff-app-icon-512.svg",
+    "type": "app-icon",
+    "use": "512x512 app icon (pre-existing, kept).",
+    "bytes": 824,
+    "animated": false
+  },
+  {
+    "file": "createstuff-bg-dots.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: dot matrix, hairline grid, centre glow, traces.",
+    "bytes": 1922,
+    "animated": false
+  },
+  {
+    "file": "createstuff-bg-mesh-animated.svg",
+    "type": "background-animated",
+    "use": "Same mesh composition with a 22-30s SMIL drift. Static frame is complete.",
+    "bytes": 2546,
+    "animated": true
+  },
+  {
+    "file": "createstuff-bg-mesh.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: dark violet/azure mesh over dot field.",
+    "bytes": 2060,
+    "animated": false
+  },
+  {
+    "file": "createstuff-bg-ribbon.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: flowing gradient data ribbons with nodes.",
+    "bytes": 2932,
+    "animated": false
+  },
+  {
+    "file": "createstuff-icons.svg",
+    "type": "icon-sprite",
+    "use": "12 icons at 24px, 1.6 stroke, currentColor: cs-database cs-key cs-globe cs-terminal cs-layers cs-branch cs-box cs-code cs-link cs-preview cs-cpu cs-sliders. Reference as ...icons.svg#cs-terminal.",
+    "bytes": 4249,
+    "animated": false
+  },
+  {
+    "file": "createstuff-monogram-animated.svg",
+    "type": "monogram-animated",
+    "use": "C mark with a cursor blink on a 1.6s loop. Static frame is complete.",
+    "bytes": 874,
+    "animated": true
+  },
+  {
+    "file": "createstuff-monogram.svg",
+    "type": "monogram",
+    "use": "Standalone C + gradient cursor mark, legible at 32px. Favicon, avatar, app tile.",
+    "bytes": 736,
+    "animated": false
+  },
+  {
+    "file": "createstuff-og-card.svg",
+    "type": "og-cover",
+    "use": "1200x630 SVG share card (pre-existing, kept). Rasterise to PNG before using as og:image.",
+    "bytes": 15638,
+    "animated": false
+  },
+  {
+    "file": "createstuff-wordmark-animated.svg",
+    "type": "wordmark-animated",
+    "use": "Lockup with blinking cursor + drawing gradient rule + slow tagline pulse (SMIL). Static frame is complete.",
+    "bytes": 10329,
+    "animated": true
+  },
+  {
+    "file": "createstuff-wordmark.svg",
+    "type": "wordmark",
+    "use": "Primary horizontal lockup (outlined paths): C+cursor monogram, rule, geometric word, mono tagline.",
+    "bytes": 9836,
+    "animated": false
+  },
+  {
+    "file": "responsive-preview-illustration.svg",
+    "type": "illustration",
+    "use": "1200x800 desktop and phone viewport illustration (kept).",
+    "bytes": 8564,
+    "animated": false
+  }
+]

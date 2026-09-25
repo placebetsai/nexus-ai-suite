@@ -1,0 +1,31 @@
+name = "app-host"
+main = "src/index.js"
+compatibility_flags = ["global_fetch_strictly_public"]
+compatibility_date = "2026-09-23"
+workers_dev = true
+
+routes = [
+  { pattern = "*.fashionistas.ai/*", zone_name = "fashionistas.ai" },
+  { pattern = "*.marketpicks.ai/*", zone_name = "marketpicks.ai" },
+  { pattern = "*.israeljoffe.com/*", zone_name = "israeljoffe.com" },
+  { pattern = "*.israeljoffe.org/*", zone_name = "israeljoffe.org" },
+  { pattern = "*.ketiservice.com/*", zone_name = "ketiservice.com" },
+  { pattern = "*.religiousjews.com/*", zone_name = "religiousjews.com" },
+  { pattern = "*.wuwonline.com/*", zone_name = "wuwonline.com" },
+  { pattern = "*.wuwonline.org/*", zone_name = "wuwonline.org" },
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "createstuff-db"
+database_id = "cc9ab7ed-b343-4883-bf76-07f8493cba9e"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "e4f7f32a41494e4086e1ff6a1a901105"
+
+[vars]
+AUTH_ORIGIN = "https://createstuff-api.fashionistas1979.workers.dev"
+
+[ai]
+binding = "AI"

@@ -1,0 +1,107 @@
+[
+  {
+    "file": "README.md",
+    "type": "doc",
+    "use": "Asset index and brand tokens.",
+    "bytes": 2435,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-app-icon-512.svg",
+    "type": "app-icon",
+    "use": "512x512 app icon (pre-existing, kept).",
+    "bytes": 1187,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-bg-aurora-animated.svg",
+    "type": "background-animated",
+    "use": "Same mesh composition with a 24-30s SMIL drift. Static frame is complete.",
+    "bytes": 3038,
+    "animated": true
+  },
+  {
+    "file": "fashionistas-bg-aurora.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: warm mesh gradient.",
+    "bytes": 2083,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-bg-grid.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: dot field + hairline column rules.",
+    "bytes": 1888,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-bg-ribbon.svg",
+    "type": "background",
+    "use": "Full-bleed hero background 1600x900: flowing ribbon bands + dashed stitch line.",
+    "bytes": 2261,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-icons.svg",
+    "type": "icon-sprite",
+    "use": "12 icons at 24px, 1.6 stroke, currentColor: fi-tag fi-camera fi-hanger fi-price fi-truck fi-chart fi-store fi-shirt fi-ruler fi-search fi-bookmark fi-sliders. Reference as ...icons.svg#fi-tag.",
+    "bytes": 4157,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-monogram-animated.svg",
+    "type": "monogram-animated",
+    "use": "F mark with a thread curl that draws on a 3.2s loop. Static frame is complete.",
+    "bytes": 900,
+    "animated": true
+  },
+  {
+    "file": "fashionistas-monogram.svg",
+    "type": "monogram",
+    "use": "Standalone F mark, legible at 32px. Favicon, avatar, app tile, small spaces.",
+    "bytes": 640,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-og-card.svg",
+    "type": "og-cover",
+    "use": "1200x630 SVG share card (pre-existing, kept). Rasterise to PNG before using as og:image.",
+    "bytes": 17397,
+    "animated": false
+  },
+  {
+    "file": "fashionistas-wordmark-animated.svg",
+    "type": "wordmark-animated",
+    "use": "Lockup with drawing accent rule + slow tagline pulse (SMIL). Static frame is complete.",
+    "bytes": 13569,
+    "animated": true
+  },
+  {
+    "file": "fashionistas-wordmark.svg",
+    "type": "wordmark",
+    "use": "Primary horizontal lockup (outlined paths): F monogram, rule, serif word, tagline. Nav, hero, footer.",
+    "bytes": 12954,
+    "animated": false
+  },
+  {
+    "file": "listing-placeholder-dress.svg",
+    "type": "placeholder",
+    "use": "800x1000 garment placeholder (kept).",
+    "bytes": 1725,
+    "animated": false
+  },
+  {
+    "file": "listing-placeholder-jacket.svg",
+    "type": "placeholder",
+    "use": "800x1000 garment placeholder (kept).",
+    "bytes": 2283,
+    "animated": false
+  },
+  {
+    "file": "listing-placeholder-shirt.svg",
+    "type": "placeholder",
+    "use": "800x1000 garment placeholder (kept).",
+    "bytes": 1892,
+    "animated": false
+  }
+]

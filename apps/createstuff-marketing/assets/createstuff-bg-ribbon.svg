@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="cs-ribbon-t cs-ribbon-d">
+  <title id="cs-ribbon-t">CreateStuff ribbon background</title>
+  <desc id="cs-ribbon-d">Flowing violet-to-azure data ribbons across a near-black field, with drifting particles.</desc>
+  <defs>
+    <linearGradient id="cs-rbase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0B12"/>
+      <stop offset="1" stop-color="#131122"/>
+    </linearGradient>
+    <linearGradient id="cs-rl1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7559D9" stop-opacity="0.15"/>
+      <stop offset="0.45" stop-color="#8B6CF0" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#4CC2FF" stop-opacity="0.75"/>
+    </linearGradient>
+    <linearGradient id="cs-rl2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4CC2FF" stop-opacity="0.5"/>
+      <stop offset="0.55" stop-color="#7559D9" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#B14BD8" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="cs-rl3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="0.5" stop-color="#4CC2FF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    </linearGradient>
+    <radialGradient id="cs-rnode">
+      <stop offset="0" stop-color="#4CC2FF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#4CC2FF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#cs-rbase)"/>
+
+  <g fill="none" stroke-linecap="round">
+    <path d="M-80 300C340 150 640 440 1020 275C1320 145 1470 215 1740 120"
+          stroke="url(#cs-rl3)" stroke-width="3"/>
+    <path d="M-80 640C340 480 640 780 1020 610C1320 475 1470 550 1740 455"
+          stroke="url(#cs-rl1)" stroke-width="12" opacity="0.9"/>
+    <path d="M-80 730C340 575 640 875 1020 705C1320 570 1470 645 1740 550"
+          stroke="url(#cs-rl2)" stroke-width="5" opacity="0.8"/>
+    <path d="M-80 545C340 390 640 690 1020 520C1320 385 1470 460 1740 365"
+          stroke="url(#cs-rl3)" stroke-width="2" opacity="0.6"/>
+  </g>
+
+  <g>
+    <circle cx="470" cy="596" r="46" fill="url(#cs-rnode)" opacity="0.5"/>
+    <circle cx="470" cy="596" r="5" fill="#4CC2FF"/>
+    <circle cx="1130" cy="205" r="38" fill="url(#cs-rnode)" opacity="0.4"/>
+    <circle cx="1130" cy="205" r="4" fill="#8B6CF0"/>
+    <circle cx="1350" cy="700" r="42" fill="url(#cs-rnode)" opacity="0.35"/>
+    <circle cx="1350" cy="700" r="4" fill="#4CC2FF"/>
+    <circle cx="250" cy="800" r="4" fill="#7559D9" opacity="0.8"/>
+    <circle cx="880" cy="120" r="4" fill="#4CC2FF" opacity="0.6"/>
+    <circle cx="640" cy="360" r="3" fill="#FFFFFF" opacity="0.35"/>
+    <circle cx="1520" cy="330" r="3" fill="#FFFFFF" opacity="0.3"/>
+  </g>
+</svg>

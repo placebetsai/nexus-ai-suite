@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Dress flat-lay placeholder</title>
+  <desc id="desc">A terracotta dress with visible seam and fold lines on a warm neutral background.</desc>
+  <rect width="800" height="1000" fill="#EFE9DF"/>
+  <path d="M332 174c36 29 128 29 164 0l-7 152 85 74 98 430q-232 80-464 0l98-430 85-74z" fill="#D4C9BC" opacity="0.72"/>
+  <path d="M318 154c36 29 128 29 164 0l-21 152 71 64 100 450q-232 80-464 0l100-450 71-64z" fill="#C84B31" stroke="#211D1B" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M318 154c36 29 128 29 164 0l-9 66c-48 24-98 24-146 0z" fill="#F8F4ED" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M284 304c76 30 156 30 232 0" fill="none" stroke="#211D1B" stroke-width="5"/>
+  <path d="M272 370c102 34 154 34 256 0" fill="none" stroke="#211D1B" stroke-width="5"/>
+  <path d="M400 306v552" fill="none" stroke="#211D1B" stroke-width="4" opacity="0.72"/>
+  <path d="M350 372c-42 130-76 270-102 420" fill="none" stroke="#F8F4ED" stroke-width="8" stroke-linecap="round" opacity="0.78"/>
+  <path d="M450 372c42 130 76 270 102 420" fill="none" stroke="#F8F4ED" stroke-width="8" stroke-linecap="round" opacity="0.78"/>
+  <path d="M214 798q186 58 372 0" fill="none" stroke="#211D1B" stroke-width="4" stroke-dasharray="11 11" opacity="0.65"/>
+  <g transform="translate(521 166) rotate(12)">
+    <path d="M0 0h44l16 66-38 34-38-34z" fill="#F8F4ED" stroke="#211D1B" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M22 27v31M12 42h20" stroke="#C84B31" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

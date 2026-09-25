@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" color="#1E1A18" role="img" aria-labelledby="fm-t fm-d">
+  <title id="fm-t">Fashionistas monogram</title>
+  <desc id="fm-d">Slab-serif F with a loose terracotta thread curl; legible down to 32 pixels.</desc>
+  <g class="mark-glyph" fill="currentColor">
+    <path d="M14 13H50V21.5H25V29H43V37.5H25V51H33V57H8V51H14Z"/>
+  </g>
+  <path class="accent" d="M50 17.25C55 13.5 61.5 16 61 21.5C60.5 27 54 29 52.5 24.5C51.5 21.5 54.5 19.5 57 21.5" fill="none" stroke="#C84B31" stroke-width="3.4" stroke-linecap="round">
+    <animate attributeName="stroke-dasharray" values="0 130;130 0;130 0" keyTimes="0;0.45;1" dur="3.2s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="1;1;0.55;1" keyTimes="0;0.6;0.8;1" dur="3.2s" repeatCount="indefinite"/>
+    </path>
+</svg>

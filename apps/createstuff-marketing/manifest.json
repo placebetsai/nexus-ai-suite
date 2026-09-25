@@ -4,8 +4,8 @@
   "description": "Describe what you want and CreateStuff writes every file, previews it live and publishes it to a real URL. Import any GitHub repo and vibe code it. Free, no credit card.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#06060f",
-  "theme_color": "#06060f",
+  "background_color": "#a78bfa",
+  "theme_color": "#3b82f6",
   "icons": [
     {
       "src": "/icon.svg",

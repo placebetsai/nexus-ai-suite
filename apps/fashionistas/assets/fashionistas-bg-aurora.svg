@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="fa-aurora-t fa-aurora-d">
+  <title id="fa-aurora-t">Fashionistas aurora background</title>
+  <desc id="fa-aurora-d">Warm mesh gradient: terracotta, honey and taupe washes over an ivory base, for full-bleed hero use.</desc>
+  <defs>
+    <linearGradient id="fa-base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFCF7"/>
+      <stop offset="0.52" stop-color="#FAF5EE"/>
+      <stop offset="1" stop-color="#F2EADE"/>
+    </linearGradient>
+    <radialGradient id="fa-warm">
+      <stop offset="0" stop-color="#C84B31" stop-opacity="0.36"/>
+      <stop offset="0.5" stop-color="#C84B31" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#C84B31" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fa-sand">
+      <stop offset="0" stop-color="#E2A15C" stop-opacity="0.44"/>
+      <stop offset="0.5" stop-color="#E2A15C" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#E2A15C" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fa-taupe">
+      <stop offset="0" stop-color="#B79C7E" stop-opacity="0.34"/>
+      <stop offset="0.55" stop-color="#B79C7E" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#B79C7E" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fa-shade">
+      <stop offset="0" stop-color="#5C4638" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#5C4638" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#fa-base)"/>
+  <ellipse cx="230" cy="130" rx="640" ry="520" fill="url(#fa-warm)"/>
+  <ellipse cx="1570" cy="470" rx="620" ry="560" fill="url(#fa-sand)"/>
+  <ellipse cx="330" cy="950" rx="640" ry="410" fill="url(#fa-taupe)"/>
+  <ellipse cx="1180" cy="940" rx="520" ry="300" fill="url(#fa-shade)"/>
+  <g fill="none" stroke="#C84B31" stroke-opacity="0.15" stroke-width="1.5">
+    <circle cx="1290" cy="170" r="290"/>
+    <circle cx="1290" cy="170" r="420"/>
+  </g>
+</svg>

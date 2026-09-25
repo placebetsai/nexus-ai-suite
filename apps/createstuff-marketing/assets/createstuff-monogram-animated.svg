@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" color="#F4F2EE" role="img" aria-labelledby="cs-t cs-d">
+  <title id="cs-t">CreateStuff monogram</title>
+  <desc id="cs-d">Open geometric C with a gradient cursor block; legible down to 32 pixels.</desc>
+  <defs>
+    <linearGradient id="cs-accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7559D9"/>
+      <stop offset="1" stop-color="#4CC2FF"/>
+    </linearGradient>
+  </defs>
+  <path class="mark-glyph" d="M40.6 15A20 20 0 1 0 40.6 49" fill="none" stroke="currentColor" stroke-width="9"/>
+  <rect class="accent" x="43" y="27" width="15" height="10" rx="1.5" fill="url(#cs-accent)">
+    <animate attributeName="opacity" values="1;1;0.12;1;1" keyTimes="0;0.55;0.65;0.75;1" dur="1.6s" repeatCount="indefinite"/>
+    </rect>
+</svg>

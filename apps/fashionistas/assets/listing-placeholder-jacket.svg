@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Jacket flat-lay placeholder</title>
+  <desc id="desc">An ivory tailored jacket with a terracotta lapel on a warm neutral background.</desc>
+  <rect width="800" height="1000" fill="#EFE9DF"/>
+  <path d="M266 198 344 160c24 20 52 30 70 30s46-10 70-30l78 38 98 116-70 72-42-50 30 426c-108 32-220 32-328 0l30-426-42 50-70-72z" fill="#D4C9BC" opacity="0.72"/>
+  <path d="M252 178 330 140c24 20 52 30 70 30s46-10 70-30l78 38 98 116-70 72-42-50 30 426c-108 32-220 32-328 0l30-426-42 50-70-72z" fill="#F8F4ED" stroke="#211D1B" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M330 140c24 20 52 30 70 30v112l-40 64-48-58-34 38-26-144z" fill="#C84B31" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M470 140c-24 20-52 30-70 30v112l40 64 48-58 34 38 26-144z" fill="#DED5CA" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M400 170v584" fill="none" stroke="#211D1B" stroke-width="5"/>
+  <path d="M266 316c-18 53-28 109-31 168" fill="none" stroke="#C7BBAE" stroke-width="3" stroke-dasharray="10 10"/>
+  <path d="M534 316c18 53 28 109 31 168" fill="none" stroke="#C7BBAE" stroke-width="3" stroke-dasharray="10 10"/>
+  <path d="m286 518 74 8-8 88-69-8z" fill="none" stroke="#211D1B" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m514 518-74 8 8 88 69-8z" fill="none" stroke="#211D1B" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M224 366 192 430l48-26zM576 366l32 64-48-26z" fill="#C84B31" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="#C84B31" stroke="#211D1B" stroke-width="3">
+    <circle cx="426" cy="274" r="9"/>
+    <circle cx="426" cy="356" r="9"/>
+    <circle cx="426" cy="438" r="9"/>
+    <circle cx="426" cy="520" r="9"/>
+  </g>
+  <path d="M254 742c96 30 196 30 292 0" fill="none" stroke="#C7BBAE" stroke-width="3" stroke-dasharray="10 10"/>
+  <g transform="translate(598 192) rotate(10)">
+    <path d="M0 0h46l14 70-37 32L-14 70z" fill="#C84B31" stroke="#211D1B" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="0" cy="35" r="6" fill="#F8F4ED" stroke="#211D1B" stroke-width="3"/>
+  </g>
+</svg>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Shirt flat-lay placeholder</title>
+  <desc id="desc">An ivory short-sleeve shirt with a terracotta side panel on a warm neutral background.</desc>
+  <rect width="800" height="1000" fill="#EFE9DF"/>
+  <path d="m284 212 76-44c24 20 56 30 80 30s56-10 80-30l76 44 134 100-84 102-54-36 24 390q-150 38-300 0l24-390-54 36-84-102z" fill="#D4C9BC" opacity="0.72"/>
+  <path d="m270 192 76-44c24 20 56 30 80 30s56-10 80-30l76 44 134 100-84 102-54-36 24 390q-150 38-300 0l24-390-54 36-84-102z" fill="#F8F4ED" stroke="#211D1B" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M346 148c18 67 90 67 108 0-24-14-84-14-108 0z" fill="#C84B31" stroke="#211D1B" stroke-width="6" stroke-linejoin="round"/>
+  <path d="m346 148-76 44 62 112 50-66z" fill="#E4D9CD" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m454 148 76 44-62 112-50-66z" fill="#E4D9CD" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M274 358c-2 114-8 243-24 390l92 22c-4-143-2-274 6-412z" fill="#C84B31" opacity="0.96"/>
+  <path d="M400 270v478" fill="none" stroke="#211D1B" stroke-width="4"/>
+  <path d="M526 358c2 114 8 243 24 390l-92 22c4-143 2-274-6-412z" fill="#DED5CA" stroke="#211D1B" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M220 394 178 454M580 394l42 60" fill="none" stroke="#211D1B" stroke-width="5" stroke-linecap="round"/>
+  <path d="M250 748q150 38 300 0" fill="none" stroke="#211D1B" stroke-width="4" stroke-dasharray="11 11"/>
+  <path d="M314 340c-8 106-10 220-6 342" fill="none" stroke="#211D1B" stroke-width="3" stroke-dasharray="9 10" opacity="0.55"/>
+  <path d="M486 340c8 106 10 220 6 342" fill="none" stroke="#C7BBAE" stroke-width="3" stroke-dasharray="9 10"/>
+</svg>

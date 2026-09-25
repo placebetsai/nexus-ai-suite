@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="cs-dots-t cs-dots-d">
+  <title id="cs-dots-t">CreateStuff dot field background</title>
+  <desc id="cs-dots-d">Dark dot matrix with hairline grid lines and a soft violet centre glow.</desc>
+  <defs>
+    <pattern id="cs-dmatrix" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1.6" cy="1.6" r="1.6" fill="#4A4470" fill-opacity="0.9"/>
+    </pattern>
+    <pattern id="cs-dgrid" width="112" height="112" patternUnits="userSpaceOnUse">
+      <path d="M112 0H0V112" fill="none" stroke="#2A2640" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="cs-dbase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0B12"/>
+      <stop offset="1" stop-color="#12101C"/>
+    </linearGradient>
+    <radialGradient id="cs-dglow">
+      <stop offset="0" stop-color="#7559D9" stop-opacity="0.45"/>
+      <stop offset="0.55" stop-color="#7559D9" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#7559D9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cs-dvig">
+      <stop offset="0.45" stop-color="#0B0B12" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0B0B12" stop-opacity="0.75"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#cs-dbase)"/>
+  <rect width="1600" height="900" fill="url(#cs-dgrid)"/>
+  <rect width="1600" height="900" fill="url(#cs-dmatrix)" opacity="0.6"/>
+  <ellipse cx="800" cy="430" rx="720" ry="480" fill="url(#cs-dglow)"/>
+  <rect width="1600" height="900" fill="url(#cs-dvig)"/>
+  <g fill="#4CC2FF">
+    <circle cx="336" cy="336" r="4"/>
+    <circle cx="1232" cy="672" r="4"/>
+  </g>
+  <g fill="none" stroke="#4CC2FF" stroke-opacity="0.55" stroke-width="1.5">
+    <path d="M336 336H560L744 520"/>
+    <path d="M1232 672H1008L912 576"/>
+  </g>
+</svg>

@@ -3,3 +3,5 @@
 .env
 *.env
 !.secrets/README.md
+# Wrangler build caches — never committed
+.wrangler/

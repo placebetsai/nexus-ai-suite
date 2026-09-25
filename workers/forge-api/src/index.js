@@ -62,28 +62,131 @@ const TEMPLATES = [
   { id: "realestate", name: "Real Estate", desc: "Listings, agents, filters", files: ["index.html", "styles.css", "script.js"] },
 ];
 
-const gen = async (env, system, user, maxTok = 2000) => {
-  const r = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", {
-    messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    max_tokens: maxTok,
-  });
-  return (r.response || "").trim();
+// Workers AI models that can serve codegen, best first.
+// NOTE: env.AI.run returns r.response as a STRING for some models and as an
+// already-parsed ARRAY when the model emitted valid JSON. gen() normalizes both.
+const CODE_MODELS = [
+  "@cf/qwen/qwen2.5-coder-32b-instruct",
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/meta/llama-3.1-8b-instruct",
+  "@cf/meta/llama-3.2-3b-instruct",
+];
+
+const gen = async (env, system, user, maxTok = 8000) => {
+  let lastErr = null;
+  for (const model of CODE_MODELS) {
+    try {
+      const r = await env.AI.run(model, {
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_tokens: maxTok,
+      });
+      const resp = r ? r.response : null;
+      if (Array.isArray(resp)) return { text: JSON.stringify(resp), parsed: resp, model };
+      const text = String(resp == null ? "" : resp).trim();
+      if (!text) { lastErr = new Error(model + " returned an empty response"); continue; }
+      return { text, parsed: null, model };
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("no Workers AI model available");
 };
 
-const CODE_SYS = `You build complete, beautiful, professional single-page websites in pure HTML+CSS+JS (no frameworks, no external CDN dependencies beyond Google Fonts). 
-Design must be modern: strong typography, generous spacing, cohesive color palette, responsive (mobile-first), subtle animations.
-Always output between 3 and 5 files: index.html, styles.css, script.js, and optionally content for restaurants (menu), or pages. 
-Format your ENTIRE response as a single JSON array: [{"path":"index.html","content":"<escaped full html>"}, {...}].
-Escape all newlines as \\n and quotes properly. No text outside the JSON array.`;
+// ── file extraction ──────────────────────────────────────────────────
+// Real output is routinely a JSON array whose closing "]" got cut off, or is
+// wrapped in markdown fences. Salvage every object that parses instead of
+// discarding the whole response.
+function normalizeFiles(arr) {
+  const out = [];
+  for (const f of Array.isArray(arr) ? arr : []) {
+    if (!f || typeof f !== "object") continue;
+    const path = String(f.path || f.file_path || "").trim();
+    const content = typeof f.content === "string" ? f.content : "";
+    if (!path || !content) continue;
+    out.push({ path, content });
+  }
+  return out;
+}
 
-const FAKE_STARTER = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>{{TITLE}}</title><style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a1a2e;background:#fff}
-.hero{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
-.hero h1{font-size:clamp(2rem,6vw,4rem);margin-bottom:1rem}.hero p{font-size:clamp(1rem,2vw,1.25rem);max-width:32rem;opacity:.9}
-.btn{display:inline-block;margin-top:1.5rem;padding:.8rem 1.8rem;background:#fff;color:#6366f1;font-weight:700;border-radius:.5rem;text-decoration:none}
-@media(max-width:640px){.hero{padding:1rem}}
-</style></head><body><section class="hero"><h1>{{TITLE}}</h1><p>{{TAGLINE}}</p><a class="btn" href="#">{{CTA}}</a></section>
-<script>console.log("live");</script></body></html>`;
+function salvageArray(text) {
+  const files = [];
+  const at = text.indexOf("[");
+  if (at < 0) return files;
+  let depth = 0, objStart = -1, inStr = false, esc = false;
+  for (let i = at + 1; i < text.length; i++) {
+    const c = text[i];
+    if (esc) { esc = false; continue; }
+    if (inStr) {
+      if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { if (depth === 0) objStart = i; depth++; continue; }
+    if (c === "}") {
+      if (depth > 0) depth--;
+      if (depth === 0 && objStart >= 0) {
+        try { files.push(...normalizeFiles([JSON.parse(text.slice(objStart, i + 1))])); } catch { /* torn object */ }
+        objStart = -1;
+      }
+      continue;
+    }
+    if (c === "]" && depth === 0) break;
+  }
+  return files;
+}
+
+function extractFiles(g) {
+  if (!g) return [];
+  if (Array.isArray(g.parsed)) {           // Workers AI already parsed it
+    const f = normalizeFiles(g.parsed);
+    if (f.length) return f;
+  }
+  let text = String(g.text || "").trim();
+  if (!text) return [];
+  text = text.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```\s*$/, "").trim();
+  const at = text.indexOf("[");
+  if (at < 0) return [];
+  const seg = text.slice(at);
+  const attempts = [seg, seg.replace(/,\s*$/, "") + "]", seg.replace(/[\}\s]*$/, "") + "]"];
+  for (const a of attempts) {
+    try { const f = normalizeFiles(JSON.parse(a)); if (f.length) return f; } catch { /* try next */ }
+  }
+  return salvageArray(text);
+}
+
+function finalizeFiles(files) {
+  const clean = files.filter((f) => f && typeof f.content === "string" && f.content.trim()).slice(0, 12);
+  if (!clean.length) return [];
+  if (!clean.some((f) => /(^|\/)index\.html?$/i.test(f.path))) {
+    const html = clean.find((f) => /\.html?$/i.test(f.path));
+    if (html) html.path = "index.html";
+  }
+  return clean;
+}
+
+// A build is only "real" if it produced a substantial index.html.
+function siteOk(files) {
+  const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
+  return !!idx && idx.content.length >= 400 && /<html[\s>]/i.test(idx.content);
+}
+
+const CODE_SYS = `You are a senior front-end engineer. Build ONE complete, polished website per request in plain HTML + CSS + vanilla JS. No frameworks, no build step, no CDN beyond Google Fonts.
+
+OUTPUT EXACTLY 3 FILES
+"index.html" — a full document: <!DOCTYPE html>, <head> with <link rel="stylesheet" href="styles.css">, <body>, <script src="script.js"></script> at the end of body.
+"styles.css" — every visual rule.
+"script.js" — every interaction. It must run without throwing.
+
+COVER THE WHOLE PAGE, not just a hero. For any brief include: sticky nav, hero, and each section the brief implies — features/services, gallery or listings, pricing or menu, testimonials, FAQ, contact or booking form, footer.
+
+REAL CONTENT ONLY. Write actual headings, copy, prices, addresses and labels for this specific business. Never "Lorem ipsum", never "Your text here", never placeholder brackets.
+
+DESIGN BAR: a deliberate type scale, generous whitespace, one accent colour with a restrained neutral palette, real imagery via gradients/CSS art (no broken image URLs), fully responsive at 360px and 1440px, subtle hover + scroll-reveal motion.
+
+script.js must wire every interactive element: mobile nav, tabs or filters, form validation that shows a visible success state, and scroll animations. Wrap in try/catch so nothing can throw on load.
+
+OUTPUT FORMAT — output ONLY this array, no prose before or after, no markdown fences, at least 4500 characters of code in total, and you MUST close the array with "]}":
+[{"path":"index.html","content":"<full html, every newline escaped as \\n, every quote escaped as \\" >"},{"path":"styles.css","content":"..."},{"path":"script.js","content":"..."}]`;
+
 
 // Durable Object: live build-progress broadcasts (port of prod ChatRoom)
 export class ChatRoom {
@@ -117,6 +220,32 @@ export default {
     try {
       if (path === "/api/health") return json({ ok: true, ts: Date.now(), builds: "v3" });
       if (path === "/api/templates") return json({ templates: TEMPLATES });
+      // model capability probe — decides which Workers AI model can actually serve long codegen
+      if (path === "/api/ai/models" && method === "GET") {
+        if (!(await rateLimit(env, request, "probe", 6, 300))) return err("Too many probes", 429);
+        const candidates = [
+          "@cf/qwen/qwen2.5-coder-32b-instruct",
+          "@cf/qwen/qwen2.5-coder-7b-instruct",
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "@cf/meta/llama-3.1-8b-instruct",
+          "@cf/meta/llama-3.1-70b-instruct-fp8-fast",
+          "@cf/deepseek-ai/deepseek-coder-6.7b-instruct",
+          "@cf/mistral/mistral-7b-instruct-v0.2",
+          "@cf/meta/llama-3.2-11b-instruct",
+          "@cf/meta/llama-3.2-3b-instruct",
+        ];
+        const out = [];
+        for (const id of candidates) {
+          const t0 = Date.now();
+          try {
+            const r = await env.AI.run(id, { messages: [{ role: "user", content: "Reply with exactly: OK" }], max_tokens: 16 });
+            out.push({ id, ok: true, ms: Date.now() - t0, sample: String(r.response || "").replace(/\s+/g, " ").slice(0, 60) });
+          } catch (e) {
+            out.push({ id, ok: false, ms: Date.now() - t0, err: String((e && e.message) || e).slice(0, 120) });
+          }
+        }
+        return json({ probed: out.length, working: out.filter((m) => m.ok).map((m) => m.id), results: out });
+      }
       if (path === "/robots.txt")
         return new Response(
           "User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://createstuff.ai/sitemap.xml\n",
@@ -270,10 +399,10 @@ export default {
         return json({ project: p }, 201);
       }
 
-      const proj = path.match(/^\/api\/projects\/([0-9a-f-]{36})(\/[a-z-]+)?$/);
+      const proj = path.match(/^\/api\/projects\/([0-9a-f-]{36})(\/.*)?$/);
       if (proj) {
         const pid = proj[1];
-        const sub = (proj[2] || "").replace("/", "");
+        const sub = (proj[2] || "").replace(/^\//, "");
         const p = await env.DB.prepare("SELECT * FROM projects WHERE id=? AND owner_id=?").bind(pid, user.sub).first();
         if (!p) return err("Not found", 404);
 
@@ -293,11 +422,31 @@ export default {
           return runGenerate(env, request, user, p, pid, sub);
         }
 
-        // serve file content (for preview/editor) from R2
+        // ── FILES: list / read / write ─────────────────────────────
+        // The builder reads `file_path` + `size` on the list and
+        // `file_path` + `content` on read/write, so we serve both keys.
         if (sub === "files" && method === "GET") {
-          const cpKey = aiCtxKey(p);
           const files = await loadFiles(env, pid, p);
-          return json({ files });
+          return json({ files: files.map((f) => ({ path: f.path, file_path: f.path, size: String(f.content || "").length })) });
+        }
+        if (sub === "files" && method === "POST") {
+          const b = await request.json().catch(() => ({}));
+          const fp = String(b.file_path || b.path || "").trim();
+          if (!fp) return err("file_path required");
+          return writeProjectFile(env, pid, p, fp, typeof b.content === "string" ? b.content : "");
+        }
+        const one = sub.match(/^files\/(.+)$/);
+        if (one && method === "GET") {
+          const want = decodeURIComponent(one[1]).replace(/^\//, "");
+          const f = (await loadFiles(env, pid, p)).find((x) => x.path === want);
+          if (!f) return err("File not found", 404);
+          return json({ path: f.path, file_path: f.path, size: String(f.content || "").length, content: f.content });
+        }
+        if (one && (method === "POST" || method === "PUT")) {
+          const b = await request.json().catch(() => ({}));
+          const fp = String(b.file_path || b.path || decodeURIComponent(one[1])).trim();
+          if (!fp) return err("file_path required");
+          return writeProjectFile(env, pid, p, fp, typeof b.content === "string" ? b.content : "");
         }
         if (sub === "preview" && method === "GET") {
           const files = await loadFiles(env, pid, p);
@@ -324,6 +473,21 @@ export default {
 function aiCtxKey(p) {
   try { return JSON.parse(p.ai_context || "{}").files || []; } catch { return []; }
 }
+async function writeProjectFile(env, pid, p, filePath, content) {
+  if (!filePath) return err("file_path required");
+  const files = await loadFiles(env, pid, p);
+  const at = files.findIndex((f) => f.path === filePath);
+  const entry = { path: filePath, content };
+  if (at >= 0) files[at] = entry; else files.push(entry);
+  let aiCtx = {};
+  try { aiCtx = p.ai_context ? JSON.parse(p.ai_context) : {}; } catch { aiCtx = {}; }
+  const cpKey = `projects/${pid}/checkpoints/cp-edit-${Date.now().toString(36)}`;
+  await env.R2.put(cpKey, JSON.stringify(files), { httpMetadata: { contentType: "application/json" } });
+  await env.DB.prepare("UPDATE projects SET ai_context=?, updated_at=?, status='ready' WHERE id=?")
+    .bind(JSON.stringify({ ...aiCtx, files, lastCheckpoint: cpKey.split("/").pop() }), new Date().toISOString(), pid).run();
+  return json({ ok: true, path: filePath, file_path: filePath, size: content.length, files: files.length });
+}
+
 async function loadFiles(env, pid, p) {
   const ctx = aiCtxKey(p);
   if (ctx.length) return ctx;
@@ -379,19 +543,27 @@ async function runGenerate(env, request, user, p, pid, shape) {
 
   let files = [];
   let notes = isEdit ? "Edited files" : "Generated site";
+  let modelUsed = "";
+  let rawLen = 0;
   try {
-    const out = await gen(env, CODE_SYS, userMsg, 4000);
-    const m = out.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    files = m ? JSON.parse(m[0]).map((f) => ({ path: f.path || "index.html", content: f.content || "" })) : [];
+    const g = await gen(env, CODE_SYS, userMsg, 8000);
+    modelUsed = g.model; rawLen = g.text.length;
+    files = finalizeFiles(extractFiles(g));
+    notes = `${notes} - ${modelUsed} - ${files.length} file(s) - ${files.reduce((n, f) => n + f.content.length, 0)} chars`;
   } catch (e) {
-    notes = "generation error: " + e.message;
+    notes = "generation error: " + ((e && e.message) || e);
   }
-  if (!files.length) {
-    const title = p.name || "My Site";
-    files = [{ path: "index.html", content: FAKE_STARTER.replace("{{TITLE}}", title).replace("{{TAGLINE}}", p.description || "Built with CreateStuff").replace("{{CTA}}", "Get Started") }];
-    notes = "generated starter (AI output unparsed)";
+
+  // HONEST FAILURE. A placeholder page shipped as "generated" is a lie; we
+  // return a real error and save nothing instead.
+  if (!files.length || !siteOk(files)) {
+    const why = files.length
+      ? `the model returned ${files.length} file(s) but no usable index.html`
+      : `the model returned no usable files (${modelUsed || "no model served the request"}, ${rawLen} chars)`;
+    await env.DB.prepare("UPDATE projects SET status='error', job_state='idle', job_log=?, updated_at=? WHERE id=?")
+      .bind(JSON.stringify([{ t: Date.now(), msg: `Build failed: ${why}. ${notes}` }]), new Date().toISOString(), pid).run();
+    return err(`Build failed: ${why}. Nothing was saved - run the build again.`, 422);
   }
-  files = files.filter((f) => f.content).slice(0, 12);
 
   const cpId = `cp-${Date.now().toString(36)}`;
   await env.R2.put(`projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files), { httpMetadata: { contentType: "application/json" } });
@@ -399,8 +571,9 @@ async function runGenerate(env, request, user, p, pid, shape) {
   for (const f of files) manifest[f.path] = f.content.length;
   await env.DB.prepare("INSERT INTO checkpoints (id, project_id, message, files_changed, created_at, r2_key, file_size, manifest) VALUES (?,?,?,?,?,?,?,?)")
     .bind(cpId, pid, notes, JSON.stringify(files.map((f) => f.path)), new Date().toISOString(), `projects/${pid}/checkpoints/${cpId}`, JSON.stringify(files).length, JSON.stringify(manifest)).run();
-  await env.DB.prepare("UPDATE projects SET status=?, ai_context=?, job_state='idle', job_log=?, updated_at=? WHERE id=?")
-    .bind(files.length ? "ready" : "error", JSON.stringify({ ...aiCtx, files, lastCheckpoint: cpId }), JSON.stringify([{ t: Date.now(), msg: notes }]), new Date().toISOString(), pid).run();
+  await env.DB.prepare("UPDATE projects SET status='ready', ai_context=?, job_state='idle', job_log=?, updated_at=? WHERE id=?")
+    .bind(JSON.stringify({ ...aiCtx, files, lastCheckpoint: cpId }), JSON.stringify([{ t: Date.now(), msg: notes }]), new Date().toISOString(), pid).run();
 
-  return json({ ok: true, notes, projectId: pid, files: files.map((f) => ({ path: f.path, size: f.content.length })), checkpoint: cpId }, 200);
+  // files are returned WITH content so the builder can render a real preview
+  return json({ ok: true, notes, model: modelUsed, projectId: pid, files, checkpoint: cpId }, 200);
 }

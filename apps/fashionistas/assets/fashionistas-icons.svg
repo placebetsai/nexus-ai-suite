@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" color="#1E1A18" role="img" aria-labelledby="fi-set-t fi-set-d">
+  <title id="fi-set-t">Fashionistas icon set</title>
+  <desc id="fi-set-d">Twelve 24 pixel stroke icons: tag, camera, hanger, price, truck, chart, storefront, shirt, ruler, search, bookmark, sliders. Use with a symbol reference such as assets/fashionistas-icons.svg#fi-tag.</desc>
+  <symbol id="fi-tag" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12.6 2.8H4.6A1.8 1.8 0 0 0 2.8 4.6V12.6l8.7 8.7a1.7 1.7 0 0 0 2.4 0l7.4-7.4a1.7 1.7 0 0 0 0-2.4Z"/>
+      <circle cx="7.2" cy="7.2" r="1.5"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-camera" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9.5A2.5 2.5 0 0 1 5.5 7h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5Z"/>
+      <circle cx="12" cy="13" r="3.6"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-hanger" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 10.6V9.2a2.6 2.6 0 1 1 2.6-2.6"/>
+      <path d="M12 10.6 3.6 17.3a1.6 1.6 0 0 0 .9 2.9h15a1.6 1.6 0 0 0 .9-2.9Z"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-price" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.5" y="6" width="19" height="12" rx="2"/>
+      <circle cx="12" cy="12" r="2.8"/>
+      <path d="M6 9.6v4.8M18 9.6v4.8"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-truck" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.5" y="6" width="12" height="10.5" rx="1.6"/>
+      <path d="M14.5 9.5h3.6l3.4 3.6v3.4h-7Z"/>
+      <circle cx="7" cy="18.5" r="2.1"/>
+      <circle cx="17" cy="18.5" r="2.1"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-chart" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 20.5h17"/>
+      <path d="m4 17 5.5-5.5 4 3.5 6.5-8"/>
+      <path d="M15.5 7h4.5v4.5"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-store" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.6 10 5.6 4.7A1.2 1.2 0 0 1 6.8 4h10.4a1.2 1.2 0 0 1 1.2.7l2 5.3Z"/>
+      <path d="M4.8 10v10.4h14.4V10"/>
+      <path d="M9.4 20.4v-5.6h5.2v5.6"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-shirt" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8.5 3 4 5.6l1.9 4.1L8 8.6V21h8V8.6l2.1 1.1L20 5.6 15.5 3a3.6 3.6 0 0 1-7 0Z"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-ruler" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2.6" y="8.5" width="18.8" height="7" rx="1.6"/>
+      <path d="M6.5 8.5v2.6M10 8.5v3.8M13.5 8.5v2.6M17 8.5v3.8"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-search" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10.8" cy="10.8" r="6.3"/>
+      <path d="m15.5 15.5 5 5"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-bookmark" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5v16l-6-4.2-6 4.2Z"/>
+    </g>
+  </symbol>
+
+  <symbol id="fi-sliders" viewBox="0 0 24 24">
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h9.6M18.4 7H20M4 17h3.6M12.4 17H20"/>
+      <circle cx="16" cy="7" r="2.2"/>
+      <circle cx="10" cy="17" r="2.2"/>
+    </g>
+  </symbol>
+</svg>

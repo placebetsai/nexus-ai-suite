@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">CreateStuff app icon</title>
+  <desc id="desc">A violet tile with an ivory open frame and a dark diagonal build stroke.</desc>
+  <rect width="512" height="512" rx="116" fill="#7559D9"/>
+  <rect x="28" y="28" width="456" height="456" rx="94" fill="none" stroke="#F4F2EE" stroke-opacity="0.28" stroke-width="4"/>
+  <path d="M368 150h-50l-34-34H164l-50 50v180l50 50h120l34-34h50l-34 52H164l-68-68V198l68-68h204z" fill="#F4F2EE"/>
+  <path d="m211 348 104-190" fill="none" stroke="#0B0B12" stroke-width="26" stroke-linecap="round"/>
+  <rect x="190" y="324" width="42" height="42" rx="8" transform="rotate(45 211 345)" fill="#0B0B12"/>
+</svg>

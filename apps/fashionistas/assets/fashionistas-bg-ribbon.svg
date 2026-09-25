@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="fa-ribbon-t fa-ribbon-d">
+  <title id="fa-ribbon-t">Fashionistas ribbon background</title>
+  <desc id="fa-ribbon-d">Flowing ribbon bands in terracotta and sand across ivory, with a dashed stitch line.</desc>
+  <defs>
+    <linearGradient id="fa-rbase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFCF7"/>
+      <stop offset="1" stop-color="#F3ECE1"/>
+    </linearGradient>
+    <linearGradient id="fa-r1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#C84B31" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#D9764E" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#E2A15C" stop-opacity="0.16"/>
+    </linearGradient>
+    <linearGradient id="fa-r2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8B8179" stop-opacity="0.2"/>
+      <stop offset="0.6" stop-color="#C08F63" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#C84B31" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="fa-r3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#DED5CA" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#C8B9A8" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#fa-rbase)"/>
+
+  <path d="M-120 300C300 120 560 420 940 250C1240 115 1440 200 1740 80L1740 170C1440 290 1240 205 940 340C560 510 300 210 -120 390Z" fill="url(#fa-r3)" opacity="0.75"/>
+  <path d="M-120 620C300 440 560 740 940 570C1240 435 1440 520 1740 400L1740 545C1440 665 1240 580 940 715C560 885 300 585 -120 765Z" fill="url(#fa-r1)"/>
+  <path d="M-120 760C320 610 600 890 980 715C1280 575 1480 655 1780 540L1780 615C1480 730 1280 650 980 790C600 965 320 685 -120 835Z" fill="url(#fa-r2)" opacity="0.85"/>
+
+  <g fill="none" stroke="#C84B31" stroke-opacity="0.5" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="16 14">
+    <path d="M-60 512C340 350 610 640 980 470C1270 335 1470 415 1760 300"/>
+  </g>
+  <g fill="none" stroke="#1E1A18" stroke-opacity="0.12" stroke-width="1.5">
+    <path d="M-60 180C340 20 620 320 1000 150C1290 20 1480 105 1760 -10"/>
+  </g>
+</svg>
