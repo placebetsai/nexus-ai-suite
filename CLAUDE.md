@@ -120,6 +120,37 @@ any failure. *(Status 2026-09-26 10:40: **not written yet**; the agent writing
 it had not finished. Treat this line as a TODO, not as a working command, until
 the file exists and you have run it yourself.)*
 
+### Testing a phone width when the browser has no viewport tool
+
+There is **no resize / device-emulation tool** in this harness — the desktop
+window only ever reports its real width (975px+), which is why "does it fit at
+390px?" has stayed untested for months. It *is* testable, and it has now been
+done on fashionistas (buyer and seller screens):
+
+inject a **same-origin 390px-wide iframe**. Media queries inside an iframe
+evaluate against **the iframe's** width, not the window's, so `@media
+(max-width:390px)` fires for real.
+
+```js
+const f = document.createElement('iframe');
+f.src = location.origin + '/app';            // SAME origin, or you cannot read it
+f.style.cssText = 'position:fixed;left:0;top:0;width:390px;height:740px;border:0';
+document.body.appendChild(f);
+// wait for #screen inside f.contentDocument, then:
+f.contentWindow.innerWidth                                  // -> 390
+f.contentDocument.documentElement.scrollWidth               // <= 390 means no h-overflow
+```
+
+Measure **`documentElement.scrollWidth > innerWidth`** for page-level
+horizontal scrolling. Do **not** count children of an `overflow-x:auto` rail or
+an `overflow:hidden` hero — they legitimately sit outside the viewport; that is
+the scroll container doing its job. Write a per-element scan, then subtract
+`.catrail`/`.catcard`/`.hero-mono` before reporting a number.
+
+Gotcha: the app defines a global `$`, so `$()` inside your test script
+silently selects from the **outer** document. Always define your own
+frame-scoped `q`/`qa` against `f.contentDocument`.
+
 ---
 
 ## 5. Running a parallel agent
@@ -209,6 +240,11 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 
 ## 8. STATUS — what is DONE (with proof) and what is LEFT
 
+> **MarketPicks + PlaceBets (2026-09-26):** see `HANDOFF-2026-09-26.md`. That covers
+> real day-change math, congress tape labels, constant-speed tickers and a conversational
+> bot on marketpicks, plus /ev, /movers, /books-vs-kalshi, the track-record delete guard,
+> the laptop Kalshi timer (`placebets-kalshi.timer`) and the chatbot cap fix on placebets.
+
 ### DONE and verified on the live sites — 2026-09-26
 
 **fashionistas.ai** — deployed, sha256-verified against local, then driven in a browser:
@@ -222,6 +258,10 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 | **Map at 390px** (TODO D) | `@media (max-width:390px)` block shipped. |
 | **API category canonicalisation** | `canonCategory` in the worker, read + write side. Harness **12/12** + **13/13**. |
 | Deploy proof | `DEPLOY OK`, `sha256 matches apps/fashionistas/index.html (303592 bytes)`. Browser re-walk after deploy: **zero JS errors**, `stillLoading: false`, screen 123 → **4,862 chars**. |
+| **Two-level category tree** (departments → subcategories, like Craigslist/eBay) | `TAX` has **8 departments / 40+ subcategories**, stored as a **slash-joined path inside the existing `category` column** — because remote D1 is read-only (`7403`), so `ALTER TABLE` is impossible. `TAX_LEGACY` maps every old flat word; no data was rewritten. `taxPath/taxDept/taxSub/taxLabel/taxMatches/taxQ/taxUnq/canonCat` **must stay at module scope** (declaring them inside a render function caused an earlier `ReferenceError` outage). Harness `tests/harness-categories.mjs` **67/67**. Live walk: `72 items` → *Women's Clothing* `58` → *Tops & Shirts* `25` with breadcrumb `All departments › Women's Clothing › Tops & Shirts`, grid **25**, tap-again climbs one level (→ `72`), `errs:[]`. Closet: `All types › Women's Clothing`, subs `7/2/1/4`, grid **11 → 7**. |
+| **Graphic cards + animated backdrops + moving words** (buyer *and* seller screens) | The brand asset pack (`fashionistas-bg-aurora-animated.svg`, `-bg-ribbon.svg`, `-monogram-animated.svg`, icon sprite) was shipped with **0 references** — now wired into hero banners. Buyer hero rotates `vintage → statement piece → designer find → one-off → steal` (**observed changing**); seller hero rotates `cash → a shop → a stall → a side income`. 8 department tiles are gradient + drawn mark + **word + count** in a swipe rail. Seller stats **count up** from `/api/analytics`: **11 for sale · 5 sold · $276→$277**. All 3 assets **HTTP 200**. **390px: no page-level horizontal overflow** (`documentElement.scrollWidth` **375 ≤ 390**), hero clamps **32 → 23.4px**, cards **132px**, rail swipeable (1137/347). `prefers-reduced-motion` honoured. |
+| **Two `countUp` definitions — one silently shadowed the other** (found by me) | My new function had the **same name** as the app's existing number-roll `function countUp`. Because function declarations hoist and the later one wins, the seller stats were **never animating**. Removed mine; the stats now use the app's own `[data-count]`/`[data-pre]` roll. **Lesson: grep for the name before defining a function in a 4,500-line inline script.** |
+| **Sold count was wrong on the seller hero** | It was derived from `S.listings`, which only holds *active* listings → the seller always saw **0 SOLD** while Home correctly said **5 sold**. Now reads `/api/analytics` via `statsRefresh()`. Browser: hero shows **5 sold**, matching Home. |
 
 **createstuff.ai + app.createstuff.ai** — both deployed from `apps/createstuff-marketing/`, sha256-verified:
 
@@ -248,7 +288,7 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 
 **fashionistas**
 1. ~~Shop renders~~ — done. Still unverified: **buyer↔seller messaging end-to-end between two accounts** (quill added `threadScreen`, but no two-account walk has been run). Label **untested** until someone walks it.
-2. **Logged-out `unauthorized` view.** Measured on the live site: `home`, `closet`, `xl` render the raw 12-character string `unauthorized` with **0 buttons** for a visitor who is not logged in. They must show a login prompt instead. *(Measured before this deploy; re-measure before fixing.)*
+2. ~~**Logged-out `unauthorized` view.**~~ **Re-measured 2026-09-26 → fixed for `closet`.** Opening `My clothes` while signed out now renders `Log in to see your clothes / Sign in to search, sort and manage everything you are selling.` with **3 buttons** (`Log in`, `Create free account`, `Log in as demo seller`) — not the raw 12-char string. `unauthorized` is still *thrown* (line 1344) but every renderer now catches it: `renderAuthPrompt` at lines **1382 / 2348 / 2418 / 2456 / 2502 / 2560 / 2612**, `if (e.message === "unauthorized")` at **2417 / 2501 / 2611**. **`home` and `xl` were not re-measured signed-out this session** — re-measure before calling those done.
 3. Camera capture stays **untestable** here — the embedder auto-denies `getUserMedia` (`NotAllowedError`). Never claim it works.
 4. **Shopping cart: open decision.** Revenue is our affiliate links on other marketplaces, so a cart would collect money we never touch. Recommendation was **no cart until there is checkout**. Needs a yes/no.
 
