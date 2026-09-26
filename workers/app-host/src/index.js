@@ -21,20 +21,49 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Max-Age": "86400",
 };
+// This worker answers with X-Content-Type-Options: nosniff, so a file whose
+// type is missing here is not sniffed by the browser — it is served as
+// application/octet-stream and refused. The list below therefore covers every
+// extension createstuff-api treats as a publishable asset (its ASSET_EXT), not
+// just the ones that happened to appear first.
 const CONTENT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
   [".htm", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
   [".js", "application/javascript; charset=utf-8"],
   [".mjs", "application/javascript; charset=utf-8"],
+  [".map", "application/json; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
+  [".webmanifest", "application/manifest+json"],
+  [".wasm", "application/wasm"],
+  [".xml", "application/xml; charset=utf-8"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".pdf", "application/pdf"],
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".webp", "image/webp"],
+  [".avif", "image/avif"],
   [".svg", "image/svg+xml"],
   [".ico", "image/x-icon"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".ttf", "font/ttf"],
+  [".otf", "font/otf"],
+  [".eot", "application/vnd.ms-fontobject"],
+  [".mp4", "video/mp4"],
+  [".webm", "video/webm"],
+  [".mp3", "audio/mpeg"],
 ]);
-const BINARY_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".ico"]);
+// The binary members of CONTENT_TYPES: a file stored base64-encoded is decoded
+// to real bytes before it is sent, so an image or a font arrives as bytes and
+// not as base64 text wearing an image content type.
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico",
+  ".woff", ".woff2", ".ttf", ".otf", ".eot",
+  ".mp4", ".webm", ".mp3",
+]);
 const encoder = new TextEncoder();
 let schemaReady = false;
 
@@ -258,6 +287,10 @@ async function readStaticCache(env, projectId, candidate) {
     if (!entry || typeof entry.capturedAt !== "number") return null;
     if (Date.now() - entry.capturedAt > STATIC_CACHE_TTL_MS) return null;
     if (typeof entry.content !== "string") return null;
+    // filePath decides the Content-Type and the Cache-Control of the response,
+    // so a hit that is missing it would answer 200 with the wrong type for the
+    // file the caller asked for.
+    if (typeof entry.filePath !== "string" || !entry.filePath) return null;
     return entry;
   } catch {
     // A cache read must never be able to fail a request.
@@ -347,8 +380,16 @@ function attachRoute(pathname) {
 }
 
 async function readJson(request) {
+  // Refuse on the declared length before reading anything: request.text()
+  // buffers the whole body, so a body that is over the limit is paid for in
+  // memory before the check below ever runs.
+  const declared = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declared) && declared > JSON_LIMIT) throw new HttpError(413, "Request body is too large");
   const text = await request.text();
-  if (text.length > JSON_LIMIT) throw new HttpError(413, "Request body is too large");
+  // JSON_LIMIT is a byte budget. text.length counts UTF-16 code units, so a
+  // body of multi-byte characters measured well under the cap in characters
+  // while carrying several times the limit in bytes.
+  if (byteLength(text) > JSON_LIMIT) throw new HttpError(413, "Request body is too large");
   if (!text.trim()) return {};
   try {
     const value = JSON.parse(text);
@@ -522,12 +563,15 @@ async function attachHost(request, env, route) {
 
   await ensureSchema(env);
   const now = new Date().toISOString();
+  // Settle the conflict BEFORE touching DNS. A hostname that already belongs to
+  // another project is refused, and a refused attach must not write anything —
+  // creating its DNS record first meant a 409 still mutated the zone.
+  const existing = await env.DB.prepare("SELECT id, project_id FROM app_hosts WHERE hostname=? LIMIT 1").bind(hostname).first();
+  if (existing && !sameId(existing.project_id, projectId)) return err("hostname is already attached to another project", 409);
   // Attach the hostname AND make it resolve. dns is reported either way so the
   // UI can say plainly what happened instead of implying the site is live.
   const dns = await ensureDnsRecord(env, hostname);
-  const existing = await env.DB.prepare("SELECT id, project_id FROM app_hosts WHERE hostname=? LIMIT 1").bind(hostname).first();
   if (existing) {
-    if (!sameId(existing.project_id, projectId)) return err("hostname is already attached to another project", 409);
     await env.DB.prepare("UPDATE app_hosts SET user_id=?, updated_at=? WHERE id=?").bind(authenticated.user.id, now, existing.id).run();
     return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns });
   }
@@ -573,11 +617,15 @@ async function dispatch(request, env) {
     // of a dead end, preserving path and query so deep links keep working.
     const apex = canonicalApex(hostname);
     if (apex) {
+      // Spread CORS like every other response here: a cross-origin reader that
+      // follows this hop must be able to read it, and nosniff costs nothing.
       return new Response(null, {
         status: 308,
         headers: {
+          ...CORS,
           Location: `https://${apex}${url.pathname}${url.search}`,
           "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
         },
       });
     }

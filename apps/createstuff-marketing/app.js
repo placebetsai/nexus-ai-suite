@@ -121,25 +121,267 @@ function csBuildZip(files) {
 }
 
 // ---- GitHub PAT (user's own token; forge-api is read-only) ----
-function csGhPat() { return localStorage.getItem('cs_gh_pat') || ''; }
+// The token is never asked for with a native prompt(): a dialog rendered into
+// the page walks someone through making one on github.com, checks it with
+// GitHub, then keeps it in this browser behind a masked connected state that
+// can be undone with Disconnect.
+const GH_PAT_KEY = 'cs_gh_pat';
+const GH_TOKEN_PAGE = 'github.com/settings/tokens';
+// One push is two GitHub calls (read the current file, then write it), so the
+// dialog only re-opens when the connection has not been confirmed yet in this
+// page. It resets the moment the token is removed or the page reloads.
+let csGhSeen = false;
+
+function csGhPat() { return localStorage.getItem(GH_PAT_KEY) || ''; }
+function csGhConnected() { return !!csGhPat().trim(); }
+// Only the last four characters are ever printed, the way a saved card is masked.
+function csGhMask(token) {
+  const t = String(token || '').trim();
+  return t ? '••••••' + t.slice(-4) : 'nothing saved yet';
+}
+function csGhDisconnect() {
+  localStorage.removeItem(GH_PAT_KEY);
+  csGhSeen = false;
+}
+
+// One place turns a GitHub answer into a sentence someone can act on. Raw
+// response bodies and stack traces never reach the screen.
+function csGhMessage(status, body) {
+  let msg = '';
+  try { msg = (JSON.parse(body) || {}).message || ''; } catch { msg = String(body || '').trim().slice(0, 120); }
+  if (status === 401) return 'GitHub did not accept your saved token. It has been removed — connect again and paste a new one.';
+  if (status === 403) return 'GitHub said no: ' + (msg || 'this token is not allowed to do that') + '. A token with the "repo" ticked can.';
+  if (status === 404) return 'GitHub could not find that project. Check the name is written as owner/repository.';
+  if (status === 429) return 'Too many requests to GitHub just now. Wait a minute and try again.';
+  if (msg) return 'GitHub said: ' + msg;
+  return 'GitHub replied with an error (status ' + status + '). Try again in a moment.';
+}
+
+// Ask GitHub whether a token is real and usable. Stores nothing.
+async function csGhCheck(token) {
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+    if (res.ok) {
+      const u = await res.json().catch(() => ({}));
+      return { ok: true, login: (u && u.login) || '' };
+    }
+    if (res.status === 401) {
+      return { ok: false, error: 'GitHub did not recognise that token. Copy the whole line again — it is one long string starting with ghp_ — and paste it below.' };
+    }
+    const text = await res.text().catch(() => '');
+    return { ok: false, error: csGhMessage(res.status, text) };
+  } catch (e) {
+    return { ok: false, error: 'Could not reach GitHub. Check your internet connection and press Connect again.' };
+  }
+}
+
+// Validates first, saves second. Never throws, never stores a bad token.
+async function csGhConnectSubmit(raw) {
+  const token = String(raw || '').trim();
+  if (!token) return { ok: false, error: 'Paste your GitHub token first.' };
+  const check = await csGhCheck(token);
+  if (!check.ok) return check;
+  localStorage.setItem(GH_PAT_KEY, token);
+  csGhSeen = true;
+  return { ok: true, login: check.login };
+}
+
+const GH_TIP = {
+  close: 'Closes this box. Nothing is saved and nothing is sent.',
+  token: 'Type or paste the whole GitHub token here. It stays hidden while you type so nobody looking over your shoulder can read it.',
+  open: 'Opens github.com/settings/tokens in a new tab so you can make a token.',
+  label: 'Where you paste the GitHub token you just made.',
+  connect: 'Sends the token to GitHub to check it, then keeps it in this browser so this app can save your work to your repositories.',
+  cancel: 'Closes this box without saving anything. Nothing is sent to GitHub.',
+  cont: 'Carries on with what you were doing, using the GitHub token already saved in this browser.',
+  disconnect: 'Deletes the saved GitHub token from this browser. You can connect again whenever you like.',
+  formWhere: 'Connecting GitHub lets this app save your work into a project of yours on GitHub.',
+};
+
+function csGhShell() {
+  return `
+<style>
+#cs-gh-dialog{position:fixed;inset:0;z-index:9000;background:rgba(6,6,18,.62);display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow:auto;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#cs-gh-card{box-sizing:border-box;width:100%;max-width:460px;margin:auto;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:1.15rem;box-shadow:0 24px 60px rgba(0,0,0,.55)}
+#cs-gh-card h3{margin:0;font-size:1.02rem}
+#cs-gh-card p{margin:.55rem 0;font-size:.86rem;line-height:1.6;color:var(--text2)}
+#cs-gh-card ol{margin:.45rem 0 .9rem;padding-left:1.15rem;font-size:.85rem;line-height:1.65;color:var(--text2)}
+#cs-gh-card ol li{margin:.32rem 0}
+#cs-gh-card b{color:var(--text)}
+#cs-gh-card a{color:var(--violet,#7c6cff);font-weight:600;word-break:break-all}
+#cs-gh-label{display:block;font-size:.8rem;font-weight:600;color:var(--text);margin:.2rem 0 .35rem}
+#cs-gh-token{box-sizing:border-box;width:100%;padding:.62rem .7rem;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.95rem;font-family:var(--font-mono)}
+#cs-gh-token:focus{outline:2px solid var(--violet,#7c6cff);outline-offset:1px}
+#cs-gh-error{display:none;box-sizing:border-box;padding:.6rem .7rem;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);color:#fca5a5;font-size:.83rem;line-height:1.5;margin:.2rem 0 .7rem}
+#cs-gh-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem}
+#cs-gh-actions button{flex:1 1 130px;min-height:42px}
+#cs-gh-note{font-size:.76rem;line-height:1.55;color:var(--text3);margin-top:.85rem}
+#cs-gh-mask{font-family:var(--font-mono);font-weight:700;color:var(--text)}
+@media (max-width:420px){
+  #cs-gh-dialog{padding:.6rem;align-items:stretch}
+  #cs-gh-card{padding:.9rem;max-width:none}
+  #cs-gh-card ol{padding-left:1.05rem}
+  #cs-gh-actions{flex-direction:column}
+  #cs-gh-actions button{flex:1 1 auto;width:100%}
+}
+</style>
+<div id="cs-gh-dialog" role="dialog" aria-modal="true" aria-labelledby="cs-gh-title">
+  <div id="cs-gh-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem">
+      <h3 id="cs-gh-title">Connect GitHub</h3>
+      <button type="button" id="cs-gh-close" aria-label="Close" data-tip="${GH_TIP.close}" title="${GH_TIP.close}" style="background:none;border:none;color:var(--text2);cursor:pointer;padding:.15rem .35rem;line-height:1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div id="cs-gh-body"></div>
+  </div>
+</div>`;
+}
+
+function csGhFormHtml() {
+  return `
+  <p data-tip="${GH_TIP.formWhere}" title="${GH_TIP.formWhere}">Connecting GitHub lets this app save your work into a project of yours on GitHub: it can start a new repository, or update the files in one you already have. GitHub asks for a <b>personal access token</b> — a long, one-off password you make yourself — so it can tell the request comes from you and not from a stranger.</p>
+  <ol>
+    <li>Open <a href="https://${GH_TOKEN_PAGE}" target="_blank" rel="noopener" data-tip="${GH_TIP.open}" title="${GH_TIP.open}">${GH_TOKEN_PAGE}</a> in a new tab, and sign in if it asks.</li>
+    <li>Press <b>Generate new token</b>, then <b>Generate new token (classic)</b>.</li>
+    <li>Write a short note so you recognise it later, and choose how long it should last.</li>
+    <li>Tick the scope named <b>repo</b>. That is the only one this app needs: it allows making repositories and saving files into them.</li>
+    <li>Press <b>Generate token</b> at the bottom of that page. GitHub shows one long line starting with <b>ghp_</b>.</li>
+    <li>Copy that whole line, paste it below, then press <b>Connect</b>.</li>
+  </ol>
+  <label id="cs-gh-label" for="cs-gh-token" data-tip="${GH_TIP.label}" title="${GH_TIP.label}">Paste your GitHub token</label>
+  <input id="cs-gh-token" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_..." data-tip="${GH_TIP.token}" title="${GH_TIP.token}">
+  <div id="cs-gh-error" role="alert"></div>
+  <div id="cs-gh-actions">
+    <button type="button" id="cs-gh-connect" class="btn-primary" data-tip="${GH_TIP.connect}" title="${GH_TIP.connect}">Connect</button>
+    <button type="button" id="cs-gh-cancel" class="btn-secondary" data-tip="${GH_TIP.cancel}" title="${GH_TIP.cancel}">Cancel</button>
+  </div>
+  <p id="cs-gh-note">Your token is kept in this browser only. It is sent to GitHub and to nowhere else, and you can delete it at any time with Disconnect.</p>`;
+}
+
+function csGhConnectedHtml() {
+  const mask = escapeHtml(csGhMask(csGhPat()));
+  return `
+  <p>You are already connected to GitHub. The token saved in this browser ends with <b id="cs-gh-mask">${mask}</b>.</p>
+  <p>Press <b>Continue</b> to go on with what you were doing, or <b>Disconnect</b> to delete the saved token from this browser.</p>
+  <div id="cs-gh-actions">
+    <button type="button" id="cs-gh-continue" class="btn-primary" data-tip="${GH_TIP.cont}" title="${GH_TIP.cont}">Continue</button>
+    <button type="button" id="cs-gh-disconnect" class="btn-secondary" data-tip="${GH_TIP.disconnect}" title="${GH_TIP.disconnect}">Disconnect</button>
+  </div>`;
+}
+
+// Opens the dialog and resolves with the token to use, or null if the person
+// closed it. The connected state and the connect form are the same box.
+function csGhDialog() {
+  return new Promise((resolve) => {
+    const prev = document.getElementById('cs-gh-dialog');
+    if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+    document.body.insertAdjacentHTML('beforeend', csGhShell());
+    const overlay = document.getElementById('cs-gh-dialog');
+    const body = document.getElementById('cs-gh-body');
+    const closeBtn = document.getElementById('cs-gh-close');
+    let closed = false;
+    const finish = (value) => {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener('keydown', onKey);
+      if (value) csGhSeen = true;
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      resolve(value);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') finish(null); };
+    document.addEventListener('keydown', onKey);
+    if (closeBtn) closeBtn.onclick = () => finish(null);
+    if (overlay) overlay.onmousedown = (e) => { if (e.target === overlay) finish(null); };
+    if (!body) {
+      document.removeEventListener('keydown', onKey);
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      resolve(null);
+      return;
+    }
+
+    function showError(text) {
+      const box = document.getElementById('cs-gh-error');
+      if (!box) return;
+      box.textContent = text || '';
+      box.style.display = text ? 'block' : 'none';
+    }
+
+    function renderForm() {
+      body.innerHTML = csGhFormHtml();
+      const input = document.getElementById('cs-gh-token');
+      const connect = document.getElementById('cs-gh-connect');
+      const cancel = document.getElementById('cs-gh-cancel');
+      const submit = async () => {
+        if (!connect || connect.disabled) return;
+        showError('');
+        const was = connect.textContent;
+        connect.disabled = true;
+        if (cancel) cancel.disabled = true;
+        connect.textContent = 'Checking with GitHub…';
+        try {
+          const r = await csGhConnectSubmit(input ? input.value : '');
+          if (r.ok) { showToast('GitHub connected'); finish(csGhPat()); return; }
+          showError(r.error || 'GitHub did not accept that token. Try again.');
+        } catch (e) {
+          showError('Something went wrong while checking the token. Try again.');
+        } finally {
+          if (!closed && connect) {
+            connect.disabled = false;
+            connect.textContent = was;
+            if (cancel) cancel.disabled = false;
+          }
+        }
+      };
+      if (connect) connect.onclick = submit;
+      if (cancel) cancel.onclick = () => finish(null);
+      if (input) {
+        input.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
+        input.focus();
+      }
+    }
+
+    function renderConnected() {
+      body.innerHTML = csGhConnectedHtml();
+      const cont = document.getElementById('cs-gh-continue');
+      const disc = document.getElementById('cs-gh-disconnect');
+      if (cont) cont.onclick = () => finish(csGhPat());
+      if (disc) disc.onclick = () => {
+        csGhDisconnect();
+        showToast('GitHub disconnected');
+        renderForm();
+      };
+    }
+
+    if (csGhConnected()) renderConnected(); else renderForm();
+  });
+}
+
 async function csGh(path, opts = {}) {
-  const pat = csGhPat();
-  if (!pat) {
-    const entered = prompt('Enter a GitHub Personal Access Token (repo scope) to create/push:\nCreate one at github.com/settings/tokens — it is stored only in this browser.');
-    if (!entered) throw new Error('no token');
-    localStorage.setItem('cs_gh_pat', entered.trim());
+  let pat = csGhPat();
+  if (!pat || !csGhSeen) {
+    pat = await csGhDialog();
+    if (!pat) throw new Error('GitHub is not connected, so nothing was sent. Connect GitHub and try again.');
   }
   const res = await fetch(`https://api.github.com${path}`, {
     ...opts,
     headers: {
       'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${csGhPat()}`,
+      'Authorization': `Bearer ${pat}`,
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',
       ...(opts.headers || {}),
     },
   });
-  if (!res.ok) { const t = await res.text(); throw new Error(`GitHub ${res.status}: ${t.slice(0, 160)}`); }
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) csGhDisconnect();
+    throw new Error(csGhMessage(res.status, text));
+  }
   return res.status === 204 ? {} : res.json();
 }
 
@@ -1255,7 +1497,7 @@ window.createGitHubRepo = async function() {
     document.getElementById('push-repo').value = r.full_name;
     loadGitHubRepos();
   } catch (e) {
-    showToast('Could not create it');
+    showToast(String((e && e.message) || 'Could not create it'));
   }
 };
 
@@ -1293,7 +1535,7 @@ window.pushToGitHub = async function() {
     showToast('Pushed to GitHub!');
     window.open(r.html_url, '_blank');
   } catch (e) {
-    showToast('Push failed');
+    showToast(String((e && e.message) || 'Push failed'));
   }
 };
 
@@ -1998,6 +2240,18 @@ async function lpAfterBuild(pid) {
 window.loadGitHubRepos = loadGitHubRepos;
 window.renderPage = renderPage;
 window.showToast = showToast;
+// The GitHub connect box is built inside this IIFE but lives in the page, so
+// its markup and any caller outside it reach the flow through window.
+window.csGhFlow = {
+  open: csGhDialog,
+  submit: csGhConnectSubmit,
+  disconnect: csGhDisconnect,
+  connected: csGhConnected,
+  mask: csGhMask,
+  shell: csGhShell,
+  form: csGhFormHtml,
+  connectedBox: csGhConnectedHtml,
+};
 
 document.addEventListener('DOMContentLoaded', init);
 })();

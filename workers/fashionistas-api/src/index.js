@@ -158,7 +158,7 @@ const marketItem = (row) => ({
   price: row.price === null || row.price === undefined ? null : num(row.price),
   condition: row.condition,
   size: row.size,
-  category: row.category,
+  category: canonCategory(row.category),
   photo_url: row.photo_url,
   status: row.status,
   platforms: parsePlatforms(row.platforms),
@@ -280,6 +280,22 @@ function haversineKm(a1, o1, a2, o2) {
   const dLat = rad(a2 - a1), dLng = rad(o2 - o1);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a1)) * Math.cos(rad(a2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Canonical listing category. Rows written before the field was validated
+// turn up as "Tops", "tops" or " dresses ", so grouping on the raw column
+// produces duplicate chips. Trim, match the fixed known set ignoring case and
+// return the canonical spelling. Anything that is not one of those names
+// (including null, empty or a non-string) reads as null: the client files
+// those under "All" instead of inventing a free-text chip that could
+// duplicate a real one. Self-contained so it can run on read and on write.
+function canonCategory(v) {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  const known = ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Athletic"];
+  for (const k of known) if (s.toLowerCase() === k.toLowerCase()) return k;
+  return null;
 }
 
 // Listings grew columns after the table was first created. The deploy token
@@ -817,7 +833,9 @@ async function dispatch(request, env) {
         const where = ["l.status = 'active'"];
         const binds = [];
         if (q) { where.push("(l.title LIKE ? OR l.description LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
-        if (category) { where.push("l.category = ?"); binds.push(category); }
+        // Compare ignoring case/space so a canonical chip still reaches rows
+        // written before canonCategory existed ("Tops" must find "tops").
+        if (category) { where.push("LOWER(TRIM(l.category)) = LOWER(?)"); binds.push(category); }
         const sql =
           (await marketSelect(env)) + " WHERE " + where.join(" AND ") +
           " ORDER BY " + orderBy + " LIMIT " + MARKET_LIMIT;
@@ -883,7 +901,8 @@ async function dispatch(request, env) {
             const like = query.split(/\s+/).map((w) => w.replace(/[%_]/g, "")).filter(Boolean).slice(0, 4);
             const conds = [], binds = [];
             like.forEach((w) => { conds.push("l.title LIKE ?", "l.description LIKE ?"); binds.push(`%${w}%`, `%${w}%`); });
-            if (ident && ident.category) { conds.push("l.category = ?"); binds.push(ident.category); }
+            const aiCat = canonCategory(ident && ident.category);
+            if (aiCat) { conds.push("LOWER(TRIM(l.category)) = LOWER(?)"); binds.push(aiCat); }
             const sql = (await marketSelect(env)) +
               " WHERE l.status='active' AND (" + conds.join(" OR ") + ")" +
               " ORDER BY (CASE WHEN " +
@@ -1092,7 +1111,7 @@ async function dispatch(request, env) {
           price,
           safe(b.size),
           safe(b.condition, "Good"),
-          safe(b.category, "Tops"),
+          canonCategory(safe(b.category, "Tops")),
           safe(b.photo_url, null),
           safe(b.status, "active"),
           JSON.stringify(Array.isArray(b.platforms) ? b.platforms : []),
@@ -1222,7 +1241,7 @@ async function dispatch(request, env) {
             "weight_oz=COALESCE(?,weight_oz), shipping_cost=COALESCE(?,shipping_cost), notes=COALESCE(?,notes), " +
             "local_pickup=COALESCE(?,local_pickup), updated_at=CURRENT_TIMESTAMP WHERE id=?"
           ).bind(
-            np(b.title), np(b.description), np(b.price), np(b.size), np(b.condition), np(b.category),
+            np(b.title), np(b.description), np(b.price), np(b.size), np(b.condition), canonCategory(np(b.category)),
             np(b.photo_url), np(b.status), np(b.brand), np(b.color), np(b.material),
             np(b.ship_city), np(b.ship_postcode), np(b.ship_country),
             np(b.weight_oz === "" ? null : b.weight_oz), np(b.shipping_cost === "" ? null : b.shipping_cost), np(b.notes),
@@ -1258,7 +1277,7 @@ async function dispatch(request, env) {
         let count = 0;
         for (const b of items) {
           await env.DB.prepare("INSERT INTO listings (user_id, title, description, price, size, condition, category, photo_url) VALUES (?,?,?,?,?,?,?,?)")
-            .bind(user.sub, b.title, col(b.description), Number(b.price), col(b.size), col(b.condition), col(b.category), col(b.photo_url)).run();
+            .bind(user.sub, b.title, col(b.description), Number(b.price), col(b.size), col(b.condition), canonCategory(col(b.category)), col(b.photo_url)).run();
           count++; // only reached when THIS insert actually resolved
         }
         return json({ created: count }, 201);

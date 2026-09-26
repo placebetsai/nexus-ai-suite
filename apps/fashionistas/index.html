@@ -659,11 +659,18 @@ nav.tabbar a.on{color:var(--accent)}
 .leaflet-container{font:inherit}
 
 @media (prefers-reduced-motion:reduce){
- #screen > *,.chips .chip,.ps-hit,.map-row,.xl-item,.xl-mkt,.dm-row,.bus-row{animation:none!important}
- #topnav a.on::after,#drawer-links a.on::after,:where(button,a,input,textarea,select,[tabindex]):focus-visible{animation:none!important}
- .btn-accent::before{display:none}
- #screen .card::after,#screen .ps-card::after,#screen .xl-cta::after{display:none}
- .map-row{transition:none!important}
+  #screen > *,.chips .chip,.ps-hit,.map-row,.xl-item,.xl-mkt,.dm-row,.bus-row{animation:none!important}
+  #topnav a.on::after,#drawer-links a.on::after,:where(button,a,input,textarea,select,[tabindex]):focus-visible{animation:none!important}
+  .btn-accent::before{display:none}
+  #screen .card::after,#screen .ps-card::after,#screen .xl-cta::after{display:none}
+  .map-row{transition:none!important}
+}
+
+/* map at narrow mobile width (390px) — controls reachable, no horizontal scroll */
+@media (max-width:390px){
+  .map-canvas{height:min(30vh,280px);min-height:200px}
+  .map-btns .btn{min-width:100px}
+  .map-tools{padding:10px}
 }
 
 /* ---- home CTA into the multilist hub ---- */
@@ -1602,51 +1609,32 @@ function photoSearchCard(){
    sign-up page. Rates and windows come from each shop's own pages; the
    "checked" date is shown so nobody thinks a stale figure is live. */
 function affCard(){
-  const progs = [
-    { n:"eBay Partner Network",
-      rate:"Category rates — eBay states up to 4% of the sale price",
-      window:"24 hours after the click",
-      pay:"Paid on the 10th, for the month before last · PayPal or bank",
-      url:"https://partnernetwork.ebay.com/",
-      tip:"Opens eBay's own partner sign-up page in a new tab.",
-      note:"Free, no traffic minimum. You sign in with your eBay account." },
-    { n:"Etsy",
-      rate:"About 4% standard · Creator Collective pays 10% on any Etsy shop",
-      window:"30 days after the click",
-      pay:"Validated 30 days after the sale to cover returns",
-      url:"https://etsy.com/affiliates",
-      tip:"Opens Etsy's affiliate page in a new tab.",
-      note:"Creator Collective asks for 500+ followers on one channel. Sellers can use Share & Save instead." },
-    { n:"Grailed",
-      rate:"4% on new customers · 2% on returning customers",
-      window:"15 days after the click",
-      pay:"Through Impact · about 72 hours to review an application",
-      url:"https://www.grailed.com/drycleanonly/grailed-affiliate-program",
-      tip:"Opens Grailed's own affiliate page in a new tab.",
-      note:"Sellers are allowed to join — even to promote your own wardrobe page." },
-  ];
-  const rows = progs.map(p => `
+  const term = S.marketQ || S.marketCat || "vintage clothing";
+  const q = encodeURIComponent(term);
+  const rows = [
+    { n:"eBay",   u:`https://www.ebay.com/sch/i.html?_nkw=${q}` },
+    { n:"Etsy",   u:`https://www.etsy.com/search?q=${q}` },
+    { n:"Depop",  u:`https://www.depop.com/search/?q=${q}` },
+    { n:"Poshmark",u:`https://poshmark.com/search?query=${q}` },
+    { n:"Vinted", u:`https://www.vinted.com/catalog?search_text=${q}` },
+    { n:"Grailed",u:`https://www.grailed.com/search?query=${q}` },
+  ].map(p => `
     <div class="af-row">
       <div class="af-b">
         <b>${escapeHtml(p.n)}</b>
-        <span class="af-rate">${escapeHtml(p.rate)}</span>
-        <span class="af-meta">Lasts ${escapeHtml(p.window)} · ${escapeHtml(p.pay)}</span>
-        <span class="af-note">${escapeHtml(p.note)}</span>
       </div>
-      <a class="btn btn-soft btn-sm af-go" href="${p.url}" target="_blank" rel="noopener noreferrer sponsored" data-tip="${escapeAttr(p.tip)}">Sign up ↗</a>
+      <a class="btn btn-soft btn-sm af-go" href="${p.u}" target="_blank" rel="noopener noreferrer sponsored" data-tip="Opens ${escapeHtml(p.n)} in a new tab, searched for what you typed." title="Opens ${escapeHtml(p.n)} in a new tab, searched for what you typed.">Also listed on ${escapeHtml(p.n)} ↗</a>
     </div>`).join("");
   return `
   <div class="aff">
     <div class="aff-head">
-      <span class="af-kick">Extra income</span>
-      <h3>Some of these shops pay you for sending them buyers.</h3>
-      <p class="mut">We checked every shop we write drafts for. These three have a real partner programme you can join yourself — free, and you keep the commission on anything sold through your link.</p>
+      <span class="af-kick">Also listed</span>
+      <h3>Can't find it here? It may be listed on these shops.</h3>
     </div>
     ${rows}
     <div class="af-rest">
-      <b>The rest, honestly:</b>
-      <span>Depop, Poshmark and Mercari don't run a public partner programme at the moment, so there's nothing to sign up for there. Vinted pays <b>vouchers, not cash</b> — up to $5 when a friend lists three items and $10 more when they sell, usable only against future orders.</span>
-      <span class="af-date">Checked 26 September 2026 · terms change, so confirm on each sign-up page.</span>
+      <span>Other marketplaces may also have this item. Check each site directly.</span>
+      <span class="af-date">Updated for your search.</span>
     </div>
   </div>`;
 }
@@ -1774,7 +1762,8 @@ async function renderShop(el){
     return;
   }
   if (S.photoPending){ S.photoPending = false; setTimeout(photoSearchGo, 90); }
-  const cats = [...new Set((S.market||[]).map(m=>m.category).filter(Boolean))].sort();
+  function canonCat(c){if(typeof c!=="string"||!c.trim())return"";const s=c.trim().toLowerCase();return{"/tops":"Tops","/bottoms":"Bottoms","/dresses":"Dresses","/outerwear":"Outerwear","/shoes":"Shoes","/accessories":"Accessories","/athletic":"Athletic"}[s]||""}
+  const cats = [...new Set((S.market||[]).map(m=>canonCat(m.category))).filter(c=>c)].sort();
   if (S.marketCat && !cats.includes(S.marketCat)) S.marketCat = "";
   el.innerHTML = roleSwitchHtml()
   + photoSearchCard()
@@ -1807,7 +1796,7 @@ function marketRows(){
   const q = (S.marketQ || "").toLowerCase().trim();
   let rows = (S.market || []).slice();
   if (q) rows = rows.filter(m=>((m.title||"")+" "+(m.description||"")+" "+(m.category||"")+" "+((m.seller&&m.seller.username)||"")).toLowerCase().includes(q));
-  if (S.marketCat) rows = rows.filter(m=>(m.category||"")===S.marketCat);
+  if (S.marketCat) rows = rows.filter(m=>(canonCat(m.category)||"")===S.marketCat);
   const n2 = v => Number(v) || 0;
   rows.sort((a,b)=>{
     if (S.marketSort === "price-lo") return n2(a.price) - n2(b.price);
@@ -1873,11 +1862,12 @@ async function openMarketItem(id){
   + (m.photo_url ? `<img class="detail-img" src="${escapeAttr(m.photo_url)}" onerror="this.remove()"><div style="height:10px"></div>` : "")
   + `<h3 style="margin:4px 0 2px">${escapeHtml(m.title||"Untitled")}</h3>`
   + `<h2 style="margin:4px 0">${money(m.price)}</h2>`
-  + `<div style="margin:8px 0"><span class="pill">${escapeHtml(m.condition||"")}</span><span class="pill">${escapeHtml(m.size||"")}</span><span class="pill">${escapeHtml(m.category||"")}</span><span class="pill">${escapeHtml(m.status||"for sale")}</span></div>`
+  + `<div style="margin:8px 0"><span class="pill">${escapeHtml(m.condition||"")}</span><span class="pill">${escapeHtml(m.size||"")}</span>${canonCat(m.category) ? `<span class="pill">${escapeHtml(canonCat(m.category))}</span>` : ""}<span class="pill">${escapeHtml(m.status||"for sale")}</span></div>`
   + (m.description ? `<div class="mut">${escapeHtml(m.description)}</div>` : "")
   + `<p class="mut">Sold by <b>${escapeHtml(seller)}</b>${sellerU?` (@${escapeHtml(sellerU)})`:""}</p>`
   + (plats.length ? `<div style="margin:6px 0"><span class="mut">Also listed on: </span>` + plats.map(p=>`<span class="pill">${escapeHtml(p)}</span>`).join("") + `</div>` : "")
   + `<button class="btn btn-accent" onclick="buySheet(${Number(m.id)})" data-tip="Start checkout for this item. No money moves yet.">Buy this item</button>`
+  + `<button class="btn btn-soft btn-sm" onclick="threadScreen('${sellerU||seller}')" data-tip="Open a message thread with this seller." title="Open a message thread with this seller.">Message seller</button>`
   + `</div>`;
   refreshTips();
 }
@@ -2889,8 +2879,9 @@ async function threadScreen(id){
     <div class="card" id="dm-thread" style="padding:12px 14px;min-height:200px"></div>
     <div class="dm-compose">
       <input class="input" id="dm-input" placeholder="Write a message…" autocomplete="off"
+        data-tip="Write a message to this seller." title="Write a message to this seller."
         onkeydown="if(event.key==='Enter'){event.preventDefault();dmSend()}">
-      <button class="btn btn-accent" onclick="dmSend()" data-tip="Send this message to them.">Send</button>
+      <button class="btn btn-accent" onclick="dmSend()" data-tip="Send this message to them." title="Send this message to them.">Send</button>
     </div>`;
   await dmLoad(true);
   CURRENT.dmTimer = setInterval(() => dmLoad(false), 4000);

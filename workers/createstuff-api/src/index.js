@@ -2092,6 +2092,12 @@ export default {
         if (missingNow.length) {
           return err(`This project is missing ${missingNow.join(", ")}, so the page would open broken. Build it again.`, 409);
         }
+        // Also verify the index.html is substantial (not a minimal/empty shell).
+        // This catches file sets saved via GitHub import or manual upload that
+        // bypassed the build pipeline's siteOk() gate.
+        if (!siteOk(files)) {
+          return err("The project's index.html is missing or too small to be a real page. Build the site first.", 409);
+        }
         const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
         const publishUrl = `${url.origin}/published/${projectId}/${idx ? idx.path : files[0].path}`;
         await env.DB.prepare(

@@ -27,9 +27,9 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
 <link rel="manifest" href="/manifest.webmanifest">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "CreateStuff", "alternateName": "CreateStuff — Build websites & apps with AI", "applicationCategory": "DesignApplication", "operatingSystem": "Web", "description": "Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Free tier.", "url": "https://createstuff.ai", "image": "https://createstuff.ai/og.png", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.8", "ratingCount": "1263"}, "publisher": {"@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai"}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "CreateStuff", "alternateName": "CreateStuff — Build websites & apps with AI", "applicationCategory": "DesignApplication", "operatingSystem": "Web", "description": "Describe an app and CreateStuff writes every file, previews it live and publishes it to a real URL — from your phone. Free tier.", "url": "https://createstuff.ai", "image": "https://createstuff.ai/og.png", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "publisher": {"@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai"}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "CreateStuff", "url": "https://createstuff.ai", "logo": {"@type": "ImageObject", "url": "https://createstuff.ai/icon.svg"}}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is CreateStuff.ai?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff is an AI app builder. You describe what you want, the model writes real HTML, CSS and JavaScript files, you preview them live, and you publish to a public URL — all from a phone or desktop browser."}}, {"@type": "Question", "name": "Can I build apps from my phone?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. CreateStuff is designed phone-first. The editor, preview and publish flow work in a mobile browser with no app install required."}}, {"@type": "Question", "name": "Can I import a GitHub repository?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Point CreateStuff at any public GitHub repository URL and it pulls the code so you can keep vibe coding on top of an existing project."}}, {"@type": "Question", "name": "How is CreateStuff different from Replit?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff focuses on generating and publishing a finished site in minutes with a guided step-by-step flow, including a free tier, rather than requiring you to manage a dev server and environment."}}, {"@type": "Question", "name": "Is CreateStuff free?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff has a free tier that lets you generate, preview and publish projects without a credit card."}}]}</script><!--SEO-END-->
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is CreateStuff.ai?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff is an AI app builder. You describe what you want, the Agent writes real HTML, CSS and JavaScript files, you preview them live, and you publish to a public URL — all from a phone or desktop browser."}}, {"@type": "Question", "name": "Can I build apps from my phone?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. CreateStuff is designed phone-first. The editor, preview and publish flow work in a mobile browser with no app install required."}}, {"@type": "Question", "name": "Can I import a GitHub repository?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Point CreateStuff at any public GitHub repository URL and it pulls the code so you can keep building on top of an existing project."}}, {"@type": "Question", "name": "How is CreateStuff different from Replit?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff focuses on generating and publishing a finished site with a guided step-by-step flow, including a free tier, rather than requiring you to manage a dev server and environment."}}, {"@type": "Question", "name": "Is CreateStuff free?", "acceptedAnswer": {"@type": "Answer", "text": "CreateStuff has a free tier that lets you generate, preview and publish projects without a credit card."}}]}</script><!--SEO-END-->
 <style>
 :root{
   --bg:#0f1117; --panel:#161a23; --panel2:#1c2130; --card:#1a1f2b; --ink:#e8eaf0; --mut:#8a91a3;
@@ -40,7 +40,9 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.45}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.45;overflow-x:hidden}
+img,iframe,pre{max-width:100%}
+.codearea{max-width:100%}
 h1,h2,h3{font-weight:800;letter-spacing:-.02em;margin:.2em 0}
 .wrap{max-width:1100px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 18px calc(70px + env(safe-area-inset-bottom))}
 .hidden{display:none!important}
@@ -130,26 +132,26 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
       <h1>CreateStuff</h1>
       <p>Describe what you want to build. The AI designs it, writes every file, previews it, and publishes it to the live web — free.</p>
       <div class="code-demo"><b>&gt;</b> "A landing page for my dog-walking startup, Fluffy Walks, with pricing, testimonials and a booking form."<br><br><span style="color:var(--good)">✓ 14 files created</span> · index.html · styles.css · app.js · booking.html ...<br><span style="color:var(--accent2)">✓ live at</span> <span style="color:var(--warn)">/published/…/public/index.html</span></div>
-      <div style="margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="openGuide()">🎬 Mode Guide — A to Z in 60s</button></div>
+      <div style="margin-top:14px"><button class="btn btn-ghost btn-sm" data-tip="Open the step by step guide that shows how to use this page." title="Open the step by step guide that shows how to use this page." onclick="openGuide()">Mode Guide — A to Z</button></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:center;margin:16px auto 4px">
-      <button class="chip on" id="auth-tab-login">Log in</button>
-      <button class="chip" id="auth-tab-signup">Create account</button>
+      <button class="chip on" id="auth-tab-login" data-tip="Show the log in form." title="Show the log in form.">Log in</button>
+      <button class="chip" id="auth-tab-signup" data-tip="Show the create account form." title="Show the create account form.">Create account</button>
     </div>
     <div class="card" style="max-width:480px;margin:0 auto">
       <div id="auth-login">
-        <label>Email</label><input class="input" id="l-email" type="email" placeholder="you@example.com" autocomplete="email">
-        <label>Password</label><input class="input" id="l-pass" type="password" placeholder="password" autocomplete="current-password">
+        <label>Email</label><input class="input" id="l-email" type="email" placeholder="you@example.com" autocomplete="email" data-tip="Type the email address you log in with." title="Type the email address you log in with.">
+        <label>Password</label><input class="input" id="l-pass" type="password" placeholder="password" autocomplete="current-password" data-tip="Type your account password." title="Type your account password.">
         <div style="height:12px"></div>
-        <button class="btn btn-primary" onclick="doLogin()">Log in</button>
+        <button class="btn btn-primary" onclick="doLogin()" data-tip="Log in to your account." title="Log in to your account.">Log in</button>
       </div>
       <div id="auth-signup" class="hidden">
-        <label>Name</label><input class="input" id="s-name" placeholder="Your name">
-        <label>Email</label><input class="input" id="s-email" type="email" placeholder="you@example.com">
-        <label>Password (6+ chars)</label><input class="input" id="s-pass" type="password" placeholder="password">
+        <label>Name</label><input class="input" id="s-name" placeholder="Your name" data-tip="Type your name for your new account." title="Type your name for your new account.">
+        <label>Email</label><input class="input" id="s-email" type="email" placeholder="you@example.com" data-tip="Type the email address for your new account." title="Type the email address for your new account.">
+        <label>Password (6+ chars)</label><input class="input" id="s-pass" type="password" placeholder="password" data-tip="Choose a password with at least 6 characters." title="Choose a password with at least 6 characters.">
         <div style="height:12px"></div>
-        <button class="btn btn-primary" onclick="doSignup()">Create your free account</button>
-        <p class="mut" style="margin-top:10px">Your projects and generated code persist in Cloudflare D1 + R2. No credit card needed.</p>
+        <button class="btn btn-primary" onclick="doSignup()" data-tip="Create a new free account." title="Create a new free account.">Create your free account</button>
+        <p class="mut" style="margin-top:10px">Your projects and generated code are saved to your account. No credit card needed.</p>
       </div>
     </div>
   </section>
@@ -161,8 +163,8 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
         <div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-weight:900;color:#fff">C</div>
         <div><h2 style="margin:0;font-size:18px" id="app-title">CreateStuff</h2><span class="mut" id="app-sub"></span></div>
       </div>
-      <button class="btn btn-soft btn-sm" onclick="openGuide()">🎬 Guide</button>
-      <button class="btn btn-soft btn-sm" onclick="logout()">Sign out</button>
+      <button class="btn btn-soft btn-sm" onclick="openGuide()" data-tip="Open the step by step guide that shows how to use this page." title="Open the step by step guide that shows how to use this page.">Guide</button>
+      <button class="btn btn-soft btn-sm" onclick="logout()" data-tip="Sign out of your account on this device." title="Sign out of your account on this device.">Sign out</button>
     </div>
     <div id="screen"></div>
   </section>
@@ -171,9 +173,9 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:20px 0 8px}
 <div class="toast" id="toast"></div>
 
 <nav class="tabbar hidden" id="tabbar">
-  <a data-v="dashboard" href="javascript:go('dashboard')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>My apps</a>
-  <a data-v="new" href="javascript:go('new')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New app</a>
-  <a data-v="about" href="javascript:go('about')"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 11v5M12 8h.01"/></svg>About</a>
+  <a data-v="dashboard" href="javascript:go('dashboard')" data-tip="See all the apps you have built." title="See all the apps you have built."><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>My apps</a>
+  <a data-v="new" href="javascript:go('new')" data-tip="Start building a new app from your idea." title="Start building a new app from your idea."><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New app</a>
+  <a data-v="about" href="javascript:go('about')" data-tip="Learn how this app builder works." title="Learn how this app builder works."><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 11v5M12 8h.01"/></svg>About</a>
 </nav>
 
 <script>
@@ -234,7 +236,7 @@ async function renderDash(el){
       <div class="card" style="text-align:center;padding:34px 20px">
         <h2 style="margin:0 0 8px">Start from an idea</h2>
         <p class="mut" style="margin:0 auto 16px;max-width:480px">Describe any website or app in plain words. The AI discovers your requirements, writes every file, and publishes it to a live URL.</p>
-        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')">✨ Build something new</button>
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')" data-tip="Start building a new app from your idea." title="Start building a new app from your idea.">Build something new</button>
       </div>
       ${projects.length?`<div style="display:flex;align-items:center;justify-content:space-between"><h3 style="margin:16px 0 4px">Your apps</h3><span class="mut">${projects.length} project${projects.length===1?"":"s"}</span></div><div class="pgrid">${projects.map(pc).join("")}</div>`:`
       <div class="card" style="text-align:center"><div class="spinner" style="margin-bottom:6px"></div></div>`}`;
@@ -267,21 +269,21 @@ function renderNew(el){
     <div class="card">
       <h3 style="margin-top:0">Tell the AI what to build</h3>
       <p class="mut" style="margin-top:0">A few words is enough — the AI will ask clarifying questions only if it needs to.</p>
-      <textarea class="input" id="np-idea" rows="4" placeholder="e.g. A clean landing page for my freelance photography business showing a portfolio grid, services, pricing and a contact form."></textarea>
+      <textarea class="input" id="np-idea" rows="4" placeholder="e.g. A clean landing page for my freelance photography business showing a portfolio grid, services, pricing and a contact form." data-tip="Type what you want your app to do." title="Type what you want your app to do."></textarea>
       <div class="toolbar" style="justify-content:space-between">
-        <span class="mut" style="font-size:12px">Free to build &amp; publish</span>
-        <button class="btn btn-primary btn-sm" style="width:auto" onclick="startBuild()">→ Build it</button>
+        <span class="mut" style="font-size:12px">Free tier to build &amp; publish</span>
+        <button class="btn btn-primary btn-sm" style="width:auto" onclick="startBuild()" data-tip="Build your app from the idea you typed." title="Build your app from the idea you typed.">Build it</button>
       </div>
       <div id="np-secondary" class="hidden" style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
         <p class="mut" style="margin-top:0">Or start with a starter project:</p>
         <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))">
-          ${["Personal Portfolio","Landing page","Online store","Blog","Restaurant site","Event ticketing"].map(t=>`<button class="btn btn-soft btn-sm" style="margin:0" onclick="quickProject('${t}')">📄 ${t}</button>`).join("")}
+          ${["Personal Portfolio","Landing page","Online store","Blog","Restaurant site","Event ticketing"].map(t=>`<button class="btn btn-soft btn-sm" style="margin:0" onclick="quickProject('${t}')" data-tip="Fill in the idea box with this example." title="Fill in the idea box with this example.">${t}</button>`).join("")}
         </div>
       </div>
     </div>`;
 }
 function quickProject(t){
-  const map = { "Personal Portfolio":"A modern one-page portfolio for a creative professional: hero, projects grid, testimonials, contact form.", "Landing page":"A high-converting landing page with a headline, feature grid, pricing and signup CTA.", "Online store":"A clean e-commerce storefront with a product grid, product pages, cart and checkout.", "Blog":"A minimal blog with a homepage listing posts, individual post pages and a subscribe form.", "Restaurant site":"A warm restaurant website with a menu, gallery, hours and reservation button.", "Event ticketing":"An event site with event details, seating tiers, prices and a buy-tickets flow." };
+  const map = { "Personal Portfolio":"A modern one-page portfolio for a creative professional: hero, projects grid, testimonials, contact form.", "Landing page":"A simple landing page with a headline, feature grid, pricing and signup CTA.", "Online store":"A clean e-commerce storefront with a product grid, product pages, cart and checkout.", "Blog":"A minimal blog with a homepage listing posts, individual post pages and a subscribe form.", "Restaurant site":"A warm restaurant website with a menu, gallery, hours and reservation button.", "Event ticketing":"An event site with event details, seating tiers, prices and a buy-tickets flow." };
   $("#np-idea").value = map[t] || t;
   $("#np-idea").focus();
   toast("Idea prefilled — hit Build");
@@ -333,28 +335,28 @@ async function renderStudio(){
       </div>
     </div>
     <div class="toolbar">
-      <button class="btn btn-primary btn-sm" onclick="buildFlow()">⚡ Build / rebuild with AI</button>
-      <button class="btn btn-soft btn-sm" onclick="modifyFlow()">✏️ Ask AI to modify</button>
-      <button class="btn btn-soft btn-sm" onclick="publishProject()">🚀 Publish live</button>
-      ${STATUS.publishUrl?`<a class="btn btn-soft btn-sm" href="${STATUS.publishUrl}" target="_blank">🔗 View live ↗</a>`:""}
+      <button class="btn btn-primary btn-sm" onclick="buildFlow()" data-tip="Ask the Agent to write all the files for this app." title="Ask the Agent to write all the files for this app.">Build / rebuild with Agent</button>
+      <button class="btn btn-soft btn-sm" onclick="modifyFlow()" data-tip="Ask the Agent to change this app." title="Ask the Agent to change this app.">Ask Agent to modify</button>
+      <button class="btn btn-soft btn-sm" onclick="publishProject()" data-tip="Put this app on a public web link." title="Put this app on a public web link.">Publish live</button>
+      ${STATUS.publishUrl?`<a class="btn btn-soft btn-sm" href="${STATUS.publishUrl}" target="_blank" data-tip="Open the public link for this app." title="Open the public link for this app.">View live</a>`:""}
     </div>
     <div id="studio-status"></div>
     ${STATUS.publishUrl?`
       <div class="card" style="text-align:center;border-color:var(--good)">
         <p class="mut" style="margin:0 0 8px">This app is published and open to everyone:</p>
-        <a style="font-family:var(--mono);color:var(--good);font-size:13px;word-break:break-all" href="${STATUS.publishUrl}" target="_blank">${escapeHtml(STATUS.publishUrl)}</a>
+        <a style="font-family:var(--mono);color:var(--good);font-size:13px;word-break:break-all" href="${STATUS.publishUrl}" target="_blank" data-tip="Open the public link for this app." title="Open the public link for this app.">${escapeHtml(STATUS.publishUrl)}</a>
         <div style="margin-top:12px"><iframe class="preview-frame" style="min-height:380px" src="${STATUS.publishUrl}"></iframe></div>
       </div>`:`
       <div class="card" style="text-align:center">
-        <p class="mut" style="margin:0">Not published yet. Generate your app, preview it, then hit <b style="color:var(--accent2)">🚀 Publish live</b> to get a public URL.</p>
+        <p class="mut" style="margin:0">Not published yet. Generate your app, preview it, then hit <b style="color:var(--accent2)">Publish live</b> to get a public URL.</p>
       </div>`}
     <div class="card">
       <h3 style="margin-top:0">Generated code (${displayFiles.length} file${displayFiles.length===1?"":"s"})</h3>
-      ${displayFiles.length?`<div class="tabrow" id="filetabs">${displayFiles.map((f,i)=>`<span class="${i===0?"on":""}" data-i="${i}">${escapeHtml(f.path.split("/").pop()||f.path)}</span>`).join("")}</div><div class="codearea" id="codearea">${escapeHtml((displayFiles[0]?.content||"").slice(0,12000))}</div>
+      ${displayFiles.length?`<div class="tabrow" id="filetabs">${displayFiles.map((f,i)=>`<span class="${i===0?"on":""}" data-i="${i}" data-tip="Show this file in the code box below." title="Show this file in the code box below.">${escapeHtml(f.path.split("/").pop()||f.path)}</span>`).join("")}</div><div class="codearea" id="codearea">${escapeHtml((displayFiles[0]?.content||"").slice(0,12000))}</div>
       <div class="toolbar" style="margin-top:8px">
-        <button class="btn btn-soft btn-sm" onclick="copyAllCode()">📋 Copy all files</button>
-        <button class="btn btn-soft btn-sm" onclick="openLivePreview()">👁️ Live preview</button>
-      </div>` : `<p class="mut" style="margin:0">No files yet — press <b style="color:var(--accent2)">⚡ Build with AI</b> to scaffold the whole project.</p>`}
+        <button class="btn btn-soft btn-sm" onclick="copyAllCode()" data-tip="Copy all the files to your clipboard." title="Copy all the files to your clipboard.">Copy all files</button>
+        <button class="btn btn-soft btn-sm" onclick="openLivePreview()" data-tip="Open a preview of your app in a new tab." title="Open a preview of your app in a new tab.">Live preview</button>
+      </div>` : `<p class="mut" style="margin:0">No files yet — press <b style="color:var(--accent2)">Build with Agent</b> to scaffold the whole project.</p>`}
     </div>`;
   if (displayFiles.length) {
     FILES = displayFiles;
@@ -420,18 +422,18 @@ async function pollStatus(){
 function buildFlow(){
   openSheet(`
     <h3 style="margin:0 0 2px">Build "${escapeHtml(PROJ?.name||"this")}"</h3>
-    <p class="mut" style="margin-top:0">The AI writes a full multi-file app from your idea. Real code, real files.</p>
+    <p class="mut" style="margin-top:0">The Agent writes a full multi-file app from your idea. Real code, real files.</p>
     <label>Your idea / plan</label>
-    <textarea class="input" id="bf-plan" rows="5" placeholder="${escapeHtml(PROJ?.description||"Describe the app to build…")}"></textarea>
+    <textarea class="input" id="bf-plan" rows="5" placeholder="${escapeHtml(PROJ?.description||"Describe the app to build…")}" data-tip="Type what you want the Agent to build." title="Type what you want the Agent to build."></textarea>
     <div style="height:10px"></div>
-    <button class="btn btn-primary" onclick="runBuild()">⚡ Generate project now</button>
+    <button class="btn btn-primary" onclick="runBuild()" data-tip="Ask the Agent to write all the files now." title="Ask the Agent to write all the files now.">Generate project now</button>
   `);
 }
 async function runBuild(){
   const plan = $("#bf-plan").value.trim() || PROJ.description;
   closeSheet();
   bus(true);
-  toast("Generating your app — this can take ~30 seconds…", 4000);
+  toast("Generating your app — this can take a little while…", 4000);
   try{
     const d = await api("/api/ai/generate", {method:"POST", body:JSON.stringify({ projectId: PROJ.id, plan })});
     if (d.ok === false) { toast(d.error||"Generation failed"); bus(false); return; }
@@ -456,8 +458,8 @@ function openResultsPreview(){
     <h3 style="margin:0 0 2px">Preview of your new app</h3>
     <p class="mut" style="margin-top:0">This is the real code the AI just wrote — refresh the page to see it again, or hit Publish for a public URL.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="closeSheet();publishProject()">🚀 Publish live</button>
-      <button class="btn btn-soft btn-sm" onclick="closeSheet()">Close preview</button>
+      <button class="btn btn-primary btn-sm" onclick="closeSheet();publishProject()" data-tip="Put this app on a public web link." title="Put this app on a public web link.">Publish live</button>
+      <button class="btn btn-soft btn-sm" onclick="closeSheet()" data-tip="Close this preview box." title="Close this preview box.">Close preview</button>
     </div>
     <div style="margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden">
       <div class="statusline" style="border-radius:0">public/index.html · ${(html.length/1024).toFixed(1)} KB</div>
@@ -466,12 +468,12 @@ function openResultsPreview(){
 }
 function modifyFlow(){
   openSheet(`
-    <h3 style="margin:0 0 2px">Ask the AI to change the app</h3>
-    <p class="mut" style="margin-top:0">Describe what to change — the AI rewrites the affected files.</p>
+    <h3 style="margin:0 0 2px">Ask the Agent to change the app</h3>
+    <p class="mut" style="margin-top:0">Describe what to change — the Agent rewrites the affected files.</p>
     <label>Change request</label>
-    <textarea class="input" id="mf-msg" rows="4" placeholder="e.g. Make the hero section bold and dark, add a testimonials row, and change the price to $49/mo"></textarea>
+    <textarea class="input" id="mf-msg" rows="4" placeholder="e.g. Make the hero section bold and dark, add a testimonials row, and change the price to $49/mo" data-tip="Type the change you want the Agent to make." title="Type the change you want the Agent to make."></textarea>
     <div style="height:10px"></div>
-    <button class="btn btn-primary" onclick="runModify()">✏️ Apply change</button>
+    <button class="btn btn-primary" onclick="runModify()" data-tip="Apply your change to the app files." title="Apply your change to the app files.">Apply change</button>
   `);
 }
 async function runModify(){
@@ -527,53 +529,53 @@ function renderAbout(el){
             <li style="margin-top:8px"><b style="color:var(--ink)">AI discovers</b> requirements — pages, features, style</li>
             <li style="margin-top:8px"><b style="color:var(--ink)">It generates</b> real HTML/CSS/JS files (checkpointed)</li>
             <li style="margin-top:8px"><b style="color:var(--ink)">You preview & modify</b> it with simple English edits</li>
-            <li style="margin-top:8px"><b style="color:var(--ink)">Publish</b> → gets a permanent, shareable URL</li>
+            <li style="margin-top:8px"><b style="color:var(--ink)">Publish</b> → gets a shareable URL</li>
           </ol>
         </div>
       </div>
       <div class="card" style="text-align:center;margin-top:14px">
-        <p class="mut" style="margin:0 0 10px">Everything runs free on Cloudflare Workers + D1 + R2. Your code is yours — export it anytime.</p>
-        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')">Build your first app →</button>
+        <p class="mut" style="margin:0 0 10px">Free tier included. Your code is yours — export it anytime.</p>
+        <button class="btn btn-primary btn-sm" style="width:auto;padding:13px 26px" onclick="go('new')" data-tip="Start building your first app." title="Start building your first app.">Build your first app</button>
         <div style="height:6px"></div>
-        <button class="btn btn-ghost btn-sm" style="width:auto;padding:10px 18px" onclick="openGuide()">▶ Run the A→Z Mode Guide</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto;padding:10px 18px" onclick="openGuide()" data-tip="Open the step by step guide that shows how to use this page." title="Open the step by step guide that shows how to use this page.">Run the A to Z Mode Guide</button>
       </div>
     </div>`;
 }
 
 /* ============ SHEET + boot ============ */
-function openSheet(html){ const el=document.createElement("div"); el.className="sheet"; el.id="sheet"; el.innerHTML=`<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()">Close</button></div>`; el.addEventListener("click",e=>{if(e.target===el)closeSheet()}); document.body.appendChild(el); }
+function openSheet(html){ const el=document.createElement("div"); el.className="sheet"; el.id="sheet"; el.innerHTML=`<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()" data-tip="Close this box." title="Close this box.">Close</button></div>`; el.addEventListener("click",e=>{if(e.target===el)closeSheet()}); document.body.appendChild(el); }
 function closeSheet(){ const s=$("#sheet"); if(s)s.remove(); }
 
 /* ============ MODE GUIDE (A→Z walkthrough) ============ */
 let gStep=0;
 const GUIDE=[
  { t:"Welcome", h:"Build any app — phone to live URL",
-   body:'<p class="mut" style="margin:8px 0">A quick A→Z tour of CreateStuff. <b style="color:var(--accent2)">Free forever</b> — no credit card, no install. Prefer your own AI budget? <b style="color:var(--accent2)">BYOK</b> lets you bring your own key.</p><div class="card" style="margin:4px 0;padding:12px"><b>In 60 seconds:</b><ol style="margin:6px 0 0;padding-left:18px;color:var(--mut)"><li>Create a free account</li><li>Describe an app idea in plain words</li><li>The AI writes every file</li><li>Preview it, then publish to a real URL</li></ol></div>',
-   label:"Start the tour →", run:()=>guideStep(1) },
+    body:'<p class="mut" style="margin:8px 0">A quick A to Z tour of CreateStuff. <b style="color:var(--accent2)">Free tier</b> — no credit card, no install.</p><div class="card" style="margin:4px 0;padding:12px"><b>In a few steps:</b><ol style="margin:6px 0 0;padding-left:18px;color:var(--mut)"><li>Create a free account</li><li>Describe an app idea in plain words</li><li>The Agent writes every file</li><li>Preview it, then publish to a real URL</li></ol></div>',
+    label:"Start the tour", run:()=>guideStep(1) },
  { t:"Sign up", h:"Create your free account",
    body:()=>TOKEN&&USER
      ? '<p class="mut" style="margin:8px 0">Signed in as <b style="color:var(--accent2)">'+escapeHtml(USER.name||USER.email||"you")+'</b> — your projects are saved in the cloud. Continue to building.</p>'
-     : '<label>Name</label><input class="input" id="g-name" placeholder="Your name"><label>Email</label><input class="input" id="g-email" type="email" placeholder="you@example.com"><label>Password (6+ chars)</label><input class="input" id="g-pass" type="password" placeholder="password"><p class="mut" style="margin:8px 0">Uses the real signup flow — projects persist in Cloudflare D1 + R2.</p>',
-   label:()=>TOKEN&&USER ? "Continue →" : "Create my free account →",
+      : '<label>Name</label><input class="input" id="g-name" placeholder="Your name" data-tip="Type your name for your new account." title="Type your name for your new account."><label>Email</label><input class="input" id="g-email" type="email" placeholder="you@example.com" data-tip="Type the email address for your new account." title="Type the email address for your new account."><label>Password (6+ chars)</label><input class="input" id="g-pass" type="password" placeholder="password" data-tip="Choose a password with at least 6 characters." title="Choose a password with at least 6 characters."><p class="mut" style="margin:8px 0">Uses the real signup flow — projects are saved to your account.</p>',
+    label:()=>TOKEN&&USER ? "Continue" : "Create my free account",
    run:guideSignup },
  { t:"New app", h:"Start a new app",
-   body:'<p class="mut" style="margin:8px 0">The <b style="color:var(--accent2)">＋ New app</b> tab in the bottom bar opens the ideas box — the home of every new build.</p><div class="card" style="margin:4px 0;padding:12px;font-family:var(--mono);font-size:13px;color:var(--mut)">Idea → Project → Files → Preview → URL</div>',
-   label:"Open the New app tab →", run:()=>{ go("new"); guideStep(3); } },
+    body:'<p class="mut" style="margin:8px 0">The <b style="color:var(--accent2)">New app</b> tab in the bottom bar opens the ideas box — the home of every new build.</p><div class="card" style="margin:4px 0;padding:12px;font-family:var(--mono);font-size:13px;color:var(--mut)">Idea to Project to Files to Preview to URL</div>',
+    label:"Open the New app tab", run:()=>{ go("new"); guideStep(3); } },
  { t:"Describe idea", h:"Describe what you want to build",
-   body:'<label>Your idea</label><textarea class="input" id="g-idea" rows="4" placeholder="e.g. A landing page for my dog-walking startup showing pricing, testimonials and a booking form."></textarea><p class="mut" style="margin:8px 0">Reuses the real <b style="color:var(--accent2)">Build</b> flow — the idea becomes your project.</p>',
-   label:"Create my project →", run:guideBuild },
- { t:"AI build", h:"The AI writes every file",
-   body:'<p class="mut" style="margin:8px 0">Press the button and the app calls the live <b style="color:var(--mono)">POST /api/ai/generate</b> endpoint. Real HTML, CSS &amp; JS are created and checkpointed.</p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag idle">ready</span><p class="mut" style="margin:8px 0 0">~30 seconds for a full multi-file app.</p></div>',
-   label:"⚡ Generate with AI", run:guideGenerate },
+    body:'<label>Your idea</label><textarea class="input" id="g-idea" rows="4" placeholder="e.g. A landing page for my dog-walking startup showing pricing, testimonials and a booking form." data-tip="Type what you want your app to do." title="Type what you want your app to do."></textarea><p class="mut" style="margin:8px 0">Reuses the real <b style="color:var(--accent2)">Build</b> flow — the idea becomes your project.</p>',
+    label:"Create my project", run:guideBuild },
+  { t:"AI build", h:"The Agent writes every file",
+    body:'<p class="mut" style="margin:8px 0">Press the button and the app builds your project. Real HTML, CSS and JS files are created and saved.</p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag idle">ready</span><p class="mut" style="margin:8px 0 0">Timing varies by project size.</p></div>',
+    label:"Generate with Agent", run:guideGenerate },
  { t:"Live preview", h:"See the app actually run",
-   body:'<p class="mut" style="margin:8px 0">The generated files open in a live preview — the exact code the AI wrote, running in your browser. Edit freely, then publish.</p>',
-   label:"Next · open live preview →", run:()=>{ openResultsPreview(); guideStep(6); } },
- { t:"Publish", h:"Publish to a real URL",
-   body:'<p class="mut" style="margin:8px 0">Reuses the existing <b style="color:var(--accent2)">🚀 Publish live</b> flow — it pushes your files and returns a permanent public URL.</p>',
-   label:"🚀 Publish to a real URL", run:guidePublish },
- { t:"Done", h:"You vibe-coded from your phone",
-   body:'<p class="mut" style="margin:8px 0">Free account → idea → AI-built files → live preview → real URL. <b style="color:var(--accent2)">Vibe code from your phone, anytime. 🎉</b></p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag completed">complete</span><p class="mut" style="margin:8px 0 0">Replay the guide anytime from 🎬 Mode Guide.</p></div>',
-   label:"Done ✓", run:closeGuide }
+    body:'<p class="mut" style="margin:8px 0">The generated files open in a live preview — the exact code the Agent wrote, running in your browser. Edit freely, then publish.</p>',
+    label:"Next, open live preview", run:()=>{ openResultsPreview(); guideStep(6); } },
+  { t:"Publish", h:"Publish to a real URL",
+    body:'<p class="mut" style="margin:8px 0">Reuses the existing <b style="color:var(--accent2)">Publish live</b> flow — it pushes your files and returns a public URL.</p>',
+    label:"Publish to a real URL", run:guidePublish },
+  { t:"Done", h:"You built an app from your phone",
+    body:'<p class="mut" style="margin:8px 0">Free account to idea to Agent-built files to live preview to real URL. <b style="color:var(--accent2)">Build from your phone, anytime.</b></p><div class="card" style="margin:4px 0;padding:12px;text-align:center"><span class="tag completed">complete</span><p class="mut" style="margin:8px 0 0">Replay the guide anytime from Mode Guide.</p></div>',
+    label:"Done", run:closeGuide }
 ];
 function openGuide(){ if($("#guide"))return; const el=document.createElement("div"); el.className="guide"; el.id="guide"; document.body.appendChild(el); gStep=0; guideRender(); }
 function closeGuide(){ const g=$("#guide"); if(g)g.remove(); }
@@ -584,11 +586,11 @@ function guideRender(){
   const body=typeof s.body==="function"?s.body():s.body;
   const label=typeof s.label==="function"?s.label():s.label||"Next →";
   g.innerHTML='<div class="box">'
-    +'<div class="ghead"><b style="font-size:15px">🎬 Mode Guide</b><div style="display:flex;align-items:center;gap:8px"><span class="pill">'+(gStep+1)+'/'+GUIDE.length+'</span><button class="btn btn-soft btn-sm" style="padding:6px 10px;margin:0" onclick="closeGuide()" aria-label="Close">✕</button></div></div>'
+    +'<div class="ghead"><b style="font-size:15px">Mode Guide</b><div style="display:flex;align-items:center;gap:8px"><span class="pill">'+(gStep+1)+'/'+GUIDE.length+'</span><button class="btn btn-soft btn-sm" style="padding:6px 10px;margin:0" onclick="closeGuide()" aria-label="Close" data-tip="Close this guide." title="Close this guide.">Close</button></div></div>'
     +'<div class="gbar"><i style="width:'+Math.round(gStep/(GUIDE.length-1)*100)+'%"></i></div>'
     +'<h3 style="margin:0 0 2px">'+s.h+'</h3><div style="margin-top:4px">'+body+'</div>'
-    +'<div class="gnav"><button class="btn btn-soft btn-sm" style="flex:0 0 auto;min-width:80px;'+(gStep===0?'opacity:.4;pointer-events:none':'')+'" onclick="guideStep('+(gStep-1)+')">← Back</button>'
-    +'<button class="btn btn-primary btn-sm" style="flex:1" onclick="guideRun()">'+label+'</button></div>'
+    +'<div class="gnav"><button class="btn btn-soft btn-sm" style="flex:0 0 auto;min-width:80px;'+(gStep===0?'opacity:.4;pointer-events:none':'')+'" onclick="guideStep('+(gStep-1)+')" data-tip="Go back to the last guide step." title="Go back to the last guide step.">Back</button>'
+    +'<button class="btn btn-primary btn-sm" style="flex:1" onclick="guideRun()" data-tip="Continue to the next guide step." title="Continue to the next guide step.">'+label+'</button></div>'
     +'</div>';
 }
 function guideRun(){ GUIDE[gStep].run(); }

@@ -35,12 +35,14 @@ function rpcError(id, code, message, data) {
 }
 
 function toolText(payload) {
-  const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+  const p = typeof payload === 'string' ? payload : { status: 'done', ...payload };
+  const text = typeof p === 'string' ? p : JSON.stringify(p, null, 2);
   return { content: [{ type: 'text', text }], isError: false };
 }
 
 function toolErr(payload) {
-  const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+  const p = typeof payload === 'string' ? payload : { status: 'failed', ...payload };
+  const text = typeof p === 'string' ? p : JSON.stringify(p, null, 2);
   return { content: [{ type: 'text', text }], isError: true };
 }
 
@@ -58,18 +60,54 @@ async function mapPool(items, limit, fn) {
   return results;
 }
 
-async function dispatchAgent(agent, prompt, timeoutMs) {
-  const { primary, fallback } = modelsForAgent(agent);
-  const chain = [...new Set([primary, fallback, 'default'])];
-  const attempts = [];
-  for (const model of chain) {
-    const r = await runModel(model, prompt, timeoutMs);
-    attempts.push({ model, ok: r.ok, ms: r.ms, error: r.error });
-    if (r.ok) {
-      return { agent: agent.id, name: agent.name, ok: true, model: r.model, requested: primary, degraded: r.model !== primary, ms: r.ms, output: r.output, attempts };
+function withTimeout(promise, ms, reason) {
+  return new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => reject(new Error(reason || 'timeout')), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolvePromise(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+function resolveJobTimeout(jobTimeoutMs, agent) {
+  return {
+    agent: agent?.id || 'unknown',
+    name: agent?.name || 'unknown',
+    ok: false,
+    status: 'timeout',
+    model: null,
+    requested: null,
+    attempts: [],
+    error: `job timed out after ${jobTimeoutMs}ms`,
+    reason: 'timeout',
+  };
+}
+
+async function dispatchAgent(agent, prompt, timeoutMs, perJobTimeoutMs) {
+  const jobTimeout = perJobTimeoutMs || timeoutMs * 4;
+  const jobPromise = (async () => {
+    const { primary, fallback } = modelsForAgent(agent);
+    const chain = [...new Set([primary, fallback, 'default'])];
+    const attempts = [];
+    for (const model of chain) {
+      const r = await runModel(model, prompt, timeoutMs);
+      attempts.push({ model, ok: r.ok, ms: r.ms, error: r.error });
+      if (r.ok) {
+        return { agent: agent.id, name: agent.name, ok: true, status: 'done', model: r.model, requested: primary, degraded: r.model !== primary, ms: r.ms, output: r.output, attempts };
+      }
+      if (r.error && /permission|ask|reject/i.test(r.error)) {
+        return { agent: agent.id, name: agent.name, ok: false, status: 'failed', model: r.model, requested: primary, attempts, error: `permission rejected: ${r.error}`, reason: 'permission_rejection' };
+      }
     }
+    const lastAttempt = attempts[attempts.length - 1];
+    return { agent: agent.id, name: agent.name, ok: false, status: 'failed', model: null, requested: primary, attempts, error: lastAttempt?.error || 'all models failed', reason: lastAttempt?.error ? lastAttempt.error : 'all_models_failed' };
+  })();
+  try {
+    return await withTimeout(jobPromise, jobTimeout, `job timed out after ${jobTimeout}ms`);
+  } catch (e) {
+    return resolveJobTimeout(jobTimeout, agent);
   }
-  return { agent: agent.id, name: agent.name, ok: false, model: null, requested: primary, attempts, error: 'all models failed' };
 }
 
 /* ── tool implementations ────────────────────────────────────────────────── */
@@ -122,19 +160,12 @@ const TOOLS = [
       const timeout = args.timeout_ms || HIVE.dispatch.probe_timeout_ms;
       const t0 = Date.now();
       const results = await mapPool(HIVE.agents, HIVE.dispatch.parallelism, (a) =>
-        dispatchAgent(a, `Reply with exactly one line and nothing else: "${a.name} READY · scope: ${a.workstreams.join(', ')}".`, timeout)
+        dispatchAgent(a, `Reply with exactly one line and nothing else: "${a.name} READY · scope: ${a.workstreams.join(', ')}".`, timeout, timeout * 4)
       );
       const wall = Date.now() - t0;
       const ok = results.filter((r) => r.ok).length;
       const primary = results.filter((r) => r.ok && !r.degraded).length;
-      return toolText({
-        total: results.length,
-        acked: ok,
-        on_primary_model: primary,
-        wall_ms: wall,
-        ready: ok === results.length,
-        results: results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, degraded: r.degraded || false, ms: r.ms, ack: (r.output || '').split('\n')[0] })),
-      });
+      return toolText({ status: ok === results.length ? 'done' : 'failed', total: results.length, acked: ok, on_primary_model: primary, wall_ms: wall, ready: ok === results.length, results: results.map((r) => ({ agent: r.agent, ok: r.ok, model: r.model, degraded: r.degraded || false, ms: r.ms, ack: (r.output || '').split('\n')[0] })) });
     },
   },
   {
@@ -157,14 +188,9 @@ const TOOLS = [
       if (!targets.length) return toolErr({ error: 'no matching agents', known: HIVE.agents.map((a) => a.id) });
       const timeout = args.timeout_ms || HIVE.dispatch.timeout_per_task_ms;
       const t0 = Date.now();
-      const results = await mapPool(targets, HIVE.dispatch.parallelism, (a) => dispatchAgent(a, args.prompt, timeout));
+      const results = await mapPool(targets, HIVE.dispatch.parallelism, (a) => dispatchAgent(a, args.prompt, timeout, timeout * 4));
       const wall = Date.now() - t0;
-      return toolText({
-        total: results.length,
-        ok: results.filter((r) => r.ok).length,
-        wall_ms: wall,
-        results,
-      });
+      return toolText({ status: 'done', total: results.length, ok: results.filter((r) => r.ok).length, wall_ms: wall, results });
     },
   },
   {
@@ -197,10 +223,10 @@ const TOOLS = [
       const timeout = args.timeout_ms || HIVE.dispatch.timeout_per_task_ms;
       const t0 = Date.now();
       const results = await mapPool(jobs, HIVE.dispatch.parallelism, (j) =>
-        dispatchAgent(HIVE.agents.find((a) => a.id === j.agent), j.prompt, timeout)
+        dispatchAgent(HIVE.agents.find((a) => a.id === j.agent), j.prompt, timeout, timeout * 4)
       );
       const wall = Date.now() - t0;
-      return toolText({ total: results.length, ok: results.filter((r) => r.ok).length, wall_ms: wall, results });
+      return toolText({ status: 'done', total: results.length, ok: results.filter((r) => r.ok).length, wall_ms: wall, results });
     },
   },
   {
@@ -219,7 +245,10 @@ const TOOLS = [
     async run(args) {
       const id = args.model.startsWith(MODEL_PREFIX) ? args.model.slice(MODEL_PREFIX.length) : args.model;
       if (!freeModelIds(HIVE).includes(id)) return toolErr({ error: 'not a verified free model', model: id, available: freeModelIds(HIVE) });
-      const r = await runModel(MODEL_PREFIX + id, args.prompt, args.timeout_ms || HIVE.dispatch.timeout_per_task_ms);
+      const jobTimeout = args.timeout_ms || HIVE.dispatch.timeout_per_task_ms;
+      const r = await withTimeout(runModel(MODEL_PREFIX + id, args.prompt, jobTimeout), jobTimeout * 2, `hive_run timed out after ${jobTimeout}ms`).catch((e) => ({ ok: false, model: id, error: e.message, output: '', ms: jobTimeout * 2, status: 'timeout', reason: 'timeout' }));
+      if (!r.status) r.status = r.ok ? 'done' : 'failed';
+      if (!r.reason && !r.ok) r.reason = r.error;
       return toolText(r);
     },
   },
@@ -262,7 +291,7 @@ async function handle(msg) {
         const out = await tool.run(params?.arguments || {});
         result(id, out);
       } catch (e) {
-        result(id, toolErr({ error: e.message, stack: String(e.stack || '').split('\n').slice(0, 4) }));
+        result(id, toolErr({ error: e.message, stack: String(e.stack || '').split('\n').slice(0, 4), status: 'failed' }));
       }
       return;
     }

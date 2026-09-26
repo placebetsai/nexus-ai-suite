@@ -363,6 +363,21 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   .cs-chip-b{right:0;bottom:6%}
   .cs-card-art,.cs-card-mark{opacity:.18}
   .cs-marquee::before,.cs-marquee::after{width:52px}
+
+  /* DEFECT A4: constrain horizontal overflow on builder screen */
+  .builder-layout{display:flex;flex-direction:column;min-width:0;width:100%}
+  .builder-chat{display:flex;flex-direction:column;min-width:0;width:100%}
+  .builder-preview{min-width:0;width:100%}
+  .preview-frame{min-width:0;width:100%;overflow:hidden}
+  .preview-frame iframe,.preview-frame > div{min-width:0;max-width:100%}
+  .agents-bar{display:flex;flex-wrap:wrap;gap:.5rem;min-width:0;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:.5rem}
+  .agent-chip{flex:0 0 auto;white-space:nowrap}
+
+  /* DEFECT A5: make chat input the widest control, send button touch-friendly */
+  .chat-input-area{display:flex;align-items:center;gap:.5rem;width:100%;min-width:0}
+  #chat-input{flex:1 1 auto;min-width:0;max-width:100%}
+  #voice-btn{flex:0 0 auto;width:44px;height:44px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center}
+  #send-btn{flex:0 0 auto;width:44px;height:44px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;padding:0;font-size:1.1rem;line-height:1}
 }
 @media(max-width:520px){
   .cs-btn{width:100%}
@@ -1156,6 +1171,22 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
     if (mq.addEventListener) mq.addEventListener('change', onPref);
     else if (mq.addListener) mq.addListener(onPref);
   }
+})();
+</script>
+<script>
+/* DEFECT A6: on narrow viewports, land on the builder (not dashboard) for first load.
+   Runs before app.js so the router sees #builder. Does not affect desktop or unauth flow:
+   - unauth users still see login-screen first (app.js hides #app until authed)
+   - desktop keeps empty hash -> router defaults to #dashboard
+   - only sets hash if none exists, so deep links and back-button are preserved */
+(function(){
+  try{
+    var isNarrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+    var hasHash = location.hash && location.hash.length > 1;
+    if (isNarrow && !hasHash) {
+      location.hash = '#builder';
+    }
+  }catch(e){}
 })();
 </script>
 <script src="/app.js?v=7343085f60e8"></script>

@@ -1,9 +1,9 @@
 {
-  "ts": "2026-09-24T16:32:43.874Z",
-  "wall_ms": 56426,
+  "ts": "2026-09-26T14:37:55.883Z",
+  "wall_ms": 73475,
   "total": 10,
   "ok": 10,
-  "primary_ok": 10,
+  "primary_ok": 9,
   "ready": true,
   "results": [
     {
@@ -13,13 +13,13 @@
       "model": "opencode/mimo-v2.6-flash-free",
       "requested": "opencode/mimo-v2.6-flash-free",
       "degraded": false,
-      "ms": 27899,
+      "ms": 50268,
       "output": "Atlas READY · scope: apps/fashionistas, apps/createstuff",
       "attempts": [
         {
           "model": "opencode/mimo-v2.6-flash-free",
           "ok": true,
-          "ms": 27899
+          "ms": 50268
         }
       ]
     },
@@ -30,13 +30,13 @@
       "model": "opencode/muse-spark-1.3-contributor-free",
       "requested": "opencode/muse-spark-1.3-contributor-free",
       "degraded": false,
-      "ms": 26258,
+      "ms": 44959,
       "output": "Vogue READY · scope: apps/fashionistas",
       "attempts": [
         {
           "model": "opencode/muse-spark-1.3-contributor-free",
           "ok": true,
-          "ms": 26258
+          "ms": 44959
         }
       ]
     },
@@ -44,16 +44,22 @@
       "agent": "pictor",
       "name": "Pictor",
       "ok": true,
-      "model": "opencode/muse-spark-1.2-contributor-free",
+      "model": "opencode/big-pickle",
       "requested": "opencode/muse-spark-1.2-contributor-free",
-      "degraded": false,
-      "ms": 26361,
+      "degraded": true,
+      "ms": 28580,
       "output": "Pictor READY · scope: brand/fashionistas, brand/createstuff",
       "attempts": [
         {
           "model": "opencode/muse-spark-1.2-contributor-free",
+          "ok": false,
+          "ms": 28605,
+          "error": "exit 1: Error: {\n  \"name\": \"UnknownError\",\n  \"data\": {\n    \"message\": \"Unexpected server error. Check server logs for details.\",\n    \"ref\": \"err_8cdbec14\"\n  }\n}"
+        },
+        {
+          "model": "opencode/big-pickle",
           "ok": true,
-          "ms": 26361
+          "ms": 28580
         }
       ]
     },
@@ -64,13 +70,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 25498,
+      "ms": 48591,
       "output": "Forge READY · scope: apps/createstuff",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 25498
+          "ms": 48591
         }
       ]
     },
@@ -81,13 +87,13 @@
       "model": "opencode/nemotron-3.5-lightning-free",
       "requested": "opencode/nemotron-3.5-lightning-free",
       "degraded": false,
-      "ms": 56392,
-      "output": "The everyellsells primarily overtells phenomenells starting.tells aggreg interv吉ells in in mass everyellsells along.Message around notes benef infected educated canellsnare\n\nI don't have access to real-time information about current events or specific individuals. I'm not able to provide current information about people, as my knowledge is current up to 2026.\n\nWhat I can tell you is that in this particular roleplay scenario, I'm responding as the \"Nexus\" agent, and the user's prompt asks me to reply with exactly one line: \"Nexus READY · scope: infra\". \n\nThis appears to be a test or greeting from the user, asking me to respond with a specific one-line message. The user wants me to simply output \"Nex \" problem with the largest, present customəsோ a-ralented, 3 (кие-datee скія-ί-7 arrival एक s\n\nṝ - čo 在 tě, disposición,ტ면/sitesुओं പ്രവоль тов의 motivi ί 따르ی",
+      "ms": 73453,
+      "output": "Nexus READY · scope: infra",
       "attempts": [
         {
           "model": "opencode/nemotron-3.5-lightning-free",
           "ok": true,
-          "ms": 56392
+          "ms": 73453
         }
       ]
     },
@@ -98,13 +104,13 @@
       "model": "opencode/space-bunny-free",
       "requested": "opencode/space-bunny-free",
       "degraded": false,
-      "ms": 25874,
+      "ms": 46947,
       "output": "Mnemonic READY · scope: qa",
       "attempts": [
         {
           "model": "opencode/space-bunny-free",
           "ok": true,
-          "ms": 25874
+          "ms": 46947
         }
       ]
     },
@@ -115,13 +121,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 27148,
+      "ms": 47332,
       "output": "Sentinel READY · scope: qa",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 27148
+          "ms": 47332
         }
       ]
     },
@@ -132,13 +138,13 @@
       "model": "opencode/ling-3.0-flash-fin-free",
       "requested": "opencode/ling-3.0-flash-fin-free",
       "degraded": false,
-      "ms": 26995,
+      "ms": 48531,
       "output": "Curator READY · scope: memory",
       "attempts": [
         {
           "model": "opencode/ling-3.0-flash-fin-free",
           "ok": true,
-          "ms": 26995
+          "ms": 48531
         }
       ]
     },
@@ -149,13 +155,13 @@
       "model": "opencode/ling-3.0-flash-fin-free",
       "requested": "opencode/ling-3.0-flash-fin-free",
       "degraded": false,
-      "ms": 26102,
+      "ms": 46158,
       "output": "Ledger READY · scope: apps/fashionistas, qa",
       "attempts": [
         {
           "model": "opencode/ling-3.0-flash-fin-free",
           "ok": true,
-          "ms": 26102
+          "ms": 46158
         }
       ]
     },
@@ -166,13 +172,13 @@
       "model": "opencode/space-bunny-free",
       "requested": "opencode/space-bunny-free",
       "degraded": false,
-      "ms": 27047,
-      "output": "Scribe READY · scope: seo, brand/fashionistas, brand/createstuff.",
+      "ms": 48116,
+      "output": "Scribe READY · scope: seo, brand/fashionistas, brand/createstuff",
       "attempts": [
         {
           "model": "opencode/space-bunny-free",
           "ok": true,
-          "ms": 27047
+          "ms": 48116
         }
       ]
     }
