@@ -234,7 +234,7 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 | Camera capture | embedder auto-denies `getUserMedia` (`NotAllowedError`) — stays **untested** |
 | Workers AI daily quota (10,000 neurons) | exhausted until ~20:00 UTC |
 | `quick-tunnel` hostname | random per restart → `HIVE_URL` must be re-set on both workers after any restart |
-| `fashionistas-api` redeploy | needs a deploy token with D1 scope |
+| `fashionistas-api` redeploy | works with `CF_API_TOKEN` via `./deploy.sh worker` (verified 2026-09-26, version 5df1dd0b); only D1 SQL (`d1 execute`) is blocked |
 
 ---
 

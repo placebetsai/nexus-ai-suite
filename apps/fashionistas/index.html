@@ -832,6 +832,10 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
   color-mix(in srgb,var(--card) 86%,transparent) 44%,
   color-mix(in srgb,var(--card) 34%,transparent) 100%)}
 .hero-mono{position:absolute;right:-30px;bottom:-46px;width:190px;height:190px;opacity:.14;animation:monoSpin 40s linear infinite;pointer-events:none}
+/* The legacy .hero rule above sets color:#fff for the gradient home banner;
+   art heroes sit on a light scrim, so their text must follow the theme ink. */
+.hero:has(.hero-art){color:var(--ink);background:var(--card)}
+textarea.input{font-family:inherit}
 .hero-in{position:relative;z-index:2;padding:20px 18px 18px}
 .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:9px}
 .hero-eyebrow::before{content:"";width:16px;height:1.6px;background:var(--grad);border-radius:2px;animation:ruleGrow .7s cubic-bezier(.2,.9,.25,1) backwards}
@@ -1869,7 +1873,7 @@ function mapOpenForm(){
       <input class="input" id="pu-addr" autocomplete="street-address" maxlength="200" placeholder="12 Market Street" data-tip="Where people physically turn up. Street or venue, not your home unless it is one.">
       <div class="two">
         <div><label>Town / city</label><input class="input" id="pu-city" autocomplete="address-level2" maxlength="80" placeholder="Bristol"></div>
-        <div><label>Postcode</label><input class="input" id="pu-post" autocomplete="postal-code" maxlength="40" placeholder="BS1 4DJ"></div>
+        <div><label>ZIP code</label><input class="input" id="pu-post" autocomplete="postal-code" maxlength="40" placeholder="e.g. 78701"></div>
       </div>
       <div class="two">
         <div><label>First day</label><input class="input" id="pu-from" type="date"></div>
@@ -2978,10 +2982,22 @@ function condFull(c){ return c ? c[0].toUpperCase()+c.slice(1) : ""; }
 
 function toListingForm(){
  const a = CURRENT.ai;
+ const brand = a.brand && !/^unknown/i.test(a.brand) ? a.brand : "";
+ const lo = Number(a.priceMin) || 0, hi = Number(a.priceMax) || lo;
+ // Middle of the AI's range, so the form matches the "$20 – $40" the seller just saw.
+ const mid = lo && hi ? Math.round((lo + hi) / 2) : (lo || hi || "");
+ const kind = String(a.type || "item").toLowerCase();
+ const desc = [
+   [a.color, brand, kind].filter(Boolean).join(" ").replace(/^./, (c) => c.toUpperCase()) + ".",
+   a.sizeHint ? "Size " + a.sizeHint + "." : "",
+   "Condition: " + (condFull(a.condition) || "Good") + ".",
+   a.note || ""
+ ].filter(Boolean).join(" ");
  renderListingForm({
- title: titleCase((a.brand && a.brand!=="Unknown" ? a.brand+" " : "") + (a.type || "Clothing item")),
+ title: titleCase((brand ? brand+" " : "") + (a.color ? a.color+" " : "") + (a.type || "Clothing item")),
  category: a.category || "Tops", condition: a.condition || "Good",
- priceMin: a.priceMin, priceMax: a.priceMax, sizeHint: a.sizeHint || "",
+ price: mid, brand, color: a.color || "", description: desc,
+ priceMin: undefined, priceMax: a.priceMax, sizeHint: a.sizeHint || "",
  _preview: a._preview, _b64: a._b64, _conf: a.confidence,
  });
 }
@@ -3061,10 +3077,10 @@ function renderListingForm(it){
   <legend>Where it ships from</legend>
   <p class="mut" style="margin:0 0 8px">Buyers see the town, never your street.</p>
   <div class="two">
-   <div><label>Town / city</label><input class="input" id="f-city" autocomplete="address-level2" value="${escapeAttr(it.ship_city||"")}" placeholder="e.g. Bristol"></div>
-   <div><label>Postcode</label><input class="input" id="f-postcode" autocomplete="postal-code" value="${escapeAttr(it.ship_postcode||"")}" placeholder="e.g. BS1 4DJ"></div>
+   <div><label>Town / city</label><input class="input" id="f-city" autocomplete="address-level2" value="${escapeAttr(it.ship_city||"")}" placeholder="e.g. Austin"></div>
+   <div><label>ZIP code</label><input class="input" id="f-postcode" autocomplete="postal-code" value="${escapeAttr(it.ship_postcode||"")}" placeholder="e.g. 78701"></div>
   </div>
-  <div><label>Country</label><input class="input" id="f-country" autocomplete="country-name" value="${escapeAttr(it.ship_country||"")}" placeholder="e.g. United Kingdom"></div>
+  <div><label>Country</label><input class="input" id="f-country" autocomplete="country-name" value="${escapeAttr(it.ship_country||"")}" placeholder="e.g. United States"></div>
   <label class="check" data-tip="Tick this if the buyer can collect from you instead of paying postage.">
    <input type="checkbox" id="f-pickup" ${it.local_pickup?"checked":""}> Buyer can collect in person
   </label>
@@ -3186,7 +3202,7 @@ async function openListing(id){
  </div>
  <div class="card">
  <h3 style="margin-top:0">Shops I've prepared it for</h3>
- ${platforms.length ? platforms.map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><b>${platformName(p.platform)}</b><span class="tag active">${p.status||"draft"}</span></div>`).join("") : `<p class="mut">Nothing prepared for a shop yet.</p>`}
+ ${platforms.length ? [...new Map(platforms.map(p=>[p.platform,p])).values()].map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><b>${platformName(p.platform)}</b><span class="tag active">${p.status||"draft"}</span></div>`).join("") : `<p class="mut">Nothing prepared for a shop yet.</p>`}
  </div>
  <button class="btn btn-danger btn-sm" style="width:100%" onclick="delListing(${id})" data-tip="Removes it for good.">Delete listing</button>`;
  const pick = $("#xl-pick");
@@ -3204,7 +3220,7 @@ function qualityBars(l){
  bars.push(["Title", Math.min(100, ((l.title||"").length/20)*100)]);
  bars.push(["Description", Math.min(100, ((l.description||"").length/100)*100)]);
  bars.push(["Price + size + condition", Math.min(100, ((l.price?25:0)+(l.size?25:0)+(l.condition?25:0)+(l.category?25:0)))]);
- return bars.map(([k,v])=>`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${k}</span><b>${v}%</b></div><bar><i style="width:${Math.max(3,v)}%"></i></bar></div>`).join("");
+ return bars.map(([k,v])=>`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${k}</span><b>${Math.round(v)}%</b></div><bar><i style="width:${Math.max(3,v)}%"></i></bar></div>`).join("");
 }
 function platformName(id){ return (S.markets||[]).find(m=>m.id===id)?.name || id; }
 function xlChecks(){ return [...document.querySelectorAll("#xl-pick input[type=checkbox]")]; }
@@ -4593,6 +4609,10 @@ else { $("#view-auth").classList.remove("hidden"); $("#view-app").classList.add(
    current = el;
  }
  function hide(){ current = null; if (bubble) bubble.classList.remove("on"); }
+ // A screen change removes the hovered element without any mouseout, which
+ // left the bubble stuck on screen; drop it as soon as its anchor is gone.
+ new MutationObserver(function(){ if (current && !document.body.contains(current)) hide(); })
+   .observe(document.body, { childList: true, subtree: true });
  function target(e){
    var n = e.target;
    return (n && n.nodeType === 1 && n.closest) ? n.closest("[data-tip]") : null;

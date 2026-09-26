@@ -339,6 +339,8 @@ async function rateLimit(env, request, bucket, limit = 30, windowSec = 60) {
 //   api:"full"   → we can create/update listings through their public API
 //   api:"deep"   → no listing API; we pre-fill a paste-ready draft + deep link
 //   feePct marked estimate where the platform publishes no public seller rate.
+// Removed 2026-09-26: Tradesy (closed 2023), Redbubble (print-on-demand, not
+// resale), Zalando and KicksCrew (not open to individual US sellers).
 const MARKETPLACES = [
   { id: "depop",     name: "Depop",          feePct: 10,    maxChar: 1100, api: "deep",  signup: "https://depop.com" },
   { id: "ebay",      name: "eBay",           feePct: 13.25, maxChar: 80,   api: "full",  signup: "https://www.ebay.com/lstng" },
@@ -355,13 +357,9 @@ const MARKETPLACES = [
   { id: "square",    name: "Square",         feePct: 2.6,   maxChar: 140,  api: "full",  signup: "https://squareup.com" },
   { id: "bigcommerce", name: "BigCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://www.bigcommerce.com" },
   { id: "woocommerce", name: "WooCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://woocommerce.com" },
-  { id: "tradesy",   name: "Tradesy",        feePct: 12,    maxChar: 80,   api: "deep",  signup: "https://www.tradesy.com", note: "estimate" },
   { id: "depop_alt", name: "Etsy Vintage",   feePct: 9.5,   maxChar: 140,  api: "deep",  signup: "https://www.etsy.com/market/vintage" },
-  { id: "kickscrew", name: "KicksCrew",      feePct: 10,    maxChar: 100,  api: "deep",  signup: "https://www.kickscrew.com", note: "estimate" },
   { id: "vestiaire", name: "Vestiaire Col.",  feePct: 15,    maxChar: 100,  api: "deep",  signup: "https://www.vestiairecollective.com", note: "estimate" },
   { id: "theRealReal", name: "The RealReal", feePct: 20,    maxChar: 100,  api: "deep",  signup: "https://www.therealreal.com", note: "estimate" },
-  { id: "redbubble", name: "Redbubble",      feePct: 0,     maxChar: 255,  api: "deep",  signup: "https://www.redbubble.com" },
-  { id: "zalando",   name: "Zalando",        feePct: 10,    maxChar: 100,  api: "deep",  signup: "https://www.zalando.de", note: "estimate" },
   { id: "depop_alt2", name: "eBay Vintage",  feePct: 13.25, maxChar: 80,   api: "deep",  signup: "https://www.ebay.com" },
   { id: "posh_alt",  name: "Mercari Shops",  feePct: 13.9,  maxChar: 60,   api: "deep",  signup: "https://www.mercari.com", note: "estimate" },
   // Our own storefront. 0% commission — a seller keeps the whole price, which
@@ -551,7 +549,14 @@ function chatSystem(mode, ctx) {
     "Answer the last message directly in plain, short sentences a first-time seller can follow — no jargon, no bullet-point walls. " +
     "Never write out a transcript or repeat the earlier messages back. " +
     "Never invent prices, postage or fee figures: if you do not know a number, say you do not know it. " +
-    "Keep the answer under 90 words unless the question genuinely needs more.";
+    "Keep the answer under 90 words unless the question genuinely needs more.\n" +
+    "FACTS ABOUT FASHIONISTAS (never contradict these):\n" +
+    "- Fashionistas is free. It takes no commission and no fee on any sale; the seller keeps the whole price when they sell here.\n" +
+    "- It does NOT connect to eBay, Depop, Poshmark or any other shop's account and never posts for you. " +
+    "The Lister writes a ready title, description and tags for each shop; you copy them, open that shop's app and paste.\n" +
+    "- Other shops charge their own fees (for example Depop 10%, eBay about 13.25%, Poshmark 20%, Mercari about 13.9%); the Sell screen shows what you keep on each.\n" +
+    "- Features: Photo (AI names the item and suggests a price), My clothes, Shop (buy from other sellers), Sell tools (fees, postage, pricing), Map (pop-up shops), Messages.\n" +
+    "- If asked about a feature not listed here, say it is not available yet.";
   const role =
     mode === "ideas"
       ? "\nYour job is IDEAS: brainstorm what to hunt for, item ideas, listing title angles, photo concepts and bundles to add."
