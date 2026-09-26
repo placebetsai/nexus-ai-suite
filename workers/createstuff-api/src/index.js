@@ -17,6 +17,11 @@
 //   POST /api/ai/publish  {projectId}       -> {publishUrl,checkpointId,state}
 //   GET  /published/:id/:path               -> file bytes
 //
+// Every generate/modify/build first runs the request classifier (stage 0). A
+// request this worker cannot carry out (log into an account, connect GitHub,
+// deploy to a host we hold no credentials for) is answered with one plain
+// paragraph and NO generated site; see the @classifier block below.
+//
 // NOTE app.js reads f.path in one place and f.file_path in another, so every
 // file object carries BOTH keys. Only one file list route exists in app.js but
 // it is used by two callers with different field names.
@@ -180,6 +185,23 @@ const CODE_MODELS = [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Every model call reports the tool it actually ran: name, endpoint, HTTP
+// status, milliseconds. Errors carry the same object so a stage can say which
+// endpoint answered badly instead of printing a canned sentence.
+function withTool(msg, tool) {
+  const e = new Error(msg);
+  e.tool = tool;
+  return e;
+}
+
+// One line of stage evidence: tool, endpoint, HTTP status, elapsed ms.
+// A call that never reached HTTP (rules, a Worker binding) reports HTTP n/a.
+function toolLine(t) {
+  if (!t) return "tool=none endpoint=none HTTP n/a 0ms";
+  const http = t.http === null || t.http === undefined ? "n/a" : String(t.http);
+  return `tool=${t.name || "unknown"} endpoint=${t.endpoint || "none"} HTTP ${http} ${Math.round(t.ms || 0)}ms`;
+}
+
 // One OpenAI-compatible call. `viaRelay` picks the Hive relay when configured.
 //
 // The relay is called ASYNCHRONOUSLY (start, then poll) rather than as one
@@ -189,12 +211,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // while a single generation takes 40-200s. A long-held connection cannot
 // survive either, so every hop stays short and we poll instead.
 async function openAiGen(env, model, system, user, maxTok, viaRelay) {
+  const t0 = Date.now();
   const headers = { "Content-Type": "application/json" };
   if (viaRelay && env.HIVE_TOKEN) headers.Authorization = "Bearer " + env.HIVE_TOKEN;
   const messages = [{ role: "system", content: system }, { role: "user", content: user }];
 
   if (viaRelay) {
     if (!env.HIVE_URL) throw new Error("hive relay not configured");
+    const relay = { name: "hive-relay", endpoint: env.HIVE_URL, http: null, ms: 0 };
     const start = await fetch(env.HIVE_URL, {
       method: "POST",
       headers,
@@ -205,11 +229,17 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
         deadline_ms: maxTok <= 1500 ? 45000 : 110000,
       }),
       signal: AbortSignal.timeout(20000),
+    }).catch((e) => {
+      relay.ms = Date.now() - t0;
+      throw withTool("hive unreachable: " + String((e && e.message) || e), relay);
     });
-    if (!start.ok) throw new Error("hive HTTP " + start.status + " on start");
+    relay.http = start.status;
+    relay.ms = Date.now() - t0;
+    if (!start.ok) throw withTool("hive HTTP " + start.status + " on start", relay);
     const s = await start.json();
-    if (!s.job_id) throw new Error("hive returned no job_id: " + JSON.stringify(s).slice(0, 120));
+    if (!s.job_id) throw withTool("hive returned no job_id: " + JSON.stringify(s).slice(0, 120), relay);
     const jobUrl = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "") + "/v1/jobs/" + s.job_id;
+    relay.endpoint = jobUrl;
 
     const budget = Date.now() + (maxTok <= 1500 ? 60000 : 125000);
     let last = "no poll yet";
@@ -218,35 +248,44 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
       let j;
       try {
         const g = await fetch(jobUrl, { headers, signal: AbortSignal.timeout(15000) });
+        relay.http = g.status;
+        relay.ms = Date.now() - t0;
         if (!g.ok) { last = "poll HTTP " + g.status; continue; }
         j = await g.json();
       } catch (e) { last = "poll failed: " + String((e && e.message) || e); continue; }
 
       if (j.status === "done") {
         const text = String(j.content || "").trim();
-        if (!text) throw new Error("hive job finished with empty content");
-        return { text, parsed: null, model: "hive/" + (j.model || model), backend: j.backend || "relay" };
+        if (!text) throw withTool("hive job finished with empty content", relay);
+        return { text, parsed: null, model: "hive/" + (j.model || model), backend: j.backend || "relay", tool: relay };
       }
-      if (j.status === "failed") throw new Error("hive job failed: " + String(j.error || "").slice(0, 220));
+      if (j.status === "failed") throw withTool("hive job failed: " + String(j.error || "").slice(0, 220), relay);
       last = "running for " + Math.round((Date.now() - (j.started || Date.now())) / 1000) + "s";
     }
-    throw new Error("hive job timed out after 150s (" + last + ")");
+    relay.ms = Date.now() - t0;
+    throw withTool("hive job timed out after 150s (" + last + ")", relay);
   }
 
   // Direct Zen — a safety net for when the relay is down. It must fail fast:
   // at 10 minutes it hung this Worker all the way into the 180s cap.
+  const direct = { name: "zen", endpoint: ZEN_URL, http: null, ms: 0 };
   const r = await fetch(ZEN_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({ model, messages, max_tokens: maxTok, stream: false }),
     signal: AbortSignal.timeout(15000),
+  }).catch((e) => {
+    direct.ms = Date.now() - t0;
+    throw withTool("zen unreachable: " + String((e && e.message) || e), direct);
   });
-  if (!r.ok) throw new Error("zen HTTP " + r.status);
-  const j = await r.json();
-  if (j && j.error) throw new Error("zen: " + String(j.error.message || "").slice(0, 120));
+  direct.http = r.status;
+  direct.ms = Date.now() - t0;
+  if (!r.ok) throw withTool("zen HTTP " + r.status, direct);
+  const j = await r.json().catch((e) => { throw withTool("zen body unreadable: " + String((e && e.message) || e), direct); });
+  if (j && j.error) throw withTool("zen: " + String(j.error.message || "").slice(0, 120), direct);
   const text = String((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "").trim();
-  if (!text) throw new Error("zen returned an empty response");
-  return { text, parsed: null, model: "zen/" + (j.model || model), backend: "direct" };
+  if (!text) throw withTool("zen returned an empty response", direct);
+  return { text, parsed: null, model: "zen/" + (j.model || model), backend: "direct", tool: direct };
 }
 
 const gen = async (env, system, user, maxTok = 8000) => {
@@ -263,17 +302,23 @@ const gen = async (env, system, user, maxTok = 8000) => {
   }
   // 3. Workers AI
   for (const model of CODE_MODELS) {
+    const t0 = Date.now();
+    const tool = { name: "workers-ai", endpoint: "cf://ai/" + model, http: null, ms: 0 };
     try {
       const r = await env.AI.run(model, {
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         max_tokens: maxTok,
       });
+      tool.ms = Date.now() - t0;
       const resp = r ? r.response : null;
-      if (Array.isArray(resp)) return { text: JSON.stringify(resp), parsed: resp, model };
+      if (Array.isArray(resp)) return { text: JSON.stringify(resp), parsed: resp, model, tool };
       const text = String(resp == null ? "" : resp).trim();
-      if (!text) { last = new Error(model + " returned an empty response"); continue; }
-      return { text, parsed: null, model };
-    } catch (e) { last = e; }
+      if (!text) { last = withTool(model + " returned an empty response", tool); continue; }
+      return { text, parsed: null, model, tool };
+    } catch (e) {
+      tool.ms = Date.now() - t0;
+      last = (e && e.tool) ? e : withTool(String((e && e.message) || e), tool);
+    }
   }
   throw last || new Error("no model available");
 };
@@ -359,6 +404,32 @@ function siteOk(files) {
 // Output-quality gate. The model is told not to emit boilerplate; this catches
 // the cases where it does anyway so the defect is visible in `notes` instead of
 // silently shipping a workout tracker with a contact form in it.
+// Files an HTML document links that were never written. CODE_SYS demands
+// index.html + styles.css + script.js, but a long answer can come back cut
+// short and extractFiles salvages whatever survived — which can be index.html
+// on its own. Publishing that ships a page whose stylesheet and script both
+// 404: it renders unstyled with no behaviour, and is reported to the user as a
+// success. Only real assets are counted, never links to other pages, so a nav
+// anchor or a section link can never fail a build.
+const ASSET_EXT = /\.(css|mjs|js|png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|json|xml|txt|pdf)$/i;
+function missingAssets(files) {
+  const list = Array.isArray(files) ? files : [];
+  const idx = list.find((f) => /(^|\/)index\.html?$/i.test(f.path));
+  if (!idx) return [];
+  const have = new Set(list.map((f) => String(f.path).replace(/^\.?\//, "")));
+  const out = [];
+  const re = /(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(String(idx.content || "")))) {
+    let r = String(m[1] || "").trim();
+    if (!r || /^(https?:|\/\/|data:|mailto:|tel:|javascript:|about:|blob:|#)/i.test(r)) continue;
+    r = r.split("#")[0].split("?")[0].replace(/^\.?\//, "");
+    if (!r || !ASSET_EXT.test(r)) continue;
+    if (!have.has(r) && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
+
 // Only high-confidence, low-false-positive checks are included.
 function qualityFlags(files, plan) {
   const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
@@ -513,10 +584,10 @@ OUTPUT FORMAT — output ONLY this array, no prose before or after, no markdown 
 // Workers AI roster as the writer, and the verifier in stage 3 is a rules
 // function that never calls a model at all.
 //
-// The planner is PURELY ADDITIVE. planAgent() returns null on any failure, and
-// the writer then receives exactly the prompt it received before multi-agent
-// existed — so a broken planner can only ever put us back on the old path, it
-// cannot make an output worse.
+// The planner is PURELY ADDITIVE. planAgent() reports spec=null on any
+// failure, and the writer then receives exactly the prompt it received before
+// multi-agent existed — so a broken planner can only ever put us back on the
+// old path, it cannot make an output worse.
 const PLAN_SYS = `You are the planner in a three-agent build pipeline: planner, writer, verifier. You write NO code. You turn one person's plain-English brief into a tight build spec that the writer must satisfy.
 
 Return plain text only - no JSON, no markdown fences, no preamble - in exactly this shape, under 130 words:
@@ -747,21 +818,31 @@ function injectStorageShim(files) {
   return 1;
 }
 
-// Returns {spec, model} or null. Never throws — a planner that fails, rambles,
-// or emits the wrong shape is simply reported as "no plan".
+// Returns {spec, model, tool, ms} always; `spec` is null when there is no
+// usable plan. Never throws — a planner that fails, rambles, or emits the
+// wrong shape is reported as "no plan" together with the tool that produced
+// it, so the stage message can name the endpoint and the HTTP status instead
+// of printing a canned sentence.
 async function planAgent(env, plan) {
+  const t0 = Date.now();
   try {
     const r = await gen(env, PLAN_SYS, String(plan || "").slice(0, 4000), 700);
     const spec = String((r && r.text) || "").trim();
+    const tool = (r && r.tool) || null;
+    const ms = (tool && tool.ms) || Date.now() - t0;
     // Reject junk rather than feed it to the writer: too short, too long (the
     // model ignored its word cap), or a file array instead of a spec.
-    if (spec.length < 60 || spec.length > 2600) return null;
-    if (/^\s*[\[{]/.test(spec)) return null;
-    if (!/WHAT:/i.test(spec)) return null;
-    return { spec, model: r.model };
+    if (spec.length < 60 || spec.length > 2600)
+      return { spec: null, model: r.model, tool, ms, why: `plan was ${spec.length} characters, not 60-2600` };
+    if (/^\s*[\[{]/.test(spec)) return { spec: null, model: r.model, tool, ms, why: "plan looked like data, not a spec" };
+    if (!/WHAT:/i.test(spec)) return { spec: null, model: r.model, tool, ms, why: "plan had no WHAT line" };
+    return { spec, model: r.model, tool, ms };
   } catch (e) {
     console.warn("plan-agent failed: " + (e && e.message));
-    return null;
+    return {
+      spec: null, model: null, tool: (e && e.tool) || null, ms: Date.now() - t0,
+      why: String((e && e.message) || e).slice(0, 160),
+    };
   }
 }
 
@@ -779,7 +860,7 @@ Two hard constraints:
 
 Output the entire corrected document starting with <!DOCTYPE html>. Output HTML only: no prose, no explanation, no markdown fences, no code block markers.`;
 
-// Returns {files, fixed, left, model} or null. Never throws. Any refusal,
+// Returns {files, fixed, left, model, tool} or null. Never throws. Any refusal,
 // truncated output, or non-improving result returns null and leaves the build
 // byte-for-byte as the writer produced it.
 async function repairAgent(env, files, flags, plan) {
@@ -814,7 +895,7 @@ async function repairAgent(env, files, flags, plan) {
     // The repair must actually clear defects. If it cleared none, the original
     // writer output was better — keep it.
     if (after.length >= fixed) return null;
-    return { files: copy, fixed: fixed - after.length, left: after, model: g.model };
+    return { files: copy, fixed: fixed - after.length, left: after, model: g.model, tool: g.tool };
   } catch (e) {
     console.warn("repair-agent failed: " + (e && e.message));
     return null;
@@ -831,6 +912,286 @@ async function failBuild(env, id, e) {
       id
     ).run();
   } catch {}
+}
+
+// ── STAGE 0/3 · REQUEST CLASSIFIER ──────────────────────────────────────
+// The Hive used to answer every sentence with a generated site, including
+// sentences this worker cannot carry out: "connect my github account",
+// "log into my stripe account", "deploy this to vercel". The label "Planner"
+// over a canned line was theatre — no tool ran before the writer.
+//
+// This gate runs BEFORE planAgent() and decides {"kind":"build"} or
+// {"kind":"not_build"}. For not_build it supplies the reply verbatim: one
+// plain paragraph that says what it cannot do, what it can do instead, and
+// asks one short question. It never returns a website.
+//
+// Two paths, in this order:
+//   1. keyword — deterministic, no model, no network, ~0ms. This is the path
+//      that must keep working on its own: if the model path is unavailable,
+//      slow, or returns junk, the keyword result IS the answer.
+//   2. model — consulted ONLY when the keyword path is not confident (no
+//      signal either way). See classifyWithModel() below the block.
+//
+// The block between the markers is extracted verbatim by the regression
+// harness (/tmp/opencode/csagent/test.mjs) and imported as its own module, so
+// the test always exercises the shipped code instead of a copy. Everything
+// inside must stay self-contained: no calls to gen(), fetch, env or any
+// helper declared outside the markers.
+// @classifier:start
+const REPLY_MAX = 320;
+
+// The explicit capability list. It is the contract the not_build replies are
+// written against and the facts the model path is told to repeat.
+const CAPABILITIES = {
+  can: [
+    "plan a site",
+    "write the files",
+    "preview it",
+    "publish it to a web address",
+    "read a project's files back",
+    "explain what I did",
+    "hand over a download ZIP",
+  ],
+  cannot: [
+    "log into GitHub or any other account",
+    "connect an external account",
+    "deploy to third parties I hold no credentials for",
+  ],
+};
+
+// Fallback reply: built from the capability list itself, so the list cannot
+// drift from what the user is told. 299 characters as written, 21 under the
+// 320 cap.
+const GENERIC_REPLY =
+  `I cannot ${CAPABILITIES.cannot.join(", ")}. ` +
+  `I can ${CAPABILITIES.can.join(", ")}. ` +
+  "Want a site instead?";
+
+const REPLY_GIT =
+  "I cannot log into {svc} from here or push code to your repo. " +
+  "I can build the site, give you a download ZIP and a live web address, " +
+  "and you paste it into {svc} yourself. Want that?";
+const REPLY_ACCOUNT =
+  "I cannot log into {svc} from here or handle your password - I hold no credentials for it. " +
+  "I can build the page that uses {svc} and hand you a download ZIP plus a live address " +
+  "to finish the setup. Want that?";
+const REPLY_CONNECT =
+  "I cannot connect an outside account from here - I hold no credentials for it. " +
+  "I can build the site, give you a download ZIP and a live address, " +
+  "and you make the connection yourself. Want that?";
+const REPLY_DEPLOY =
+  "I cannot deploy to Vercel, Netlify or any other host I hold no credentials for. " +
+  "I can publish the site at a live address here and give you a download ZIP, " +
+  "and you deploy it from there. Want me to build it?";
+const REPLY_REPO =
+  "I cannot push, clone or merge anything in your repository from here. " +
+  "I can build the site, give you a download ZIP and a live address, " +
+  "and you commit it yourself. Want that?";
+const REPLY_CREDENTIALS =
+  "I cannot read, store or send your API keys, passwords or tokens. " +
+  "I can build the site that uses them and hand you a download ZIP and a live address. " +
+  "Want that?";
+
+const GIT_HOSTS = new Set(["github", "gitlab", "bitbucket"]);
+const SERVICE_DISPLAY = {
+  github: "GitHub", gitlab: "GitLab", bitbucket: "Bitbucket", stripe: "Stripe",
+  paypal: "PayPal", gmail: "Gmail", google: "Google", shopify: "Shopify",
+  discord: "Discord", slack: "Slack", twitter: "Twitter", instagram: "Instagram",
+  linkedin: "LinkedIn", facebook: "Facebook", aws: "AWS", azure: "Azure",
+  firebase: "Firebase", supabase: "Supabase", twitch: "Twitch", notion: "Notion",
+  dropbox: "Dropbox", amazon: "Amazon", salesforce: "Salesforce", figma: "Figma",
+};
+const SERVICES = Object.keys(SERVICE_DISPLAY);
+
+// Emoji, pictographs, flags and zero-width characters. The replies must read
+// the same in a terminal, a phone and a screen reader.
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}\u{FE0E}\u{FE0F}\u{200B}-\u{200D}\u{FEFF}]/gu;
+
+// Normalises any reply (keyword or model) to one plain paragraph of at most
+// REPLY_MAX characters with no markup and no emoji.
+function cleanReply(s) {
+  let out = s == null ? "" : String(s);
+  out = out.replace(/<[^>]*>/g, " ");
+  out = out.replace(EMOJI, "");
+  out = out.replace(/\s+/g, " ").trim();
+  if (out.length > REPLY_MAX) {
+    out = out.slice(0, REPLY_MAX - 1);
+    const cut = out.lastIndexOf(" ");
+    if (cut > 80) out = out.slice(0, cut);
+    out = out.replace(/[,;:\s]+$/, "");
+    if (!/[.!?]$/.test(out)) out += ".";
+  }
+  return out;
+}
+
+// A sentence that asks for a site/app outright wins: the user asked for a
+// build even if the sentence also mentions an account.
+const BUILD_REQUEST =
+  /\b(?:build|make|create|design|generate|produce|ship|launch|start|write|redesign|put\s+together|spin\s+up|build\s+out)\b[^.?!]{0,70}\b(?:website|web\s?site|web\s?page|webpage|landing\s?page|site|page|app|application|project|dashboard|tool|portfolio|shop|store|storefront|blog|platform|system|game|forum|marketplace)\b/;
+
+// A site word with no request verb ("i need a website") is still a build, but
+// only after the not_build rules have had their say.
+const BUILD_NOUN =
+  /\b(?:website|web\s?site|landing\s?page|webpage|web\s?page|online\s+shop|online\s+store)\b/;
+
+// Rule 1 — connecting or linking something outside this worker.
+const CONNECT_ACCOUNT =
+  /\b(?:connect|link|hook\s*up|sync|attach|integrate|authori[sz]e|authenticate|pair\s*up)\b[^.?!]{0,60}\b(?:github|gitlab|bitbucket|stripe|paypal|gmail|google|shopify|discord|slack|twitter|instagram|linkedin|facebook|aws|azure|firebase|supabase|oauth|account|repo|repository|credentials?)\b/;
+
+// Rule 2 — signing in somewhere. The verb alone is not enough: "a log in
+// button for my bakery site" is a build, so a second pattern must place an
+// account, a credential or a named service next to it.
+const LOGIN_VERB =
+  /\b(?:log\s*in(?:to|on\s+to)?|login|sign\s*in(?:to|on\s+to)?|sign\s+into|log\s+on\s+to)\b/;
+const LOGIN_TARGET =
+  /\b(?:my|your|our|the|an?)\s+(?:[\w-]+\s+){0,2}(?:account|credentials?|password|dashboard|portal|admin|panel|bank)\b|\b(?:github|gitlab|bitbucket|stripe|paypal|gmail|shopify|aws|salesforce|quickbooks)\b/;
+
+// Rule 3 — deploying to a host we hold no credentials for.
+const DEPLOY_THIRD_PARTY =
+  /\b(?:deploy|push|ship|publish|host|mirror|release)\b[^.?!]{0,40}\b(?:to|onto|into|on)\b[^.?!]{0,40}\b(?:vercel|netlify|heroku|render|aws|azure|gcp|google\s+cloud|cloudflare\s+pages|github\s+pages|digitalocean|firebase|surge|neocities|my\s+own\s+server|vps)\b/;
+
+// Rule 4 — git operations on a repository.
+const REPO_VERB = /\b(?:push|commit|merge|clone|fork|rebase|cherry-?pick|pull\s+request|open\s+a\s+pr|stash)\b/;
+const REPO_TARGET =
+  /\b(?:repo|repository|branch|main|master|github|gitlab|bitbucket|pr|upstream)\b|\b(?:push|commit)\s+(?:this|it|my\s+code|everything)\b/;
+
+// Rule 5 — asking for secrets. Needs both halves so "a password manager" and
+// "a log in button" stay builds.
+const SECRET_WORD = /\b(?:api[ -]?key|access\s+token|client\s+secret|credentials?|password|secret\s+key|private\s+key|two-factor|2fa)\b/;
+const SECRET_CONTEXT = /\b(?:my|your|our|the|give|find|show|read|retrieve|share|enter|check|store|save|send)\b/;
+
+const NOT_BUILD_RULES = [
+  { id: "connect-account", re: CONNECT_ACCOUNT },
+  { id: "login-account", all: [LOGIN_VERB, LOGIN_TARGET] },
+  { id: "deploy-third-party", re: DEPLOY_THIRD_PARTY },
+  { id: "repo-operation", all: [REPO_VERB, REPO_TARGET] },
+  { id: "credentials", all: [SECRET_WORD, SECRET_CONTEXT] },
+];
+
+function ruleFires(rule, low) {
+  return rule.all ? rule.all.every((re) => re.test(low)) : rule.re.test(low);
+}
+
+// Earliest named service in the text, so "log into my stripe account" can
+// name Stripe instead of saying "that account".
+function findService(low) {
+  let earliest = null;
+  let at = Infinity;
+  for (const s of SERVICES) {
+    const m = new RegExp("\\b" + s + "\\b").exec(low);
+    if (m && m.index < at) { at = m.index; earliest = s; }
+  }
+  return earliest;
+}
+
+function replyFor(ruleId, low) {
+  if (ruleId === "deploy-third-party") return cleanReply(REPLY_DEPLOY);
+  if (ruleId === "credentials") return cleanReply(REPLY_CREDENTIALS);
+  if (ruleId === "repo-operation") return cleanReply(REPLY_REPO);
+  const svc = findService(low);
+  if (svc && GIT_HOSTS.has(svc)) return cleanReply(REPLY_GIT.replace(/\{svc\}/g, SERVICE_DISPLAY[svc]));
+  if (svc) return cleanReply(REPLY_ACCOUNT.replace(/\{svc\}/g, SERVICE_DISPLAY[svc]));
+  if (ruleId === "connect-account") return cleanReply(REPLY_CONNECT);
+  return GENERIC_REPLY;
+}
+
+// The keyword path. Returns {kind, confident, reply, rule}:
+//   kind        "build" | "not_build"
+//   confident   true when a rule matched and no model call is needed
+//   reply       the exact paragraph to send back ("" for kind "build")
+//   rule        which rule decided, for the stage log
+// An empty message is a build: never block someone who sent nothing.
+function classifyRequest(raw) {
+  const text = raw == null ? "" : String(raw);
+  const t = text.trim();
+  if (!t) return { kind: "build", confident: true, reply: "", rule: "empty" };
+
+  const low = t.toLowerCase();
+  if (BUILD_REQUEST.test(low)) return { kind: "build", confident: true, reply: "", rule: "build-request" };
+
+  for (const rule of NOT_BUILD_RULES) {
+    if (ruleFires(rule, low)) {
+      return { kind: "not_build", confident: true, reply: replyFor(rule.id, low), rule: rule.id };
+    }
+  }
+
+  if (BUILD_NOUN.test(low)) return { kind: "build", confident: true, reply: "", rule: "build-noun" };
+  // No signal either way: the answer stays "build" (an empty build request is
+  // never blocked) but it is NOT confident, so classifyWithModel() may ask a
+  // model to confirm before the planner runs.
+  return { kind: "build", confident: false, reply: "", rule: "no-signal" };
+}
+
+export { CAPABILITIES, GENERIC_REPLY, REPLY_MAX, classifyRequest, cleanReply };
+// @classifier:end
+
+// ── model path for the classifier ────────────────────────────────────────
+// Consulted only when the keyword path reports confident=false. It returns a
+// strict JSON object; anything else — a refusal, a timeout, a relay that is
+// down — falls back to the keyword result. A not_build decided by the
+// keyword path is never overridden by a model timeout, so a timeout can never
+// turn a capability answer into a generated site.
+const CLASSIFIER_TIMEOUT_MS = 9000;
+const CLASSIFIER_SYS =
+  `You are a request gate in front of a website builder. Decide whether one user message asks for a site/app to be built with the tools listed, or for something else.
+
+Tools, and only these:
+CAN: ${CAPABILITIES.can.join("; ")}.
+CANNOT: ${CAPABILITIES.cannot.join("; ")}.
+
+Answer with compact JSON and nothing else:
+{"kind":"build"}  when the message asks for a site or app to be built. An empty message is "build".
+{"kind":"not_build","reply":"..."}  when it asks for something CANNOT says is impossible. "reply" is one plain-English paragraph of at most 300 characters: what you cannot do, what you can do instead, then one short question. No emoji, no markdown, no HTML, no website.`;
+
+function parseClassifierJson(text) {
+  let s = String(text || "").trim();
+  s = s.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```\s*$/, "");
+  const at = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (at < 0 || end <= at) return null;
+  try {
+    const o = JSON.parse(s.slice(at, end + 1));
+    return o && typeof o === "object" && !Array.isArray(o) ? o : null;
+  } catch {
+    return null;
+  }
+}
+
+// Returns the same shape as classifyRequest() plus {source, model, tool, ms}.
+// On any failure — timeout, relay down, unparsable reply — it returns the
+// keyword result unchanged.
+async function classifyWithModel(env, raw) {
+  const text = raw == null ? "" : String(raw);
+  const t0 = Date.now();
+  const kw = classifyRequest(text);
+  if (kw.confident) return { ...kw, source: "keyword", model: null, tool: null, ms: Date.now() - t0 };
+
+  let model = null;
+  try {
+    const job = gen(env, CLASSIFIER_SYS, text.slice(0, 1500), 220);
+    job.catch(() => {}); // if the timer wins the race, the late rejection is ours to ignore
+    const r = await Promise.race([
+      job,
+      sleep(CLASSIFIER_TIMEOUT_MS).then(() => {
+        throw new Error(`classifier timed out after ${CLASSIFIER_TIMEOUT_MS}ms`);
+      }),
+    ]);
+    model = (r && r.model) || null;
+    const tool = (r && r.tool) || null;
+    const parsed = parseClassifierJson(r && r.text);
+    if (parsed && parsed.kind === "build") {
+      return { kind: "build", confident: true, reply: "", rule: "model", source: "model", model, tool, ms: Date.now() - t0 };
+    }
+    if (parsed && parsed.kind === "not_build") {
+      const reply = cleanReply(parsed.reply) || GENERIC_REPLY;
+      return { kind: "not_build", confident: true, reply, rule: "model", source: "model", model, tool, ms: Date.now() - t0 };
+    }
+    return { ...kw, source: "keyword", model, tool, ms: Date.now() - t0, why: "model returned no usable JSON" };
+  } catch (e) {
+    // Falls back to the keyword result. A keyword "not_build" stays not_build:
+    // a timeout can never turn it into a generated site.
+    return { ...kw, source: "keyword", model, tool: (e && e.tool) || null, ms: Date.now() - t0, why: String((e && e.message) || e) };
+  }
 }
 
 async function runGenerate(env, user, projectId, plan, mode, origin, buildId = null) {
@@ -860,15 +1221,67 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   };
   const apiOrigin = /^https?:\/\//.test(String(origin || "")) ? String(origin) : "https://createstuff-api.fashionistas1979.workers.dev";
   const brief = API_BRIEF.replace(/__ID__/g, String(projectId)).replace(/__ORIGIN__/g, apiOrigin);
+
+  // ── STAGE 0/3 · CLASSIFIER (runs before the planner) ───────────────────
+  const cls = await classifyWithModel(env, plan);
+  const clsTool = cls.tool || {
+    name: cls.source === "model" ? "model-classifier" : "keyword-classifier",
+    endpoint: "inline",
+    http: null,
+    ms: cls.ms,
+  };
+  const clsLine = `Classifier tool: ${toolLine(clsTool)} -> ${cls.kind} (rule ${cls.rule}, ${cls.source}${cls.why ? `; ${cls.why}` : ""})`;
+
+  if (cls.kind === "not_build") {
+    // The answer IS the reply: one plain paragraph, no site, no preview. It is
+    // pushed first so it is the first thing the chat renders.
+    await push("Planner", cls.reply);
+    await push("Planner", `${clsLine}. No site generated.`);
+    const agents = {
+      classifier: { kind: cls.kind, rule: cls.rule, source: cls.source, model: cls.model || null, ms: cls.ms },
+      planner: null,
+      writer: null,
+      verifier: "not-run",
+      repair: "not-run",
+      flagsBefore: 0,
+      flagsAfter: 0,
+      elapsedMs: Date.now() - started,
+    };
+    let outBuildId = buildId || null;
+    if (buildId) {
+      // The row exists (POST /api/builds created it) — close it out with an
+      // empty preview so the polling UI stops and renders NO website.
+      await env.DB.prepare(
+        "UPDATE builds SET status='completed', generated_code='', preview_html='', completed_at=?, agent_log=? WHERE id=?"
+      ).bind(new Date().toISOString(), JSON.stringify(log), buildId).run();
+      await cacheDrop(env, buildsListKey(projectId));
+    }
+    // `notes` carries the reply itself: every client that has nothing to
+    // render shows this string, and it must be the paragraph, not a summary.
+    return json({
+      ok: false,
+      notBuild: true,
+      kind: cls.kind,
+      reply: cls.reply,
+      files: [],
+      notes: cls.reply,
+      model: cls.model || null,
+      source: cls.source,
+      buildId: outBuildId,
+      agents,
+    });
+  }
+
   // ── STAGE 1/3 · MANAGER ─────────────────────────────────────────────────
   const manager = await planAgent(env, plan);
+  const hasPlan = !!(manager && manager.spec);
   await push(
     "Planner",
-    manager
-      ? `Plan ready (${manager.model}): ${String(manager.spec || "").replace(/\s+/g, " ").slice(0, 220)}`
-      : "Planner unavailable — building straight from your sentence."
+    hasPlan
+      ? `${clsLine}. Planner tool: ${toolLine(manager.tool)} -> plan ready (${manager.model}): ${String(manager.spec).replace(/\s+/g, " ").slice(0, 220)}`
+      : `${clsLine}. Planner tool: ${toolLine(manager.tool)} -> no plan (${manager.why}). Building straight from your sentence.`
   );
-  const specBlock = manager
+  const specBlock = hasPlan
     ? `\n\nBUILD SPEC FROM THE PLANNER (derived from the brief — satisfy it, and add nothing it does not call for):\n${manager.spec}`
     : "";
 
@@ -878,11 +1291,13 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   let replaced = sanitizeAssets(files);
   let routed = injectNavRouter(files);
   let shimmed = injectStorageShim(files);
-  const ok = siteOk(files);
+  let ok = siteOk(files);
+  const verifyStart = Date.now();
   let qFlags = qualityFlags(files, plan);
+  const verifyMs = Date.now() - verifyStart;
   await push(
     "Frontend",
-    `${g.model} wrote ${files.length} file(s): ${files.map((f) => f.path).join(", ")} — ${files.reduce((n, f) => n + f.content.length, 0).toLocaleString("en-US")} chars`
+    `Frontend tool: ${toolLine(g.tool)} -> ${g.model} wrote ${files.length} file(s): ${files.map((f) => f.path).join(", ")} — ${files.reduce((n, f) => n + f.content.length, 0).toLocaleString("en-US")} chars`
   );
 
   // ── STAGE 3/3 · VERIFIER (rules) → REPAIR (model, only if flagged) ──────
@@ -890,11 +1305,12 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   const flagsBefore = qFlags.length;
   await push(
     "Test",
-    ok
+    `Test tool: ${toolLine({ name: "qualityFlags", endpoint: "inline", http: null, ms: verifyMs })} -> ` +
+    (ok
       ? qFlags.length
-        ? `Verifier found ${qFlags.length} problem(s): ${qFlags.join(", ")}. Sending them to the repair agent.`
-        : "Verifier ran over the code and found nothing to fix."
-      : "Verifier: the model did not return a usable index.html."
+        ? `found ${qFlags.length} problem(s): ${qFlags.join(", ")}. Sending them to the repair agent.`
+        : "found nothing to fix."
+      : "the model did not return a usable index.html.")
   );
   // The Worker is killed at ~180s, so a third model call must be dropped rather
   // than allowed to run the whole build into the cap.
@@ -909,24 +1325,68 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
       shimmed = injectStorageShim(files);
       qFlags = qualityFlags(files, plan);
       repairState = `fixed-${attempt.fixed}`;
-      await push("Fix", `Repair agent rewrote the code and cleared ${attempt.fixed} of ${flagsBefore} problem(s).`);
+      await push("Fix", `Fix tool: ${toolLine(attempt.tool)} -> repair agent cleared ${attempt.fixed} of ${flagsBefore} problem(s).`);
     } else {
       repairState = "kept-original";
-      await push("Fix", "Repair agent returned nothing usable — keeping the original code.");
+      await push("Fix", "Fix tool: repair agent returned nothing usable — keeping the writer's code.");
     }
+  }
+
+  // ── MISSING-ASSET GATE ──────────────────────────────────────────────────
+  // The repair agent can only rewrite index.html, so it cannot author a
+  // stylesheet or a script that nobody wrote. Ask the editor for the missing
+  // files BY NAME — a small, focused answer that fits easily inside the token
+  // budget — and fail honestly if they still do not arrive.
+  let missing = ok ? missingAssets(files) : [];
+  let missingNote = "";
+  if (missing.length && Date.now() - started < 150000) {
+    const idxRetry = (files.find((f) => /(^|\/)index\.html?$/i.test(f.path)) || { content: "" }).content;
+    await push("Fix", `Fix tool: -> the page links ${missing.join(", ")} but they were never written. Asking the editor for those files only.`);
+    try {
+      const g2 = await gen(
+        env,
+        CODE_SYS,
+        `You wrote index.html but left out the file(s) it links: ${missing.join(", ")}. ` +
+          `That makes the page render unstyled and with no behaviour, so it is broken.\n\n` +
+          `Return ONLY the missing file(s) as a JSON array of {"path","content"} objects, complete and ready to use. ` +
+          `Do NOT return index.html, do NOT use markdown fences, and do NOT truncate.\n\n` +
+          `MISSING FILES: ${missing.join(", ")}\n\n` +
+          `--- index.html (for context only — do not return it) ---\n${idxRetry.slice(0, 6000)}`,
+        8000
+      );
+      const extra = finalizeFiles(extractFiles(g2));
+      const added = extra.filter(
+        (f) => missing.includes(String(f.path).replace(/^\.?\//, "")) && !files.some((x) => x.path === f.path)
+      );
+      if (added.length) {
+        files = files.concat(added);
+        qFlags = qualityFlags(files, plan);
+        await push("Fix", `Fix tool: ${toolLine(g2.tool)} -> wrote ${added.map((f) => f.path).join(", ")}`);
+      } else {
+        await push("Fix", `Fix tool: the editor did not return ${missing.join(", ")}.`);
+      }
+    } catch (e) {
+      await push("Fix", `Fix tool: could not ask for the missing files (${String((e && e.message) || e).slice(0, 120)}).`);
+    }
+    missing = missingAssets(files);
+  }
+  if (missing.length) {
+    ok = false;
+    missingNote = `This build left out ${missing.join(", ")} — the page links them, so it would open broken. Build it again.`;
+    await push("Test", `Test tool: -> still missing ${missing.join(", ")} after repair. Refusing to save a broken file set.`);
   }
 
   const code = files.map((f) => f.content).join("\n");
   const apiCalls = (code.match(/\bfetch\s*\(/g) || []).length;
   const usesAuth = /auth\/(login|register)/.test(code);
-  const agentNote = `agents: planner=${manager ? manager.model : "off"}, writer=${g.model}, verifier=rules(${flagsBefore} flag${flagsBefore === 1 ? "" : "s"}), repair=${repairState}`;
+  const agentNote = `agents: classifier=${cls.source}/${cls.rule}, planner=${hasPlan ? manager.model : "off"}, writer=${g.model}, verifier=rules(${flagsBefore} flag${flagsBefore === 1 ? "" : "s"}), repair=${repairState}`;
 
   const note = ok
     ? `${files.length} files, ${files.reduce((n, f) => n + f.content.length, 0)} chars${replaced ? `, ${replaced} external image(s) swapped for CSS art` : ""}${routed ? ", nav-router=1" : ""}${shimmed ? ", storage-shim=1" : ""}; fetch()=${apiCalls}${usesAuth ? ", auth=yes" : ""}${qFlags.length ? `; QUALITY: ${qFlags.join(", ")}` : "; quality=clean"}; ${agentNote}`
-    : "model output did not contain a usable index.html";
+    : (missingNote || "model output did not contain a usable index.html");
 
   const preview = ok ? files.find((f) => /index\.html?$/i.test(f.path)).content : "";
-  await push("Online", ok ? "Build finished. Press Put online to get a web address." : "Build failed — try describing it again.");
+  await push("Online", ok ? `Build finished in ${Date.now() - started}ms. Press Put online to get a web address.` : `Build failed after ${Date.now() - started}ms — try describing it again.`);
 
   let outBuildId = buildId;
   if (buildId) {
@@ -942,7 +1402,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
       String(plan || "").slice(0, 4000),
       JSON.stringify(files),
       preview,
-      JSON.stringify([{ mode, model: g.model, note, at: new Date().toISOString(), planner: manager ? manager.model : null, verifier: "rules", flags: qFlags, repair: repairState }]),
+      JSON.stringify([{ mode, model: g.model, note, at: new Date().toISOString(), planner: hasPlan ? manager.model : null, verifier: "rules", flags: qFlags, repair: repairState }]),
       new Date(started).toISOString(),
       new Date().toISOString()
     ).run();
@@ -960,7 +1420,8 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   await cacheDrop(env, projectsListKey(user.sub));
 
   const agents = {
-    planner: manager ? manager.model : null,
+    classifier: { kind: cls.kind, rule: cls.rule, source: cls.source, model: cls.model || null, ms: cls.ms },
+    planner: hasPlan ? manager.model : null,
     writer: g.model,
     verifier: "rules",
     repair: repairState,
@@ -969,7 +1430,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
     elapsedMs: Date.now() - started,
   };
   if (!ok) {
-    return json({ ok: false, files: [], model: g.model, notes: note, agents, error: "The model did not return a usable site. Try again." }, 422);
+    return json({ ok: false, files: [], model: g.model, notes: note, agents, error: missingNote || "The model did not return a usable site. Try again." }, 422);
   }
   return json({ ok: true, files, model: g.model, notes: note, buildId: buildIdOut, checkpointId: `cp-${buildIdOut}`, agents });
 }
@@ -1623,6 +2084,14 @@ export default {
         if (!p) return err("Not found", 404);
         const files = await loadFiles(env, projectId);
         if (!files.length) return err("Nothing to publish yet — build the site first.", 409);
+        // A page whose stylesheet or script is missing opens broken. Refusing
+        // here is the last line of defence for file sets saved before this
+        // check existed — the user is told exactly what is wrong instead of
+        // being handed an address that shows a blank white page.
+        const missingNow = missingAssets(files);
+        if (missingNow.length) {
+          return err(`This project is missing ${missingNow.join(", ")}, so the page would open broken. Build it again.`, 409);
+        }
         const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
         const publishUrl = `${url.origin}/published/${projectId}/${idx ? idx.path : files[0].path}`;
         await env.DB.prepare(
