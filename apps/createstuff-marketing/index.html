@@ -6,7 +6,7 @@
 <title>CreateStuff — Free AI App Builder for Phone &amp; Desktop</title>
 <link rel="manifest" href="/manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=07dee17c553f">
+<link rel="stylesheet" href="/styles.css?v=a8013a80f10a">
 <script>
 /* Motion gate — runs before first paint. Every entrance/reveal state below is
    scoped to html.cs-js, so if JS is off, or prefers-reduced-motion is set, the
@@ -451,10 +451,10 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
         <p class="cs-sub" style="--d:.72s">CreateStuff is an <b>AI app builder</b> that gives your app its own stored data, a sign-in, and a <b>real web address</b>. Describe what you want &mdash; it writes the <b>HTML, CSS and JavaScript</b>, shows it to you live, and puts it on a link you can open anywhere.</p>
 
         <div class="cs-cta-row" style="--d:.84s">
-          <a class="cs-btn cs-btn-primary" href="#cs-signin" data-cs-scroll>Start building
+          <a class="cs-btn cs-btn-primary" href="#cs-signin" data-cs-scroll data-tip="Opens the free sign-in box — no card needed." title="Opens the free sign-in box — no card needed.">Start building
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </a>
-          <a class="cs-btn cs-btn-ghost" href="#cs-how" data-cs-scroll>See how it works</a>
+          <a class="cs-btn cs-btn-ghost" href="#cs-how" data-cs-scroll data-tip="Shows the three steps: say it, see it, put it online." title="Shows the three steps: say it, see it, put it online.">See how it works</a>
         </div>
 
         <p class="cs-hero-meta" style="--d:.94s">
@@ -607,7 +607,7 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
           <h2 id="cs-cta-title" class="cs-shimmer">Your next app is one sentence away.</h2>
           <p>Open the builder, write the first sentence, and watch the files appear. Sign in or make a free account to begin.</p>
         </div>
-        <a class="cs-btn cs-btn-primary" href="#cs-signin" data-cs-scroll>Start building
+        <a class="cs-btn cs-btn-primary" href="#cs-signin" data-cs-scroll data-tip="Opens the free sign-in box — no card needed." title="Opens the free sign-in box — no card needed.">Start building
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
       </div>
@@ -633,19 +633,19 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
           <p>Free AI App Builder for <span class="cs-rot" aria-live="polite"><span class="cs-rot-in">Phone</span></span></p>
         </div>
         <form id="login-form">
-          <div class="form-group"><label id="login-email-label">Email</label><input type="email" id="login-user" placeholder="you@example.com" autocomplete="email" required></div>
-          <div class="form-group" id="login-name-group" style="display:none"><label>Display name</label><input type="text" id="login-name" placeholder="Your name" maxlength="100"></div>
-          <div class="form-group"><label>Password</label><input type="password" id="login-pass" placeholder="6+ characters" autocomplete="current-password" minlength="6" required></div>
+          <div class="form-group"><label id="login-email-label">Email</label><input type="email" id="login-user" placeholder="you@example.com" autocomplete="email" required data-tip="The email address you signed up with." title="The email address you signed up with."></div>
+          <div class="form-group" id="login-name-group" style="display:none"><label>Display name</label><input type="text" id="login-name" placeholder="Your name" maxlength="100" data-tip="The name you want to show up as. You can change it later." title="The name you want to show up as. You can change it later."></div>
+          <div class="form-group"><label>Password</label><input type="password" id="login-pass" placeholder="6+ characters" autocomplete="current-password" minlength="6" required data-tip="At least 6 characters. This is how you get back into your account." title="At least 6 characters. This is how you get back into your account."></div>
           <div id="login-error" class="login-error" style="display:none"></div>
           <button type="submit" class="btn-primary btn-full" id="login-submit" data-tip="Signs you in to your account on this device." title="Signs you in to your account on this device.">Sign In</button>
         </form>
-        <p class="login-hint">No account yet? <a href="#" id="auth-toggle" style="color:#6d5cff;font-weight:600">Create one free</a></p>
+        <p class="login-hint">No account yet? <a href="#" id="auth-toggle" style="color:#6d5cff;font-weight:600" data-tip="Makes you a free account right here — takes a few seconds." title="Makes you a free account right here — takes a few seconds.">Create one free</a></p>
       </div>
     </section>
 
     <footer class="cs-footer">
       <div class="cs-footer-in">
-        <a class="cs-brand" href="#top" data-cs-scroll>
+        <a class="cs-brand" href="#top" data-cs-scroll data-tip="Back to the top of this page." title="Back to the top of this page.">
           <img class="cs-brand-mark" src="assets/createstuff-app-icon-512.svg" alt="" width="36" height="36">
           <span class="cs-brand-word"><i>Create</i>Stuff</span>
           <span class="cs-brand-tld">.ai</span>
@@ -764,7 +764,7 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
             <div class="msg agent"><div class="msg-avatar"><svg viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h11M4 17.5h7"/></svg></div><div class="msg-content"><strong>Planner Agent</strong><p>Welcome! I'm your planning agent. Describe what you want to build, and I'll coordinate the team to make it happen.</p><p>Try: "Build me a restaurant website with online ordering"</p></div></div>
           </div>
           <div class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Say what you want in plain words..." autocomplete="off">
+            <input type="text" id="chat-input" placeholder="Say what you want in plain words..." autocomplete="off" data-tip="Type what you want built, the way you would tell a person. Press Enter to send it." title="Type what you want built, the way you would tell a person. Press Enter to send it.">
             <button id="voice-btn" class="btn-icon" aria-label="Speak instead of typing" data-tip="Speak your idea instead of typing it." title="Speak your idea instead of typing it."><svg viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
             <button id="send-btn" class="btn-primary" aria-label="Send it" data-tip="Send your description and start the build." title="Send your description and start the build.">→</button>
           </div>
@@ -819,18 +819,18 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
       <div class="card" style="margin-top:1rem" data-tip="Makes an empty project on your GitHub account so you have somewhere to start." title="Makes an empty project on your GitHub account so you have somewhere to start.">
         <h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M12 5v14M5 12h14"/></svg>Start a new one on GitHub</h3>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <input type="text" id="new-repo-name" placeholder="my-awesome-app" style="flex:1;min-width:180px;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+          <input type="text" id="new-repo-name" placeholder="my-awesome-app" data-tip="A short name for the new repository. No spaces." title="A short name for the new repository. No spaces." style="flex:1;min-width:180px;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
           <button class="btn-primary" onclick="createGitHubRepo()" data-tip="Makes an empty project on your GitHub account." title="Makes an empty project on your GitHub account.">Create it</button>
         </div>
       </div>
       <div class="card" style="margin-top:1rem" data-tip="Saves one file from your app back to GitHub. Most people never need this." title="Saves one file from your app back to GitHub. Most people never need this.">
         <h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 10l-5-5-5 5"/><path d="M12 15v-3"/></svg>Send a file back to GitHub</h3>
-        <div class="form-group"><label>Which project on GitHub (owner/name)</label><input type="text" id="push-repo" placeholder="placebetsai/my-app"></div>
+        <div class="form-group"><label>Which project on GitHub (owner/name)</label><input type="text" id="push-repo" placeholder="placebetsai/my-app" data-tip="Where to save it on github.com, written as owner/repository - for example placebetsai/my-app." title="Where to save it on github.com, written as owner/repository - for example placebetsai/my-app."></div>
         <div class="form-row">
-          <div class="form-group"><label>File name</label><input type="text" id="push-path" value="index.html"></div>
-          <div class="form-group"><label>Branch</label><input type="text" id="push-branch" value="main"></div>
+          <div class="form-group"><label>File name</label><input type="text" id="push-path" value="index.html" data-tip="Which file you are changing. Leave this alone unless you mean a different file." title="Which file you are changing. Leave this alone unless you mean a different file."></div>
+          <div class="form-group"><label>Branch</label><input type="text" id="push-branch" value="main" data-tip="The line of work to save to. main is the usual one." title="The line of work to save to. main is the usual one."></div>
         </div>
-        <div class="form-group"><label>Note (what changed)</label><input type="text" id="push-msg" value="Update from CreateStuff.ai"></div>
+        <div class="form-group"><label>Note (what changed)</label><input type="text" id="push-msg" value="Update from CreateStuff.ai" data-tip="A short note saying what changed, so you can find it again later." title="A short note saying what changed, so you can find it again later."></div>
         <div class="form-group"><label>The file's contents</label><textarea id="push-content" rows="6" placeholder="Paste it here, or fill it in from your latest app..."></textarea></div>
         <div style="display:flex;gap:.5rem">
           <button class="btn-secondary" onclick="fillPushFromBuild()" data-tip="Copies the code from your latest app into the box above." title="Copies the code from your latest app into the box above.">Copy in my latest app</button>
@@ -857,7 +857,7 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
         </div>
         <div class="card">
           <h3>Editor</h3>
-          <div class="form-group"><label>File name</label><input type="text" id="editor-path" value="index.html"></div>
+          <div class="form-group"><label>File name</label><input type="text" id="editor-path" value="index.html" data-tip="Which file to open. Type another name to open a different file." title="Which file to open. Type another name to open a different file."></div>
           <div class="form-group"><label>The code in this file</label><textarea id="editor-content" rows="18" style="font-family:'JetBrains Mono',monospace;font-size:.8rem"></textarea></div>
           <button id="editor-save" class="btn-primary btn-full" data-tip="Writes what's in the box back into the file." title="Writes what's in the box back into the file.">Save file</button>
         </div>
@@ -868,16 +868,16 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
     <div id="page-deploy" class="page">
       <div class="page-header"><h1>Put it online</h1><p class="subtitle">This is where your app gets an address other people can visit.</p></div>
       <div id="deploy-cards" class="deploy-grid"></div>
-      <div class="card" style="margin-top:1rem" data-tip="An address of your own, like my-app.example.com. We set up the pointing for you." title="An address of your own, like my-app.example.com. We set up the pointing for you."><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Your own web address</h3><div style="display:flex;gap:.5rem"><input type="text" id="custom-domain" placeholder="my-app.fashionistas.ai" class="domain-input"><button class="btn-primary" id="domain-connect-btn" data-tip="Sets up this address and checks the site answers at it." title="Sets up this address and checks the site answers at it.">Connect it</button></div><p class="lz-hint" style="margin-top:.6rem">This sets up a real address and then visits it to check it works. The result is printed on <b>Start here</b>, step D.</p></div>
+      <div class="card" style="margin-top:1rem" data-tip="An address of your own, like my-app.example.com. We set up the pointing for you." title="An address of your own, like my-app.example.com. We set up the pointing for you."><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Your own web address</h3><div style="display:flex;gap:.5rem"><input type="text" id="custom-domain" placeholder="my-app.fashionistas.ai" class="domain-input" data-tip="The address you want, for example my-app.fashionistas.ai. We do the pointing for you." title="The address you want, for example my-app.fashionistas.ai. We do the pointing for you."><button class="btn-primary" id="domain-connect-btn" data-tip="Sets up this address and checks the site answers at it." title="Sets up this address and checks the site answers at it.">Connect it</button></div><p class="lz-hint" style="margin-top:.6rem">This sets up a real address and then visits it to check it works. The result is printed on <b>Start here</b>, step D.</p></div>
     </div>
 
     <!-- SETTINGS -->
     <div id="page-settings" class="page">
       <div class="page-header"><h1>Settings</h1><p class="subtitle">Your name, how the app looks, and the keys you've saved.</p></div>
       <div class="settings-grid">
-        <div class="card"><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>You</h3><div class="form-group"><label>Display name</label><input type="text" value="admin"></div><div class="form-group"><label>Email</label><input type="email" value="admin@createstuff.ai"></div><button class="btn-primary" data-tip="Keeps the name and email you typed." title="Keeps the name and email you typed.">Save</button></div>
-        <div class="card"><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="18" cy="10.5" r="2.5"/><circle cx="6.5" cy="11.5" r="2.5"/><circle cx="8.5" cy="18.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c2.3 0 4.4-.9 6-2.4"/></svg>How it looks</h3><div class="connection-item"><span>Dark mode</span><label class="switch"><input type="checkbox" id="theme-toggle" checked><span class="slider"></span></label></div></div>
-        <div class="card" data-tip="Codes that let CreateStuff talk to your AI and GitHub accounts. Only fill these in if you have your own." title="Codes that let CreateStuff talk to your AI and GitHub accounts. Only fill these in if you have your own."><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7"/><path d="M15.5 7.5L18 10"/></svg>Your keys</h3><div class="form-group"><label>AI key</label><input type="password" placeholder="sk-..."></div><div class="form-group"><label>GitHub key</label><input type="password" placeholder="ghp_..."></div><button class="btn-primary" data-tip="Keeps the keys you typed so CreateStuff can use them." title="Keeps the keys you typed so CreateStuff can use them.">Save keys</button></div>
+        <div class="card"><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>You</h3><div class="form-group"><label>Display name</label><input type="text" value="admin" data-tip="The name that shows up beside your work." title="The name that shows up beside your work."></div><div class="form-group"><label>Email</label><input type="email" value="admin@createstuff.ai" data-tip="Where notifications about your builds are sent." title="Where notifications about your builds are sent."></div><button class="btn-primary" data-tip="Keeps the name and email you typed." title="Keeps the name and email you typed.">Save</button></div>
+        <div class="card"><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="18" cy="10.5" r="2.5"/><circle cx="6.5" cy="11.5" r="2.5"/><circle cx="8.5" cy="18.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c2.3 0 4.4-.9 6-2.4"/></svg>How it looks</h3><div class="connection-item"><span>Dark mode</span><label class="switch"><input type="checkbox" id="theme-toggle" checked data-tip="Switches the whole app between dark and light." title="Switches the whole app between dark and light."><span class="slider"></span></label></div></div>
+        <div class="card" data-tip="Codes that let CreateStuff talk to your AI and GitHub accounts. Only fill these in if you have your own." title="Codes that let CreateStuff talk to your AI and GitHub accounts. Only fill these in if you have your own."><h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7"/><path d="M15.5 7.5L18 10"/></svg>Your keys</h3><div class="form-group"><label>AI key</label><input type="password" placeholder="sk-..." data-tip="Your own AI key, if you would rather use yours than ours. Optional - leave it empty." title="Your own AI key, if you would rather use yours than ours. Optional - leave it empty."></div><div class="form-group"><label>GitHub key</label><input type="password" placeholder="ghp_..." data-tip="A GitHub personal access token, so CreateStuff can save your files to your repositories." title="A GitHub personal access token, so CreateStuff can save your files to your repositories."></div><button class="btn-primary" data-tip="Keeps the keys you typed so CreateStuff can use them." title="Keeps the keys you typed so CreateStuff can use them.">Save keys</button></div>
       </div>
     </div>
   </main>
@@ -1039,6 +1039,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }
 })();
 </script>
-<script src="/app.js?v=2ac7ee6fb424"></script>
+<script src="/app.js?v=e6e4661827de"></script>
 </body>
 </html>
