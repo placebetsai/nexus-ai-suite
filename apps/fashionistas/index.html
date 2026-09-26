@@ -435,6 +435,18 @@ nav.tabbar a.on{color:var(--accent)}
 .form-sec legend{font-size:12.5px;font-weight:800;letter-spacing:.02em;padding:0 7px;color:var(--ink)}
 .check{display:flex;align-items:center;gap:9px;font-size:14px;padding:10px 0 6px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .check input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+/* ---- how the buyer actually receives the item ---- */
+.ship-opt-wrap{border-color:rgba(255,78,58,.28);background:
+  radial-gradient(320px 120px at 100% 0,rgba(255,78,58,.07),transparent 70%),var(--bg-tint)}
+.ship-opt{display:flex;flex-direction:column;gap:2px;padding:9px 0 8px;border-bottom:1px dashed var(--line)}
+.ship-opt:last-of-type{border-bottom:none}
+.ship-opt b{font-size:13.4px;display:flex;align-items:center;gap:7px}
+.ship-opt b::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;
+  box-shadow:0 0 0 3px rgba(255,78,58,.18)}
+.ship-opt span{font-size:13px;line-height:1.52;color:var(--mut);padding-left:14px}
+.ship-none{margin:8px 0 8px;padding:9px 11px;border-radius:11px;background:rgba(46,204,113,.10);
+  font-size:12.7px;line-height:1.55;color:var(--ink);border:1px solid rgba(46,204,113,.3)}
+.ship-none b{color:#1e9e5b}
 
 /* ---- landing navigation (logged-out screen) ---- */
 .land-nav{position:sticky;top:calc(env(safe-area-inset-top) + 6px);z-index:60;display:flex;align-items:center;gap:9px;
@@ -2488,6 +2500,14 @@ function renderListingForm(it){
   <label class="check" data-tip="Tick this if the buyer can collect from you instead of paying postage.">
    <input type="checkbox" id="f-pickup" ${it.local_pickup?"checked":""}> Buyer can collect in person
   </label>
+ </fieldset>
+
+ <fieldset class="form-sec ship-opt-wrap" data-tip="How the item actually reaches the buyer. Pick whichever suits you.">
+  <legend>How your buyer gets it</legend>
+  <div class="ship-opt"><b>You post it</b><span>Sell on eBay, Poshmark, Depop or wherever and that shop prints the postage label for you. We work out what to charge from the weight above, so postage never comes out of your pocket.</span></div>
+  <div class="ship-opt"><b>They collect it</b><span>Tick the box above and the buyer comes to you — no label, no queue, no fee. Pop-up stores on the Map screen work exactly this way.</span></div>
+  <div class="ship-opt"><b>We stay with you</b><span>Once something sells, Guide A to Z walks you through packing, the label and tracking, one plain step at a time.</span></div>
+  <p class="mut ship-none"><b>No Shopify, no website, no subscription.</b> Your listings live in your account right here. The only money that moves is what the shop you sold on takes — and we show you that cut before you post.</p>
  </fieldset>
 
  <div style="height:12px"></div>
