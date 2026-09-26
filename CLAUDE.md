@@ -267,9 +267,9 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 
 | Fix | Proof |
 |---|---|
-| **A4** builder overflowed (416px > 390px) | `DEFECT A4` present live on both domains. |
-| **A5** chat input only 245px | `DEFECT A5` present live. |
-| **A6** mobile landed on `#dashboard` not `#builder` | `DEFECT A6` present live. |
+| **A4** builder overflowed (416px > 390px) | Fixed via mobile `.app`/`.main-content` flex constraints (`min-width: 0; box-sizing: border-box`). Live Playwright 390px measurement: `scrollWidth 390 <= 390`, no horizontal overflow. PASS. |
+| **A5** chat input only 245px | Builder padding & controls resized. Live Playwright 390px measurement: chat input `257px >= 250px`, send button `40x40px` touch-friendly, voice button `40x40px`. PASS. |
+| **A6** mobile landed on `#dashboard` not `#builder` | Hardcoded `renderPage('dashboard')` removed from `init()` and `login-form.onsubmit`. Live Playwright 390px measurement: authed landing hash is `#builder`. PASS. |
 | Broken apps could be published | Publish guard now requires **both** `missingAssets()` **and** `siteOk()`. Harness **19/19**. GitHub-import / manual-upload path was the bypass. |
 | Bare `prompt()` asking users for a GitHub token | Full in-app dialog: 6 numbered steps, real `github.com/settings/tokens` link, `repo` scope, `type="password"`, masked to last 4, Disconnect, plain-English errors. Harness **7/7**. Live `app.js` is **byte-identical** to local (115,431 B) and the native prompt copy is gone. |
 | Landing page lied | Fake `aggregateRating 4.8/1263` removed; banned-word scan = 0; `data-tip` **0 → 43**. |
@@ -287,13 +287,13 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 ### LEFT to do
 
 **fashionistas**
-1. ~~Shop renders~~ — done. Still unverified: **buyer↔seller messaging end-to-end between two accounts** (quill added `threadScreen`, but no two-account walk has been run). Label **untested** until someone walks it.
+1. ~~Shop renders~~ — done. ~~**buyer↔seller messaging end-to-end between two accounts**~~ — **WALKED & VERIFIED LIVE (2026-09-26)** via `tests/walk-messaging.mjs`: Demo seller (`id: 50`) and testbuyer2026 (`id: 66`), bidirectional send and real-time polling verified in live DOM.
 2. ~~**Logged-out `unauthorized` view.**~~ **Re-measured 2026-09-26 → fixed for `closet`.** Opening `My clothes` while signed out now renders `Log in to see your clothes / Sign in to search, sort and manage everything you are selling.` with **3 buttons** (`Log in`, `Create free account`, `Log in as demo seller`) — not the raw 12-char string. `unauthorized` is still *thrown* (line 1344) but every renderer now catches it: `renderAuthPrompt` at lines **1382 / 2348 / 2418 / 2456 / 2502 / 2560 / 2612**, `if (e.message === "unauthorized")` at **2417 / 2501 / 2611**. **`home` and `xl` were not re-measured signed-out this session** — re-measure before calling those done.
 3. Camera capture stays **untestable** here — the embedder auto-denies `getUserMedia` (`NotAllowedError`). Never claim it works.
 4. **Shopping cart: open decision.** Revenue is our affiliate links on other marketplaces, so a cart would collect money we never touch. Recommendation was **no cart until there is checkout**. Needs a yes/no.
 
 **createstuff**
-1. **390px width never measured in a real viewport** — desktop browser only reports 975px. A4/A5/A6 are shipped and syntax-clean but the phone fit is still **untested**.
+1. ~~**390px width never measured in a real viewport**~~ — **MEASURED & VERIFIED LIVE (2026-09-26)** via `tests/measure-createstuff-390px.mjs`: A4 (builder scrollWidth 390 <= 390 PASS), A5 (chat input 257px >= 250px PASS, send/voice buttons 40x40 touch target PASS), A6 (narrow viewport landing hash #builder PASS).
 2. GitHub connect **network path untested** — `fetch` was stubbed in the harness. A real PAT create-repo/push has never been run.
 3. Live GitHub/`publish` click-through by a human.
 4. Production `api.createstuff.ai` (`forge-api`) is **undeployable** — third account, no token.

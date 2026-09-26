@@ -1,4 +1,4 @@
-﻿(function(){
+(function(){
 'use strict';
 
 // Production forge-api runs on a third Cloudflare account with no API token on
@@ -619,7 +619,6 @@ function init() {
   setupSidebar();
   setupMobile();
   setupLogout();
-  renderPage('dashboard');
 }
 
 function showLogin() {
@@ -669,7 +668,6 @@ function showLogin() {
       setupSidebar();
       setupMobile();
       setupLogout();
-      renderPage('dashboard');
     } catch (err) {
       if (errBox) { errBox.textContent = err.message || 'Sign in failed'; errBox.style.display = 'block'; }
     } finally {

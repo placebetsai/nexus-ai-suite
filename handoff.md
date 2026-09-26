@@ -1,4 +1,6 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
+
+> **Newer:** `HANDOFF-2026-09-26.md` — MarketPicks + PlaceBets data/tools session (deploy rules, what's live, open problems).
 **Last updated: 2026-09-24** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
 **Local path:** `/home/billionaremaker/Documents/Default Project/nexus-ai-suite`
 **Local GitHub backup (mirror):** `/home/billionaremaker/Documents/GitHub-Backup/`
