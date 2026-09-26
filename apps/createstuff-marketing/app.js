@@ -463,6 +463,7 @@ function renderPage(page) {
   if (page === 'files') loadFilesPage();
   if (page === 'launch') loadLaunch();
   if (page === 'deploy') loadDeployPage();
+  if (page === 'settings') loadSettings();
   document.getElementById('sidebar').classList.remove('open');
 }
 
@@ -853,6 +854,66 @@ async function findLatestBuildId(projectId) {
   return null;
 }
 
+function loadSettings() {
+  const user = getUser();
+  if (user) {
+    const nameInput = document.querySelector('#page-settings .card:first-of-type input[type="text"]');
+    const emailInput = document.querySelector('#page-settings .card:first-of-type input[type="email"]');
+    const saveBtn = document.querySelector('#page-settings .card:first-of-type button.btn-primary');
+    if (nameInput && user.display_name) nameInput.value = user.display_name;
+    if (emailInput && user.email) emailInput.value = user.email;
+    if (saveBtn) {
+      saveBtn.onclick = async function() {
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        if (!name || !email) { showToast('Fill in both fields'); return; }
+        try {
+          await api('/api/auth/me', {
+            method: 'PUT',
+            body: JSON.stringify({ display_name: name, email }),
+          });
+          user.display_name = name;
+          user.email = email;
+          localStorage.setItem(USER_KEY, JSON.stringify(user));
+          const welcome = document.querySelector('#page-dashboard .page-header h1');
+          if (welcome) welcome.textContent = `Welcome back, ${name}`;
+          showToast('Saved');
+        } catch (e) {
+          showToast('Save failed');
+        }
+      };
+    }
+  }
+
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const stored = localStorage.getItem('cs_theme');
+    themeToggle.checked = stored ? stored === 'dark' : prefersDark;
+    document.documentElement.classList.toggle('dark', themeToggle.checked);
+    themeToggle.onchange = function() {
+      const isDark = this.checked;
+      document.documentElement.classList.toggle('dark', isDark);
+      localStorage.setItem('cs_theme', isDark ? 'dark' : 'light');
+    };
+  }
+
+  const aiKeyInput = document.querySelector('#page-settings .card:last-of-type input[placeholder="sk-..."]');
+  const ghKeyInput = document.querySelector('#page-settings .card:last-of-type input[placeholder="ghp_..."]');
+  const saveKeysBtn = document.querySelector('#page-settings .card:last-of-type button.btn-primary');
+  if (aiKeyInput) aiKeyInput.value = localStorage.getItem('cs_ai_key') || '';
+  if (ghKeyInput) ghKeyInput.value = localStorage.getItem('cs_gh_pat') || '';
+  if (saveKeysBtn) {
+    saveKeysBtn.onclick = function() {
+      const aiKey = aiKeyInput.value.trim();
+      const ghKey = ghKeyInput.value.trim();
+      if (aiKey) localStorage.setItem('cs_ai_key', aiKey); else localStorage.removeItem('cs_ai_key');
+      if (ghKey) localStorage.setItem('cs_gh_pat', ghKey); else localStorage.removeItem('cs_gh_pat');
+      showToast('Keys saved');
+    };
+  }
+}
+
 // ============ BUILDER ============
 let agentLogSeen = 0;
 
@@ -882,6 +943,26 @@ function setupBuilder() {
       recognition.start();
     };
   }
+
+  document.querySelectorAll('.preview-mode').forEach(btn => {
+    btn.onclick = function() {
+      document.querySelectorAll('.preview-mode').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      const frame = document.getElementById('preview-frame');
+      if (!frame) return;
+      if (this.dataset.mode === 'phone') {
+        frame.style.maxWidth = '375px';
+        frame.style.margin = '0 auto';
+        frame.style.borderRadius = '24px';
+        frame.style.boxShadow = '0 0 0 8px #111, 0 20px 40px -20px rgba(0,0,0,.8)';
+      } else {
+        frame.style.maxWidth = 'none';
+        frame.style.margin = '0';
+        frame.style.borderRadius = '8px';
+        frame.style.boxShadow = 'none';
+      }
+    };
+  });
 }
 
 async function startBuild(prompt) {
