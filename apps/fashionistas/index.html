@@ -1037,7 +1037,7 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
  <label>Password</label>
  <input class="input" id="login-p" type="password" placeholder="password" autocomplete="current-password">
  <div style="height:14px"></div>
- <button class="btn btn-primary" onclick="doLogin()">Log in</button>
+ <button class="btn btn-primary" onclick="doLogin()" data-tip="Signs you in with the name and password you typed." title="Signs you in with the name and password you typed.">Log in</button>
  </div>
  <div id="auth-signup" class="hidden">
  <label>Username</label>
@@ -1047,12 +1047,12 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
  <label>Password</label>
  <input class="input" id="su-p" type="password" placeholder="6+ characters">
  <div style="height:14px"></div>
- <button class="btn btn-accent" onclick="doSignup()">Create free account</button>
+ <button class="btn btn-accent" onclick="doSignup()" data-tip="Creates your free account. Nothing is charged, ever." title="Creates your free account. Nothing is charged, ever.">Create free account</button>
  <p class="mut" style="font-size:12px;margin-top:10px">The AI drafts your listing as you go, A to Z. Everything is saved to your account. No credit card needed.</p>
  </div>
  <div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)">
  <p class="mut" style="margin:0 0 6px">Try it now with the demo account</p>
- <button class="btn btn-soft btn-sm" onclick="demoLogin()">Log in as demo seller</button>
+ <button class="btn btn-soft btn-sm" onclick="demoLogin()" data-tip="Signs you in with the shared demo account so you can look around first." title="Signs you in with the shared demo account so you can look around first.">Log in as demo seller</button>
  </div>
  <p class="legal-line">No credit card · No subscription · Your data stays yours</p>
  </div>
@@ -1069,7 +1069,7 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
  </a>
  <span class="topbar-actions">
  <button class="btn btn-soft btn-sm theme-btn" data-tip="Switch between light and dark." onclick="toggleTheme()" title="Switch between light and dark theme" aria-label="Switch between light and dark theme"><svg class="ic-sun" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg><svg class="ic-moon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.8A8.7 8.7 0 0 1 9.2 3.5a8.7 8.7 0 1 0 11.3 11.3z"/></svg></button>
- <button class="btn btn-ghost btn-sm" onclick="logout()">Sign out</button>
+ <button class="btn btn-ghost btn-sm" onclick="logout()" data-tip="Signs you out on this device and clears your saved session." title="Signs you out on this device and clears your saved session.">Sign out</button>
  </span>
  </div>
  <nav id="topnav" aria-label="Main navigation"></nav>
@@ -1492,7 +1492,7 @@ function mapOpenForm(){
     m = document.createElement("div");
     m.id = "map-form-modal"; m.className = "modal hidden";
     m.innerHTML = `<div class="modal-card"><div class="modal-head"><h3>List your pop-up shop</h3>
-      <button class="modal-x" onclick="document.getElementById('map-form-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <button class="modal-x" onclick="document.getElementById('map-form-modal').classList.add('hidden')" aria-label="Close" data-tip="Closes this box without saving anything." title="Closes this box without saving anything.">×</button></div>
       <p class="mut" style="margin:0 0 12px;font-size:13.5px">Give the address and we'll pin it. Buyers see the town, and can open directions straight to you.</p>
       <label>What's it called?</label>
       <input class="input" id="pu-name" maxlength="80" placeholder="e.g. Sunday Rail Market stall 12">
@@ -1509,7 +1509,7 @@ function mapOpenForm(){
       <label>What can people expect?</label>
       <textarea class="input" id="pu-desc" rows="3" maxlength="600" placeholder="What you sell, when you're open, anything worth knowing."></textarea>
       <div style="height:12px"></div>
-      <button class="btn btn-accent" id="pu-save" onclick="mapSave()" style="width:100%">Put it on the map</button>
+      <button class="btn btn-accent" id="pu-save" onclick="mapSave()" style="width:100%" data-tip="Works out where that address is, then pins your pop-up on the map." title="Works out where that address is, then pins your pop-up on the map.">Put it on the map</button>
       <div id="pu-err" class="hidden" style="color:var(--danger,#c0392b);font-size:13.5px;margin-top:9px"></div>
       <p class="mut" style="margin:9px 0 0;font-size:12.5px">Your browser fills the address boxes in if you've saved one before.</p>
       </div>`;
@@ -1691,7 +1691,7 @@ async function photoSearchGo(){
     S.photoResult = d;
     if (out) out.innerHTML = photoResultsHtml(d, Math.round((Date.now()-t0)/100)/10);
   }catch(e){
-    if (out) out.innerHTML = `<div class="ps-err"><b>Couldn't read that photo.</b><p class="mut" style="margin:6px 0 10px">${escapeHtml(e.message||"")}</p><button class="btn btn-soft btn-sm" onclick="photoSearchGo()">Try again</button></div>`;
+    if (out) out.innerHTML = `<div class="ps-err"><b>Couldn't read that photo.</b><p class="mut" style="margin:6px 0 10px">${escapeHtml(e.message||"")}</p><button class="btn btn-soft btn-sm" onclick="photoSearchGo()" data-tip="Reads your photo and finds matching items for sale." title="Reads your photo and finds matching items for sale.">Try again</button></div>`;
     console.error("photo-search", e);
   }finally{
     if (go) go.disabled = false;
@@ -1716,7 +1716,7 @@ function photoResultsHtml(d, secs){
       </div>` : `<div class="ps-note">We couldn't make out what that is. Try a clearer, closer photo.</div>`);
 
   const ours = (d.ours || []).map(x => `
-    <button type="button" class="ps-hit" onclick="openMarketItem(${Number(x.id)})">
+    <button type="button" class="ps-hit" onclick="openMarketItem(${Number(x.id)})" data-tip="Opens the full details for this item." title="Opens the full details for this item.">
       ${x.photo_url ? `<img src="${escapeAttr(x.photo_url)}" alt="" loading="lazy">` : `<span class="ps-hit-noimg">No photo</span>`}
       <span class="ps-hit-b">
         <span class="ps-hit-t">${escapeHtml(x.title)}</span>
@@ -2131,7 +2131,7 @@ async function renderCloset(el){
  S.listings = d.listings || [];
  await loadMarketplaces();
  if (!S.listings.length) {
- el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 8h15.6l-1.1 11.2A2 2 0 0 1 16.7 21H7.3a2 2 0 0 1-2-1.8z'/><path d='M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8'/></svg>You haven't added anything yet.<br><br><button class="btn btn-accent" onclick="go('snap')">Add your first item</button> <button class="btn btn-soft" onclick="openAdd()">Add manually</button></div>`;
+ el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 8h15.6l-1.1 11.2A2 2 0 0 1 16.7 21H7.3a2 2 0 0 1-2-1.8z'/><path d='M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8'/></svg>You haven't added anything yet.<br><br><button class="btn btn-accent" onclick="go('snap')" data-tip="Opens the camera so you can snap an item right now." title="Opens the camera so you can snap an item right now.">Add your first item</button> <button class="btn btn-soft" onclick="openAdd()" data-tip="Adds an item to your closet by hand." title="Adds an item to your closet by hand.">Add manually</button></div>`;
  return;
  }
  S.closetStatus = S.closetStatus || "";
@@ -2154,7 +2154,7 @@ async function renderCloset(el){
   <div class="card" id="quality-card" data-tip="Checks your photos, title, description and price before you post it.">
   <h3 style="margin-top:0">Is this listing ready?</h3>
   <p class="mut" style="margin-top:0">Checks your photos, title, description and price before you post it, and tells you what to fix.</p>
-  <button type="button" class="btn btn-ghost" style="width:100%" onclick="qualityCheck()">Check my listings</button>
+  <button type="button" class="btn btn-ghost" style="width:100%" onclick="qualityCheck()" data-tip="Checks every listing for missing or thin details and tells you what to fix." title="Checks every listing for missing or thin details and tells you what to fix.">Check my listings</button>
   <div id="quality-out"></div>
   </div>
   <div class="grid" id="closet-grid"></div>
@@ -2217,11 +2217,11 @@ function renderBulk(){
  const n = S.sel.size;
  bar.className = "bulk-bar";
  bar.innerHTML = `<span class="mut" id="closet-n">${n} picked</span>
- <button class="btn btn-soft btn-sm" onclick="closetSelAll()">All</button>
- <button class="btn btn-soft btn-sm" onclick="closetSelClear()">None</button>
+ <button class="btn btn-soft btn-sm" onclick="closetSelAll()" data-tip="Ticks every item in your closet." title="Ticks every item in your closet.">All</button>
+ <button class="btn btn-soft btn-sm" onclick="closetSelClear()" data-tip="Unticks everything you selected." title="Unticks everything you selected.">None</button>
  <span style="flex:1"></span>
-  <button class="btn btn-soft btn-sm" onclick="bulkKit()">Copy the words</button>
-  <button class="btn btn-soft btn-sm" onclick="bulkDuplicate()">Make copies</button>
+  <button class="btn btn-soft btn-sm" onclick="bulkKit()" data-tip="Runs the same fix across every item you ticked." title="Runs the same fix across every item you ticked.">Copy the words</button>
+  <button class="btn btn-soft btn-sm" onclick="bulkDuplicate()" data-tip="Makes a copy of every item you ticked." title="Makes a copy of every item you ticked.">Make copies</button>
   <button class="btn btn-danger btn-sm" onclick="bulkDelete()" data-tip="Removes these items for good.">Delete ${n}</button>`;
 }
 function bulkDelete(){
@@ -2246,9 +2246,9 @@ function bulkKit(){
  <p class="mut" style="margin-top:0">One block of text with every item you ticked. Copy it, then open each shop and paste it there yourself.</p>
  <div class="xl-note"><b>What actually happens:</b> this writes the copy for you. Nothing is sent to any shop — there is no link to any shop account behind this app.</div>
  <div class="xl-row" style="border-bottom:none;padding-bottom:0"><div class="mut" style="font-size:12px">${items.length} listings</div>
- <button class="btn btn-soft btn-sm" onclick="xlCopy(this)" data-kit="${escapeHtml(kit).replace(/"/g,"&quot;")}">Copy the words</button></div>
+ <button class="btn btn-soft btn-sm" onclick="xlCopy(this)" data-kit="${escapeHtml(kit).replace(/"/g,"&quot;")}" data-tip="Copies the finished words for this shop so you can paste them straight in." title="Copies the finished words for this shop so you can paste them straight in.">Copy the words</button></div>
  <pre class="xl-kit">${escapeHtml(kit)}</pre>
- <button class="btn btn-primary" style="width:100%" onclick="closeSheet()">Done</button>`);
+ <button class="btn btn-primary" style="width:100%" onclick="closeSheet()" data-tip="Closes this panel." title="Closes this panel.">Done</button>`);
 }
 async function bulkDuplicate(){
   const items = (S.listings||[]).filter(l=>S.sel.has(l.id)).map(l=>({ title:l.title, description:l.description, price:l.price, size:l.size, condition:l.condition, category:l.category, photo_url:l.photo_url }));
@@ -2316,7 +2316,7 @@ function renderSnap(el){
  <b>Take a photo of your item</b>
  <p class="mut" style="margin:6px 0 0">Point at your item and tap the shutter — we'll name it, size it and suggest a price.<br>Or pick a photo you already have.</p>
  </div>
- <div class="snap-alt"><button class="btn btn-soft btn-sm" onclick="$('#file').click()">Choose a photo I already have</button></div>
+ <div class="snap-alt"><button class="btn btn-soft btn-sm" onclick="$('#file').click()" data-tip="Opens your files so you can pick a photo you already have." title="Opens your files so you can pick a photo you already have.">Choose a photo I already have</button></div>
  <input type="file" id="file" accept="image/*" capture="environment" class="hidden" onchange="onPhoto(this)">
  <p class="mut" style="text-align:center;margin-top:12px">Prefer a sample? <a class="link" href="javascript:useSample()">Try a sample jacket</a></p>
  </div>
@@ -2410,7 +2410,7 @@ async function analyzeImage(b64, previewUrl){
  CURRENT.ai = { ...d, _preview: previewUrl, _b64: b64 };
  w.innerHTML = aiResult(d, previewUrl);
  } catch(e){
- w.innerHTML = `<div class="card"><div class="empty" style="padding:12px"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7.5' width='16' height='12' rx='3.5'/><path d='M12 4v3.5M9 13v1.6M15 13v1.6'/><path d='M9.5 19.5v1.5M14.5 19.5v1.5'/></svg>We couldn't read that photo: <br><span class="mut">${escapeHtml(e.message)}</span><br><br><button class="btn btn-soft btn-sm" onclick="renderSnap($('#screen'))">Try again</button></div></div>`;
+ w.innerHTML = `<div class="card"><div class="empty" style="padding:12px"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7.5' width='16' height='12' rx='3.5'/><path d='M12 4v3.5M9 13v1.6M15 13v1.6'/><path d='M9.5 19.5v1.5M14.5 19.5v1.5'/></svg>We couldn't read that photo: <br><span class="mut">${escapeHtml(e.message)}</span><br><br><button class="btn btn-soft btn-sm" onclick="renderSnap($('#screen'))" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">Try again</button></div></div>`;
  }
 }
 function aiResult(d, previewUrl){
@@ -2425,8 +2425,8 @@ function aiResult(d, previewUrl){
  <span class="pill conf">${d.confidence||0}% confident</span>
  </div>
  <p class="mut" style="margin:10px 0">Suggesting a resale range of <b>${money(d.priceMin)} – ${money(d.priceMax)}</b> in <b>${escapeHtml(d.category)}</b>. ${d.sizeHint ? "Likely size: "+escapeHtml(d.sizeHint)+". " : ""}${d.note?escapeHtml(d.note):""}</p>
- <button class="btn btn-accent" onclick="toListingForm()">Fill in the listing →</button>
- <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px" onclick="renderSnap($('#screen'))">⟲ Take a photo of a different item</button>
+ <button class="btn btn-accent" onclick="toListingForm()" data-tip="Opens the full listing form with every detail you can fill in." title="Opens the full listing form with every detail you can fill in.">Fill in the listing →</button>
+ <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px" onclick="renderSnap($('#screen'))" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">⟲ Take a photo of a different item</button>
  </div>`;
 }
 function condFull(c){ return c ? c[0].toUpperCase()+c.slice(1) : ""; }
@@ -2451,17 +2451,17 @@ function renderListingForm(it){
  <div id="form-ai" class="hidden"></div>
  <label>Title</label>
  <input class="input" id="f-title" value="${escapeAttr(it.title||"")}">
- <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="optimizeTitle()"><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M11 4.5 12.5 9l4.5 1.5L12.5 12 11 16.5 9.5 12 5 10.5 9.5 9z'/><path d='m18.5 15 .7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z'/></svg> Let AI improve this title</button>
+ <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="optimizeTitle()" data-tip="Rewrites the title so it fits every shop length limit and still reads well." title="Rewrites the title so it fits every shop length limit and still reads well."><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M11 4.5 12.5 9l4.5 1.5L12.5 12 11 16.5 9.5 12 5 10.5 9.5 9z'/><path d='m18.5 15 .7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z'/></svg> Let AI improve this title</button>
  <label>Type of item</label>
  <div id="f-cat" data-tip="Pick what kind of item this is.">
- ${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories","Athletic","Bags"].map(c=>`<button class="chip ${c===it.category?"on":""}" onclick="pickCat(this,'${c}')">${c}</button>`).join("")}
+ ${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories","Athletic","Bags"].map(c=>`<button class="chip ${c===it.category?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}
  </div>
  <div class="two">
  <div><label>Price ($)</label><input class="input" id="f-price" type="number" min="1" step="1" value="${it.priceMin||it.price||""}" placeholder="Sale price"></div>
  <div><label>Size</label><input class="input" id="f-size" value="${escapeAttr(it.sizeHint||it.size||"")}" placeholder="e.g. M / 10"></div>
  </div>
  <label>Condition</label>
- <div id="f-cond" data-tip="How used does it look? Be honest — buyers trust you more.">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c===it.condition?"on":""}" onclick="pickCond(this,'${c}')">${c}</button>`).join("")}</div>
+ <div id="f-cond" data-tip="How used does it look? Be honest — buyers trust you more.">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c===it.condition?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
  <fieldset class="form-sec" data-tip="These are the fields shoppers filter and search by — filling them in is what gets you found.">
   <legend>What it is</legend>
   <div class="two">
@@ -2491,7 +2491,7 @@ function renderListingForm(it){
  </fieldset>
 
  <div style="height:12px"></div>
- <button class="btn btn-primary" onclick="saveListing()">${edit?"Save changes":"Save to my clothes"}</button>
+ <button class="btn btn-primary" onclick="saveListing()" data-tip="Saves this listing to your closet." title="Saves this listing to your closet.">${edit?"Save changes":"Save to my clothes"}</button>
  ${edit?`<button class="btn btn-danger btn-sm" style="width:100%;margin-top:8px" onclick="delListing(${it.id})" data-tip="Removes it for good.">Delete listing</button>`:""}
  </div>`;
 }
@@ -2659,9 +2659,9 @@ function xlSheet(l, picks, copied, kit){
  <div style="max-height:34vh;overflow:auto;margin-top:10px">${rows}</div>
  <div class="xl-row" style="border-top:1px solid var(--line);margin-top:6px;padding-top:10px">
  <div class="mut" style="font-size:12px">Your listing words</div>
- <button class="btn btn-soft btn-sm" onclick="xlCopy(this)" data-kit="${escapeHtml(kit).replace(/"/g,"&quot;")}">Copy again</button></div>
+ <button class="btn btn-soft btn-sm" onclick="xlCopy(this)" data-kit="${escapeHtml(kit).replace(/"/g,"&quot;")}" data-tip="Copies the finished words for this shop so you can paste them straight in." title="Copies the finished words for this shop so you can paste them straight in.">Copy again</button></div>
  <pre class="xl-kit">${escapeHtml(kit)}</pre>
- <button class="btn btn-primary" style="width:100%" onclick="closeSheet()">Done</button>`);
+ <button class="btn btn-primary" style="width:100%" onclick="closeSheet()" data-tip="Closes this panel." title="Closes this panel.">Done</button>`);
 }
 function xlCopy(btn){ const t=btn&&btn.getAttribute("data-kit")||""; navigator.clipboard&&navigator.clipboard.writeText(t).then(()=>toast("Kit copied")).catch(()=>toast("Copy blocked by browser")); }
 
@@ -2720,7 +2720,7 @@ async function renderSell(el){
  <label>How much does it weigh? (oz)</label>
  <input class="input" id="fw-oz" type="number" value="8">
  <label>Who will post it?</label>
- <div id="fw-car"><button class="chip on" onclick="pickCar(this,'usps')">USPS</button><button class="chip" onclick="pickCar(this,'pirate')">Pirate Ship (−20%)</button></div>
+ <div id="fw-car"><button class="chip on" onclick="pickCar(this,'usps')" data-tip="Uses the post office rate." title="Uses the post office rate.">USPS</button><button class="chip" onclick="pickCar(this,'pirate')" data-tip="Checks a cheaper courier rate instead." title="Checks a cheaper courier rate instead.">Pirate Ship (−20%)</button></div>
  <div style="height:10px"></div>
  <button class="btn btn-soft" style="width:100%" onclick="calcShipping()" data-tip="Weigh your item and compare the carriers.">Work out postage</button>
  <div id="fw-out"></div>
@@ -2728,11 +2728,11 @@ async function renderSell(el){
  <div class="card">
  <h3 style="margin-top:0"><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M9.5 17.5h5M10.5 21h3'/><path d='M12 3a6 6 0 0 0-3.6 10.8c.6.5.9 1.1.9 1.8v.4h5.4v-.4c0-.7.3-1.3.9-1.8A6 6 0 0 0 12 3z'/></svg> What should I charge?</h3>
  <label>Type of item</label>
- <div id="sp-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Shoes"?"on":""}" onclick="pickCat(this,'${c}')">${c}</button>`).join("")}</div>
+ <div id="sp-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Shoes"?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}</div>
  <label>Brand (if you know it)</label>
  <input class="input" id="sp-brand" placeholder="e.g. Levi's">
  <label>Condition</label>
- <div id="sp-cond">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c==="Good"?"on":""}" onclick="pickCond(this,'${c}')">${c}</button>`).join("")}</div>
+ <div id="sp-cond">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c==="Good"?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
  <div style="height:10px"></div>
  <button class="btn btn-soft" style="width:100%" onclick="suggestPrice()" data-tip="Tell us the type, brand and condition and we'll suggest a fair price.">Suggest a price</button>
  <div id="sp-out"></div>
@@ -2833,13 +2833,13 @@ async function messagesScreen(){
         ${x.unread ? `<span class="dm-badge">${x.unread}</span>` : ""}
       </div>`;
     dmRender(el, `
-      <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+      <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
       <div class="card" style="padding:6px 14px">
         ${active.length ? active.map(row).join("") : `<div class="empty" style="margin:10px 0">No conversations yet. Pick someone below to start one.</div>`}
       </div>
       ${fresh.length ? `<div class="card" style="padding:10px 14px">
         <h3 style="margin:4px 0 8px;font-size:15px">Start a message</h3>
-        <div class="dm-chips">${fresh.slice(0,24).map(x=>`<button class="btn btn-soft btn-sm" onclick="threadScreen(${x.id})">${escapeHtml(x.name)}</button>`).join("")}</div>
+        <div class="dm-chips">${fresh.slice(0,24).map(x=>`<button class="btn btn-soft btn-sm" onclick="threadScreen(${x.id})" data-tip="Opens the conversation with this buyer." title="Opens the conversation with this buyer.">${escapeHtml(x.name)}</button>`).join("")}</div>
       </div>` : ""}
       ${blocked.length ? `<div class="card" style="padding:10px 14px">
         <h3 style="margin:4px 0 4px;font-size:15px">Blocked</h3>
@@ -2862,7 +2862,7 @@ async function threadScreen(id){
   const isBlocked = (S.dmBlocked||[]).some(x=>x.id===id);
   el.innerHTML = `
     <div class="dm-head">
-      <button class="btn btn-ghost btn-sm" onclick="messagesScreen()">← All messages</button>
+      <button class="btn btn-ghost btn-sm" onclick="messagesScreen()" data-tip="Opens your messages." title="Opens your messages.">← All messages</button>
       <button class="btn btn-ghost btn-sm" id="dm-block-btn" onclick="dmBlock(${id})"
         data-tip="Stops them messaging you and hides this conversation. You can undo it any time.">${isBlocked?"Unblock":"Block"}</button>
     </div>
@@ -3094,7 +3094,7 @@ async function ordersScreen(){
  const d = await api("/api/orders");
  const o = d.orders || [];
  el.innerHTML = `
- <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+ <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
  ${o.length ? `<div class="card" style="padding:8px 16px"><table><tr><th>Item</th><th>Shop</th><th>Sold for</th><th>Kept</th><th>State</th></tr>${o.map(x=>`<tr onclick="openOrder(${x.id})"><td>${x.listing_id||x.id}</td><td>${platformName(x.platform)}</td><td><b>${money(x.sale_price)}</b></td><td style="color:${x.profit>=0?"var(--good)":"var(--bad)"}">${money(x.profit)}</td><td><span class="tag ${x.status==='sold'?'active':'sold'}">${x.status||"sold"}</span></td></tr>`).join("")}</table></div>`
  : `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><path d='M12 16.2v-4.6M12 8.2v.01'/></svg>No sales written down yet — mark an item sold to add your first one.</div>`}
  <button class="btn btn-primary" onclick="openOrder(null)" data-tip="Write down a sale that happened outside the app.">+ Add a sale by hand</button>`;
@@ -3116,7 +3116,7 @@ function openOrder(id){
  <div><label>What it cost me ($)</label><input class="input" id="o-cogs" type="number" value="0"></div>
  </div>
  <div style="height:10px"></div>
- <button class="btn btn-accent" onclick="saveOrder(${id||"null"})">${id?"Update sale":"Save sale"}</button>
+ <button class="btn btn-accent" onclick="saveOrder(${id||"null"})" data-tip="Saves this sale against your books." title="Saves this sale against your books.">${id?"Update sale":"Save sale"}</button>
  `);
 }
 async function saveOrder(id){
@@ -3134,7 +3134,7 @@ async function profitScreen(){
  const p = await api("/api/profit/summary");
  const rows = [["Money in", p.gross||0, ""],["Fees they took", p.fees||0, "bad"],["Postage paid", null,""],["What it cost you", p.cogs||0, "bad"],["What you kept", p.net_profit||0, "good"]];
  el.innerHTML = `
- <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+ <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
  <div class="card" style="text-align:center" data-tip="Everything you've kept after fees, postage and what it cost you.">
  <p class="mut" style="margin:0">What you've kept, after everything</p>
  <h1 style="font-size:44px;margin:10px 0;color:${(p.net_profit||0)>=0?"var(--good)":"var(--bad)"}">${money(p.net_profit)}</h1>
@@ -3152,7 +3152,7 @@ async function haulsScreen(){
  const d = await api("/api/hauls");
  const h = d.hauls || [];
  el.innerHTML = `
- <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+ <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
  ${h.length ? h.map(x=>`
  <div class="card">
  <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3180,7 +3180,7 @@ function newHaul(){
  </div>
  <label>Notes</label><textarea class="input" id="h-notes" rows="2" placeholder="What did you find?"></textarea>
  <div style="height:10px"></div>
- <button class="btn btn-accent" onclick="saveHaul()">Save trip</button>
+ <button class="btn btn-accent" onclick="saveHaul()" data-tip="Saves this shopping trip so it counts towards your profit." title="Saves this shopping trip so it counts towards your profit.">Save trip</button>
  `);
 }
 async function saveHaul(){
@@ -3193,7 +3193,7 @@ async function templatesScreen(){
  try {
  const d = await api("/api/messages/templates");
  el.innerHTML = `
- <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+ <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
  <p class="mut">Ready-made replies to buyers. Tap one to copy it, then paste it into the shop's chat.</p>
  ${(d.templates||[]).map(t=>{ const [subj, ...rest] = t.split(":"); return `
  <div class="card" style="cursor:pointer" onclick="copyText('${escapeAttr(t)}')">
@@ -3211,7 +3211,7 @@ async function blogScreen(){
  const d = await api("/api/blog");
  const posts = d.posts || [];
  el.innerHTML = `
- <button class="btn btn-ghost btn-sm" onclick="go('more')">← Back</button>
+ <button class="btn btn-ghost btn-sm" onclick="go('more')" data-tip="Opens the rest of your tools in one place." title="Opens the rest of your tools in one place.">← Back</button>
  ${posts.length ? posts.map(p=>`
  <div class="card">
  <h3 style="margin:0">${escapeHtml(p.title)}</h3>
@@ -3236,12 +3236,12 @@ function openAdd(){
  <div><label>Size</label><input class="input" id="m-size" placeholder="M"></div>
  </div>
  <label>Type of item</label>
- <div id="m-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Tops"?"on":""}" onclick="pickCat(this,'${c}')">${c}</button>`).join("")}</div>
+ <div id="m-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Tops"?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}</div>
  <label>Condition</label>
- <div id="m-cond">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c==="Good"?"on":""}" onclick="pickCond(this,'${c}')">${c}</button>`).join("")}</div>
+ <div id="m-cond">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c==="Good"?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
  <label>Description</label><textarea class="input" id="m-desc" rows="3"></textarea>
  <div style="height:10px"></div>
- <button class="btn btn-accent" onclick="saveManual()">Save to my clothes</button>
+ <button class="btn btn-accent" onclick="saveManual()" data-tip="Saves this sale by hand." title="Saves this sale by hand.">Save to my clothes</button>
  `);
 }
 async function saveManual(){
@@ -3253,7 +3253,7 @@ async function saveManual(){
 function openSheet(html){
  const el = document.createElement("div");
  el.className = "sheet"; el.id = "sheet";
- el.innerHTML = `<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()">Close</button></div>`;
+ el.innerHTML = `<div class="body">${html}<br><button class="btn btn-soft" style="width:100%" onclick="closeSheet()" data-tip="Closes this panel." title="Closes this panel.">Close</button></div>`;
  el.addEventListener("click", e=>{ if (e.target===el) closeSheet(); });
  document.body.appendChild(el);
 }
@@ -3357,14 +3357,14 @@ function guideRender(){
  const dots = `<div class="guide-dots">${GUIDE_STEPS.map((_,k)=>`<i class="${k===G.i?'on':''}"></i>`).join("")}</div>`;
  const nav = `
  <div class="guide-nav">
- <button class="btn btn-ghost btn-sm" onclick="guideBack()" style="${G.i===0?'visibility:hidden':''}">Back</button>
- <button class="btn btn-primary" onclick="${G.i===total-1?'closeGuide()':'guideNext()'}">${G.i===total-1?'Finish ✓':'Next →'}</button>
+ <button class="btn btn-ghost btn-sm" onclick="guideBack()" style="${G.i===0?'visibility:hidden':''}" data-tip="Goes back a step." title="Goes back a step.">Back</button>
+ <button class="btn btn-primary" onclick="${G.i===total-1?'closeGuide()':'guideNext()'}" data-tip="Carries on to the next step of the guide." title="Carries on to the next step of the guide.">${G.i===total-1?'Finish ✓':'Next →'}</button>
  </div>`;
  let mid = "";
  if (s.kind === "marketplaces") mid = guideMPBlock();
- else if (s.action) mid = `<div style="height:12px"></div><button class="btn btn-accent" onclick="guideStepAction(${G.i})">${s.action.label}</button>`;
+ else if (s.action) mid = `<div style="height:12px"></div><button class="btn btn-accent" onclick="guideStepAction(${G.i})" data-tip="Does this step for you, right now." title="Does this step for you, right now.">${s.action.label}</button>`;
  $("#guide-card").innerHTML = `
- <button class="guide-x" onclick="closeGuide()" aria-label="Close">×</button>
+ <button class="guide-x" onclick="closeGuide()" aria-label="Close" data-tip="Closes the guide. You can reopen it any time." title="Closes the guide. You can reopen it any time.">×</button>
  <h3 style="margin:2px 0 2px;font-size:20px">${s.emoji} ${escapeHtml(s.title)}</h3>
  <p class="mut" style="margin:8px 0 4px">Step ${G.i+1} of ${total}</p>
  <div style="font-size:14px">${s.body}</div>
@@ -3375,22 +3375,22 @@ function guideRender(){
 
 function guideMPBlock(){
  const ids = Object.keys(GUIDE_MPS);
- const chips = `<div style="margin:12px 0 4px">${ids.map(id=>`<button class="guide-mp ${id===G.mp?'on':''}" onclick="guidePickMP('${id}')">${GUIDE_MPS[id].icon} <span style="flex:1">${GUIDE_MPS[id].name}</span><span class="mut" style="font-size:11px">${id===G.mp?'Pick this one':'tap'}</span></button>`).join("")}</div>`;
+ const chips = `<div style="margin:12px 0 4px">${ids.map(id=>`<button class="guide-mp ${id===G.mp?'on':''}" onclick="guidePickMP('${id}')" data-tip="Switches the guide to this shop." title="Switches the guide to this shop.">${GUIDE_MPS[id].icon} <span style="flex:1">${GUIDE_MPS[id].name}</span><span class="mut" style="font-size:11px">${id===G.mp?'Pick this one':'tap'}</span></button>`).join("")}</div>`;
  const cfg = GUIDE_MPS[G.mp];
  const stepsHtml = `<ol class="guide-ol">${cfg.steps.map(x=>`<li>${x}</li>`).join("")}</ol>`;
- const genBtn = `<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="guideCopyListing('${G.mp}')">Generate listing content for ${cfg.name}</button>`;
+ const genBtn = `<button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="guideCopyListing('${G.mp}')" data-tip="Copies these words so you can paste them into the shop." title="Copies these words so you can paste them into the shop.">Generate listing content for ${cfg.name}</button>`;
  let payload = "";
  if (G.payload){
  const v = G.mode === "json" ? G.payload.json : G.payload.csv;
  payload = `
  <div style="height:10px"></div>
  <div class="two">
- <button class="btn btn-soft btn-sm" style="${G.mode==='json'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('json')">JSON</button>
- <button class="btn btn-soft btn-sm" style="${G.mode==='csv'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('csv')">CSV</button>
+ <button class="btn btn-soft btn-sm" style="${G.mode==='json'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('json')" data-tip="Shows the guide as copyable text." title="Shows the guide as copyable text.">JSON</button>
+ <button class="btn btn-soft btn-sm" style="${G.mode==='csv'?'background:var(--ink);color:#fff;':''}" onclick="guideMode('csv')" data-tip="Shows the guide as a table you can open in a spreadsheet." title="Shows the guide as a table you can open in a spreadsheet.">CSV</button>
  </div>
  <label>${G.mode==='json'?'Copy JSON':'Copy CSV'} — paste into ${cfg.name}</label>
  <textarea class="guide-copy" readonly>${escapeAttr(v)}</textarea>
- <button class="btn btn-accent btn-sm" style="width:100%;margin-top:6px" onclick="guideCopyNow()">Copy to clipboard</button>
+ <button class="btn btn-accent btn-sm" style="width:100%;margin-top:6px" onclick="guideCopyNow()" data-tip="Copies everything on this step." title="Copies everything on this step.">Copy to clipboard</button>
  <p class="mut" style="font-size:12px;margin:8px 0 0">Generated from your real listing — paste it into ${cfg.name} and tweak.</p>`;
  }
  return `<a class="link" href="${cfg.url}" target="_blank" rel="noopener">Open ${cfg.name} & create your account ↗</a>
@@ -3527,7 +3527,7 @@ const MKT_CARD = {
  }
 };
 
-function hcAct(label, fn){ return `<button class="btn btn-accent hc-act" style="width:100%" onclick="${fn}">${label}</button>`; }
+function hcAct(label, fn){ return `<button class="btn btn-accent hc-act" style="width:100%" onclick="${fn}" data-tip="Runs this step of the guide." title="Runs this step of the guide.">${label}</button>`; }
 
 function hcMarketStep(mkt){
  const p = MKT_CARD[mkt];
