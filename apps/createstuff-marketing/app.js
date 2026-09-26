@@ -1479,7 +1479,12 @@ async function downloadProjectZip() {
     URL.revokeObjectURL(url);
     showToast('ZIP downloaded');
   } catch (e) {
-    showToast('ZIP download failed');
+    // An empty project is not a failure — say what is actually wrong instead of
+    // blaming the download for having nothing to put in it.
+    const m = String((e && e.message) || '');
+    showToast(m.indexOf('empty project') >= 0 || m.indexOf('no content') >= 0
+      ? 'No files yet — there is nothing to download'
+      : 'ZIP download failed');
   }
 }
 

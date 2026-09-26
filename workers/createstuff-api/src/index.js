@@ -1901,6 +1901,35 @@ export default {
         return json({ user: u || null });
       }
 
+      // PROFILE SAVE — the settings page "Save" button PUTs display_name/email
+      // here. Before this branch existed the request fell through to the router
+      // and came back 404, so the button showed "Save failed" every single time
+      // (measured 2026-09-26: PUT /api/auth/me -> 404). Column names are from a
+      // fixed whitelist, never from the request body.
+      if (path === "/api/auth/me" && method === "PUT") {
+        const user = await requireUser(request, env);
+        if (!user) return err("Unauthorized", 401);
+        const b = await request.json().catch(() => ({}));
+        const sets = [], binds = [];
+        if (b.display_name !== undefined && b.display_name !== null) {
+          const n = String(b.display_name).trim().slice(0, 80);
+          if (!n) return err("Display name cannot be empty", 400);
+          sets.push("display_name=?"); binds.push(n);
+        }
+        if (b.email !== undefined && b.email !== null) {
+          const e = String(b.email).trim().toLowerCase().slice(0, 254);
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return err("That does not look like an email address", 400);
+          const dup = await env.DB.prepare("SELECT id FROM users WHERE email=? AND id<>?").bind(e, user.sub).first();
+          if (dup) return err("Another account already uses that email", 409);
+          sets.push("email=?"); binds.push(e);
+        }
+        if (!sets.length) return err("Nothing to update", 400);
+        binds.push(user.sub);
+        await env.DB.prepare("UPDATE users SET " + sets.join(", ") + " WHERE id=?").bind(...binds).run();
+        const u = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE id=?").bind(user.sub).first();
+        return json({ user: u || null });
+      }
+
       // ── everything below requires a session ────────────────────────
       const user = await requireUser(request, env);
       if (!user) return err("Unauthorized", 401);
@@ -2005,9 +2034,35 @@ export default {
         return json({ project: p }, 201);
       }
       if (path.startsWith("/api/projects/") && method === "DELETE") {
-        const id = parseInt(path.split("/")[3], 10);
+        const parts = path.split("/");                 // ["", "api", "projects", "165", ...]
+        const id = parseInt(parts[3], 10);
         const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(id, user.sub).first();
         if (!p) return err("Not found", 404);
+
+        // /api/projects/:id/files/<path...> removes ONE file. Without this branch
+        // the generic prefix match below used to catch it too: the code parsed
+        // id=165, deleted every file, every build and the project row itself, and
+        // still answered {"ok":true}. Measured 2026-09-26 — a file-level DELETE
+        // destroyed a whole project. Deleting the last file must NOT delete the
+        // project; only the exact /api/projects/:id form does that.
+        if (parts[4] === "files") {
+          if (parts.length < 6) return err("A file path is required", 400);
+          const filePath = decodeURIComponent(parts.slice(5).join("/"));
+          const r = await env.DB.prepare(
+            "DELETE FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
+          ).bind(id, filePath, filePath).run();
+          await cacheDrop(env, filesListKey(id));
+          const left = await env.DB.prepare(
+            "SELECT COUNT(*) AS n FROM project_files WHERE project_id=?"
+          ).bind(id).first();
+          return json({
+            ok: true,
+            deleted: (r.meta && r.meta.changes) || 0,
+            file_path: filePath,
+            files_left: left ? left.n : 0,
+          });
+        }
+
         await env.DB.prepare("DELETE FROM project_files WHERE project_id=?").bind(id).run();
         await env.DB.prepare("DELETE FROM builds WHERE project_id=?").bind(id).run();
         await env.DB.prepare("DELETE FROM projects WHERE id=?").bind(id).run();
