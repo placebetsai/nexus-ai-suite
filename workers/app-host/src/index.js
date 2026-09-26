@@ -567,9 +567,30 @@ async function dispatch(request, env) {
   }
 
   const projectId = await resolveHostProject(env, hostname);
-  if (!projectId) return err("No project matched hostname", 404);
+  if (!projectId) {
+    // www.<zone> is not an app-host project — it is an alias of the zone's own
+    // site (marketpicks.ai, fashionistas.ai, …). Send the visitor there instead
+    // of a dead end, preserving path and query so deep links keep working.
+    const apex = canonicalApex(hostname);
+    if (apex) {
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: `https://${apex}${url.pathname}${url.search}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    return err("No project matched hostname", 404);
+  }
   const response = await serveProjectFile(env, request, projectId, url.pathname, true);
   return response || err("File not found", 404);
+}
+
+/** www.marketpicks.ai -> marketpicks.ai (only for zones this Worker fronts). */
+function canonicalApex(hostname) {
+  if (!hostname) return null;
+  return [...CONTROLLED_ZONES].find((zone) => hostname === `www.${zone}`) || null;
 }
 
 export default {

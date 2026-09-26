@@ -5,3 +5,10 @@
 !.secrets/README.md
 # Wrangler build caches — never committed
 .wrangler/
+
+# Agent job logs, prompt files, tunnel output
+.jobs/
+# Build output written to the repo root by generated apps
+/index.html
+/script.js
+/styles.css

@@ -153,6 +153,24 @@ async function rateLimit(env, request, bucket, limit = 20, windowSec = 60) {
 }
 
 // ── code generation ──────────────────────────────────────────────────────
+// Three sources, tried in order:
+//
+//   1. The Hive relay — an OpenAI-compatible endpoint in front of OpenCode's
+//      free model roster. Measured 2026-09-25: calling opencode.ai/zen/v1 from
+//      inside a Cloudflare Worker returns HTTP 429 "FreeUsageLimitError" on
+//      6/6 attempts (Zen rate-limits Cloudflare's egress ranges; four different
+//      User-Agents all 429, so it is the IP, not the headers), while the same
+//      call from a non-Cloudflare host returns HTTP 200 on 6/6. The relay sits
+//      on an unblocked IP and itself fans out across all 8 free models with
+//      failover, so one request here covers the whole roster.
+//   2. Direct Zen — kept as a safety net if the relay is down.
+//   3. Workers AI — last resort. Cloudflare's free tier caps it at 10,000
+//      neurons/day; measured 2026-09-25 it returned
+//      "4006: you have used up your daily free allocation" and every build died.
+//
+// HIVE_URL / HIVE_TOKEN are Worker secrets (wrangler secret put), so the relay
+// hostname and token can rotate without a code deploy.
+const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const CODE_MODELS = [
   "@cf/qwen/qwen2.5-coder-32b-instruct",
   "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
@@ -160,8 +178,90 @@ const CODE_MODELS = [
   "@cf/meta/llama-3.2-3b-instruct",
 ];
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// One OpenAI-compatible call. `viaRelay` picks the Hive relay when configured.
+//
+// The relay is called ASYNCHRONOUSLY (start, then poll) rather than as one
+// long POST, because there are two hard ceilings stacked in front of us:
+//   · the quick tunnel answers HTTP 524 at ~126s   (measured 3/3)
+//   · Cloudflare kills this Worker request at ~180s (measured HTTP 000 @180.87s)
+// while a single generation takes 40-200s. A long-held connection cannot
+// survive either, so every hop stays short and we poll instead.
+async function openAiGen(env, model, system, user, maxTok, viaRelay) {
+  const headers = { "Content-Type": "application/json" };
+  if (viaRelay && env.HIVE_TOKEN) headers.Authorization = "Bearer " + env.HIVE_TOKEN;
+  const messages = [{ role: "system", content: system }, { role: "user", content: user }];
+
+  if (viaRelay) {
+    if (!env.HIVE_URL) throw new Error("hive relay not configured");
+    const start = await fetch(env.HIVE_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model, messages, max_tokens: maxTok, async: true,
+        // Budget by size: the planner (<=1500 tokens) must return quickly so
+        // the writer still has room inside the Worker's 180s cap.
+        deadline_ms: maxTok <= 1500 ? 45000 : 110000,
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!start.ok) throw new Error("hive HTTP " + start.status + " on start");
+    const s = await start.json();
+    if (!s.job_id) throw new Error("hive returned no job_id: " + JSON.stringify(s).slice(0, 120));
+    const jobUrl = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "") + "/v1/jobs/" + s.job_id;
+
+    const budget = Date.now() + (maxTok <= 1500 ? 60000 : 125000);
+    let last = "no poll yet";
+    while (Date.now() < budget) {
+      await sleep(3000);
+      let j;
+      try {
+        const g = await fetch(jobUrl, { headers, signal: AbortSignal.timeout(15000) });
+        if (!g.ok) { last = "poll HTTP " + g.status; continue; }
+        j = await g.json();
+      } catch (e) { last = "poll failed: " + String((e && e.message) || e); continue; }
+
+      if (j.status === "done") {
+        const text = String(j.content || "").trim();
+        if (!text) throw new Error("hive job finished with empty content");
+        return { text, parsed: null, model: "hive/" + (j.model || model), backend: j.backend || "relay" };
+      }
+      if (j.status === "failed") throw new Error("hive job failed: " + String(j.error || "").slice(0, 220));
+      last = "running for " + Math.round((Date.now() - (j.started || Date.now())) / 1000) + "s";
+    }
+    throw new Error("hive job timed out after 150s (" + last + ")");
+  }
+
+  // Direct Zen — a safety net for when the relay is down. It must fail fast:
+  // at 10 minutes it hung this Worker all the way into the 180s cap.
+  const r = await fetch(ZEN_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model, messages, max_tokens: maxTok, stream: false }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) throw new Error("zen HTTP " + r.status);
+  const j = await r.json();
+  if (j && j.error) throw new Error("zen: " + String(j.error.message || "").slice(0, 120));
+  const text = String((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "").trim();
+  if (!text) throw new Error("zen returned an empty response");
+  return { text, parsed: null, model: "zen/" + (j.model || model), backend: "direct" };
+}
+
 const gen = async (env, system, user, maxTok = 8000) => {
   let last = null;
+  // 1. the Hive relay (one call — it already fails over across all 8 free models)
+  if (env.HIVE_URL) {
+    try { return await openAiGen(env, "space-bunny-free", system, user, maxTok, true); }
+    catch (e) { last = e; }
+  }
+  // 2. direct Zen, in case the relay is down
+  for (const model of ["space-bunny-free", "mimo-v2.6-flash-free", "nemotron-3.5-lightning-free"]) {
+    try { return await openAiGen(env, model, system, user, maxTok, false); }
+    catch (e) { last = e; }
+  }
+  // 3. Workers AI
   for (const model of CODE_MODELS) {
     try {
       const r = await env.AI.run(model, {
@@ -175,7 +275,7 @@ const gen = async (env, system, user, maxTok = 8000) => {
       return { text, parsed: null, model };
     } catch (e) { last = e; }
   }
-  throw last || new Error("no Workers AI model available");
+  throw last || new Error("no model available");
 };
 
 function normalizeFiles(arr) {
@@ -721,12 +821,53 @@ async function repairAgent(env, files, flags, plan) {
   }
 }
 
-async function runGenerate(env, user, projectId, plan, mode, origin) {
+// Shared failure writer: sets status='failed' and records the reason so the
+// polling UI shows why instead of spinning forever on 'running'.
+async function failBuild(env, id, e) {
+  try {
+    await env.DB.prepare("UPDATE builds SET status='failed', completed_at=?, agent_log=? WHERE id=?").bind(
+      new Date().toISOString(),
+      JSON.stringify([{ agent: "System", message: "Build failed: " + String((e && e.message) || e), at: new Date().toISOString() }]),
+      id
+    ).run();
+  } catch {}
+}
+
+async function runGenerate(env, user, projectId, plan, mode, origin, buildId = null) {
   const started = Date.now();
+  // The UI polls GET /api/builds/:id and appends every NEW entry it has not
+  // seen yet. Writing the log after each stage is what makes the chat move
+  // instead of sitting on one frozen bubble for two minutes.
+  const log = [];
+  const push = async (agent, message) => {
+    log.push({ agent, message, at: new Date().toISOString() });
+    if (buildId) {
+      try {
+        await env.DB.prepare("UPDATE builds SET agent_log=? WHERE id=?")
+          .bind(JSON.stringify(log), buildId).run();
+      } catch {}
+    }
+  };
+  const finish = async (status, files, preview, note) => {
+    if (buildId) {
+      await env.DB.prepare(
+        "UPDATE builds SET status=?, generated_code=?, preview_html=?, completed_at=? WHERE id=?"
+      ).bind(status, JSON.stringify(files), preview, new Date().toISOString(), buildId).run();
+      await cacheDrop(env, buildsListKey(projectId));
+      return buildId;
+    }
+    return null;
+  };
   const apiOrigin = /^https?:\/\//.test(String(origin || "")) ? String(origin) : "https://createstuff-api.fashionistas1979.workers.dev";
   const brief = API_BRIEF.replace(/__ID__/g, String(projectId)).replace(/__ORIGIN__/g, apiOrigin);
   // ── STAGE 1/3 · MANAGER ─────────────────────────────────────────────────
   const manager = await planAgent(env, plan);
+  await push(
+    "Planner",
+    manager
+      ? `Plan ready (${manager.model}): ${String(manager.spec || "").replace(/\s+/g, " ").slice(0, 220)}`
+      : "Planner unavailable — building straight from your sentence."
+  );
   const specBlock = manager
     ? `\n\nBUILD SPEC FROM THE PLANNER (derived from the brief — satisfy it, and add nothing it does not call for):\n${manager.spec}`
     : "";
@@ -739,11 +880,25 @@ async function runGenerate(env, user, projectId, plan, mode, origin) {
   let shimmed = injectStorageShim(files);
   const ok = siteOk(files);
   let qFlags = qualityFlags(files, plan);
+  await push(
+    "Frontend",
+    `${g.model} wrote ${files.length} file(s): ${files.map((f) => f.path).join(", ")} — ${files.reduce((n, f) => n + f.content.length, 0).toLocaleString("en-US")} chars`
+  );
 
   // ── STAGE 3/3 · VERIFIER (rules) → REPAIR (model, only if flagged) ──────
   let repairState = "verifier-passed";
   const flagsBefore = qFlags.length;
-  if (ok && qFlags.length) {
+  await push(
+    "Test",
+    ok
+      ? qFlags.length
+        ? `Verifier found ${qFlags.length} problem(s): ${qFlags.join(", ")}. Sending them to the repair agent.`
+        : "Verifier ran over the code and found nothing to fix."
+      : "Verifier: the model did not return a usable index.html."
+  );
+  // The Worker is killed at ~180s, so a third model call must be dropped rather
+  // than allowed to run the whole build into the cap.
+  if (ok && qFlags.length && Date.now() - started < 140000) {
     const attempt = await repairAgent(env, files, qFlags, plan);
     if (attempt) {
       files = attempt.files;
@@ -754,8 +909,10 @@ async function runGenerate(env, user, projectId, plan, mode, origin) {
       shimmed = injectStorageShim(files);
       qFlags = qualityFlags(files, plan);
       repairState = `fixed-${attempt.fixed}`;
+      await push("Fix", `Repair agent rewrote the code and cleared ${attempt.fixed} of ${flagsBefore} problem(s).`);
     } else {
       repairState = "kept-original";
+      await push("Fix", "Repair agent returned nothing usable — keeping the original code.");
     }
   }
 
@@ -768,23 +925,33 @@ async function runGenerate(env, user, projectId, plan, mode, origin) {
     ? `${files.length} files, ${files.reduce((n, f) => n + f.content.length, 0)} chars${replaced ? `, ${replaced} external image(s) swapped for CSS art` : ""}${routed ? ", nav-router=1" : ""}${shimmed ? ", storage-shim=1" : ""}; fetch()=${apiCalls}${usesAuth ? ", auth=yes" : ""}${qFlags.length ? `; QUALITY: ${qFlags.join(", ")}` : "; quality=clean"}; ${agentNote}`
     : "model output did not contain a usable index.html";
 
-  const ins = await env.DB.prepare(
-    "INSERT INTO builds (project_id, status, prompt, generated_code, preview_html, agent_log, started_at, completed_at) VALUES (?,?,?,?,?,?,?,?)"
-  ).bind(
-    projectId,
-    ok ? "completed" : "failed",
-    String(plan || "").slice(0, 4000),
-    JSON.stringify(files),
-    ok ? files.find((f) => /index\.html?$/i.test(f.path)).content : "",
-    JSON.stringify([{ mode, model: g.model, note, at: new Date().toISOString(), planner: manager ? manager.model : null, verifier: "rules", flags: qFlags, repair: repairState }]),
-    new Date(started).toISOString(),
-    new Date().toISOString()
-  ).run();
-  const buildId = ins.meta.last_row_id;
-  // builds is a collection with its own LIST route — drop it after the insert.
-  await cacheDrop(env, buildsListKey(projectId));
+  const preview = ok ? files.find((f) => /index\.html?$/i.test(f.path)).content : "";
+  await push("Online", ok ? "Build finished. Press Put online to get a web address." : "Build failed — try describing it again.");
 
-  if (ok) await saveFiles(env, projectId, files, buildId);
+  let outBuildId = buildId;
+  if (buildId) {
+    // The row was created by POST /api/builds before the work started, so it
+    // gets filled in rather than a second row being inserted.
+    await finish(ok ? "completed" : "failed", files, preview, note);
+  } else {
+    const ins = await env.DB.prepare(
+      "INSERT INTO builds (project_id, status, prompt, generated_code, preview_html, agent_log, started_at, completed_at) VALUES (?,?,?,?,?,?,?,?)"
+    ).bind(
+      projectId,
+      ok ? "completed" : "failed",
+      String(plan || "").slice(0, 4000),
+      JSON.stringify(files),
+      preview,
+      JSON.stringify([{ mode, model: g.model, note, at: new Date().toISOString(), planner: manager ? manager.model : null, verifier: "rules", flags: qFlags, repair: repairState }]),
+      new Date(started).toISOString(),
+      new Date().toISOString()
+    ).run();
+    outBuildId = ins.meta.last_row_id;
+    await cacheDrop(env, buildsListKey(projectId));
+  }
+  const buildIdOut = outBuildId;
+
+  if (ok) await saveFiles(env, projectId, files, buildIdOut);
 
   await env.DB.prepare("UPDATE projects SET status=?, updated_at=? WHERE id=?")
     .bind(ok ? "built" : "failed", new Date().toISOString(), projectId).run();
@@ -804,7 +971,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin) {
   if (!ok) {
     return json({ ok: false, files: [], model: g.model, notes: note, agents, error: "The model did not return a usable site. Try again." }, 422);
   }
-  return json({ ok: true, files, model: g.model, notes: note, buildId, checkpointId: `cp-${buildId}`, agents });
+  return json({ ok: true, files, model: g.model, notes: note, buildId: buildIdOut, checkpointId: `cp-${buildIdOut}`, agents });
 }
 
 // ── PER-PROJECT APP BACKEND ──────────────────────────────────────────────
@@ -1131,7 +1298,7 @@ function ghStatusError(status) {
 
 // ── router ───────────────────────────────────────────────────────────────
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -1140,6 +1307,62 @@ export default {
     try {
       // health
       if (path === "/api/health") return json({ ok: true, service: "createstuff-api", ts: Date.now() });
+
+      // Hive callback: the relay runs the build for us. It authenticates with
+      // HIVE_TOKEN rather than a user session, so this MUST sit above the
+      // requireUser gate below — otherwise the relay's call was rejected with
+      // 401 before it could reach here (measured 2026-09-25, build 71).
+      const runRoute = path.match(/^\/api\/builds\/(\d+)\/run$/);
+      if (runRoute && method === "POST") {
+        const tok = request.headers.get("authorization") || "";
+        if (!env.HIVE_TOKEN || tok !== "Bearer " + env.HIVE_TOKEN) return err("Unauthorized", 401);
+        const id = parseInt(runRoute[1], 10);
+        const row = await env.DB.prepare(
+          "SELECT b.id, b.project_id, b.prompt, b.status, p.user_id FROM builds b JOIN projects p ON p.id=b.project_id WHERE b.id=?"
+        ).bind(id).first();
+        if (!row) return err("Not found", 404);
+        if (row.status !== "running") return json({ id, status: row.status, skipped: "already " + row.status }, 200);
+        const owner = { sub: row.user_id };
+        // Without this catch an exception escaped as a bare 500 and the row
+        // stayed 'running' forever — builds 75/76 were stranded that way while
+        // the UI polled a status that would never change.
+        try {
+          return await runGenerate(env, owner, row.project_id, row.prompt, "generate", url.origin, id);
+        } catch (e) {
+          await failBuild(env, id, e);
+          return err(String((e && e.message) || e).slice(0, 300), 500);
+        }
+      }
+
+      // Temporary diagnostic: Zen answers 200 from a shell but 429 from a
+      // Worker. Is it the User-Agent or the egress IP? Try several UAs.
+      if (path === "/api/zen-probe") {
+        const uas = {
+          default: undefined,
+          browser: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+          none: "",
+          curl: "curl/8.5.0",
+        };
+        const out = { uas: {} };
+        for (const [k, ua] of Object.entries(uas)) {
+          try {
+            const h = { "Content-Type": "application/json" };
+            if (ua !== undefined) h["User-Agent"] = ua;
+            const r = await fetch(ZEN_URL, {
+              method: "POST", headers: h,
+              body: JSON.stringify({ model: "space-bunny-free", messages: [{ role: "user", content: "reply OK" }], max_tokens: 10 }),
+              signal: AbortSignal.timeout(20000),
+            });
+            const body = await r.text();
+            out.uas[k] = { http: r.status, body: body.slice(0, 110) };
+          } catch (e) { out.uas[k] = { threw: String((e && e.name) + ": " + (e && e.message)) }; }
+        }
+        try {
+          await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages: [{ role: "user", content: "hi" }], max_tokens: 5 });
+          out.workersAI = "ok";
+        } catch (e) { out.workersAI = String((e && e.message) || e).slice(0, 90); }
+        return json(out);
+      }
 
       // per-project app backend + static app files (public: the app's own users)
       const appResp = await handleAppRequest(request, env, url);
@@ -1409,6 +1632,83 @@ export default {
           .bind(publishUrl, "deployed", new Date().toISOString(), projectId).run();
         await cacheDrop(env, projectsListKey(user.sub));
         return json({ ok: true, publishUrl, checkpointId: `cp-${projectId}-${Date.now()}`, state: "completed" });
+      }
+
+      // ── BUILD JOBS ──────────────────────────────────────────────────────
+      // The Hive chat creates a job and gets an answer in one round trip,
+      // then watches GET /api/builds/:id for each stage as it lands. Running
+      // generation inside the POST is what used to hold the browser open for
+      // two minutes with nothing on screen.
+      if (path === "/api/builds" && method === "POST") {
+        const b = await readJson(request);
+        const projectId = parseInt(b.project_id || b.projectId, 10);
+        const prompt = String(b.prompt || b.plan || "").trim();
+        if (!projectId) return err("project_id required");
+        if (!prompt) return err("prompt required");
+        const p = await env.DB.prepare("SELECT id, name FROM projects WHERE id=? AND user_id=?")
+          .bind(projectId, user.sub).first();
+        if (!p) return err("Not found", 404);
+        // One open job per project: a second send while one is running would
+        // race the first and overwrite its files.
+        const busy = await env.DB.prepare(
+          "SELECT id FROM builds WHERE project_id=? AND status='running' AND completed_at IS NULL ORDER BY id DESC LIMIT 1"
+        ).bind(projectId).first();
+        if (busy) return json({ id: busy.id, project_id: projectId, status: "running", alreadyRunning: true }, 202);
+
+        const startedAt = new Date().toISOString();
+        const firstLog = [{ agent: "Planner", message: "Accepted brief: " + prompt.slice(0, 200), at: startedAt }];
+        const ins = await env.DB.prepare(
+          "INSERT INTO builds (project_id, status, prompt, generated_code, preview_html, agent_log, started_at) VALUES (?,?,?,?,?,?,?)"
+        ).bind(projectId, "running", prompt.slice(0, 4000), "", "", JSON.stringify(firstLog), startedAt).run();
+        const id = ins.meta.last_row_id;
+        await cacheDrop(env, buildsListKey(projectId));
+
+        // The work must NOT run in ctx.waitUntil: Cloudflare tears that
+        // context down at ~30s (measured 2026-09-25 — build 70's outbound
+        // fetch was cancelled at 21:38:09, 31s after start, killing the code
+        // writer while the planner had already finished). Instead the Hive
+        // relay calls back into POST /api/builds/:id/run, which is an ordinary
+        // long-lived request with no such ceiling. The relay answers this kick
+        // immediately, so waitUntil has plenty of room for it.
+        const kick = (async () => {
+          if (env.HIVE_URL && env.HIVE_TOKEN) {
+            const runUrl = url.origin + "/api/builds/" + id + "/run";
+            const base = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "");
+            const r = await fetch(base + "/hive/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.HIVE_TOKEN },
+              body: JSON.stringify({ run_url: runUrl }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (r.ok) return; // relay accepted the job
+          }
+          // No relay configured — run inline as before (dev/test only).
+          await runGenerate(env, user, projectId, prompt, "generate", url.origin, id).catch(async (e) => {
+            await failBuild(env, id, e);
+          });
+        })().catch(async (e) => { await failBuild(env, id, e); });
+        if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(kick);
+
+        return json({ id, project_id: projectId, status: "running", started_at: startedAt }, 202);
+      }
+      const buildOne = path.match(/^\/api\/builds\/(\d+)$/);
+      if (buildOne && method === "GET") {
+        const row = await env.DB.prepare(
+          "SELECT id, project_id, status, prompt, generated_code, preview_html, agent_log, started_at, completed_at FROM builds WHERE id=?"
+        ).bind(+buildOne[1]).first();
+        if (!row) return err("Not found", 404);
+        const owner = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+          .bind(row.project_id, user.sub).first();
+        if (!owner) return err("Not found", 404);
+        let log = [];
+        try { log = row.agent_log ? JSON.parse(row.agent_log) : []; } catch { log = []; }
+        let files = [];
+        try { files = row.generated_code ? JSON.parse(row.generated_code) : []; } catch { files = []; }
+        return json({
+          id: row.id, project_id: row.project_id, status: row.status, prompt: row.prompt,
+          agent_log: log, generated_code: row.preview_html || "", files,
+          started_at: row.started_at, completed_at: row.completed_at,
+        });
       }
 
       // build history (app.js shims most of this, but the route is harmless)

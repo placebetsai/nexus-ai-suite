@@ -574,9 +574,9 @@ function renderProjects() {
         <div class="project-meta"><span class="deploy-status ${p.status === 'deployed' ? 'deploy-live' : 'deploy-pending'}">● ${p.status}</span></div>
       </div>
       <div class="project-actions">
-        <button onclick="editProject('${p.id}')">Edit</button>
-        <button onclick="cloneProject('${p.id}')">Copy</button>
-        <button onclick="deleteProject('${p.id}')">Delete</button>
+        <button onclick="editProject('${p.id}')" data-tip="Opens the chat builder so you can keep working on this app." title="Opens the chat builder so you can keep working on this app.">Edit</button>
+        <button onclick="cloneProject('${p.id}')" data-tip="Makes a second copy of this app, so you can change one and leave the other alone." title="Makes a second copy of this app, so you can change one and leave the other alone.">Copy</button>
+        <button onclick="deleteProject('${p.id}')" data-tip="Removes this app and its files for good. There is no undo." title="Removes this app and its files for good. There is no undo.">Delete</button>
       </div>
     </div>
   `).join('');
@@ -684,7 +684,7 @@ async function loadGitHubRepos() {
               <div style="font-size:.8rem;color:var(--text2)">${escapeHtml(r.language || '')} · <svg viewBox="0 0 24 24" width="11" height="11" style="fill:currentColor;vertical-align:-1px"><path d="m12 3.4 2.65 5.37 5.93.86-4.29 4.18 1.01 5.9L12 16.9l-5.3 2.8 1.01-5.9L3.42 9.63l5.93-.86z"/></svg> ${r.stargazers_count} · updated ${new Date(r.updated_at).toLocaleDateString()}</div>
               ${r.description ? `<div style="font-size:.8rem;color:var(--text3);margin-top:.25rem">${escapeHtml(r.description)}</div>` : ''}
             </div>
-            <a href="${escapeHtml(r.html_url)}" target="_blank" rel="noopener" style="padding:.35rem .75rem;border-radius:6px;background:var(--bg3);color:var(--text);text-decoration:none;font-size:.8rem;border:1px solid var(--border)">Open</a>
+            <a href="${escapeHtml(r.html_url)}" target="_blank" rel="noopener" data-tip="Opens this repository on github.com in a new tab." title="Opens this repository on github.com in a new tab." style="padding:.35rem .75rem;border-radius:6px;background:var(--bg3);color:var(--text);text-decoration:none;font-size:.8rem;border:1px solid var(--border)">Open</a>
           </div>
         `).join('');
         showToast(`Found ${repos.length} projects on GitHub`);
@@ -706,8 +706,8 @@ function ensureImportSection() {
       <h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15v3"/></svg>Bring in a project from GitHub</h3>
       <p style="color:var(--text2);margin-bottom:.75rem;font-size:.85rem">Paste the link to a project you keep on GitHub (it looks like https://github.com/owner/name) and we copy its files in as a new app you can edit here.</p>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <input type="url" id="import-repo-url" placeholder="https://github.com/owner/repo" style="flex:1;min-width:220px;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
-        <button class="btn-primary" id="import-repo-btn"><span id="import-btn-text">Bring it in</span><span id="import-btn-spinner" class="cs-spin" style="display:none;margin-left:.5rem"></span></button>
+        <input type="url" id="import-repo-url" placeholder="https://github.com/owner/repo" data-tip="Paste the full web address of your repository, starting with https://github.com/" title="Paste the full web address of your repository, starting with https://github.com/" style="flex:1;min-width:220px;padding:.5rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">
+        <button class="btn-primary" id="import-repo-btn" data-tip="Copies a project from your GitHub account into CreateStuff so you can work on it here." title="Copies a project from your GitHub account into CreateStuff so you can work on it here."><span id="import-btn-text">Bring it in</span><span id="import-btn-spinner" class="cs-spin" style="display:none;margin-left:.5rem"></span></button>
       </div>
       <div id="import-result" style="margin-top:.75rem;display:none"></div>
     </div>
@@ -812,7 +812,7 @@ async function loadDeployPage() {
           </div>
           <span class="deploy-status ${p.status === 'deployed' ? 'deploy-live' : 'deploy-pending'}">● ${p.status === 'deployed' ? 'Live' : 'Pending'}</span>
         </div>
-        ${p.deploy_url ? `<a href="${escapeHtml(p.deploy_url)}" target="_blank" rel="noopener" style="display:block;font-size:.8rem;color:#3b82f6;word-break:break-all;margin-bottom:.75rem">${escapeHtml(p.deploy_url)}</a>` : ''}
+        ${p.deploy_url ? `<a href="${escapeHtml(p.deploy_url)}" target="_blank" rel="noopener" data-tip="Opens your live app in a new tab." title="Opens your live app in a new tab." style="display:block;font-size:.8rem;color:#3b82f6;word-break:break-all;margin-bottom:.75rem">${escapeHtml(p.deploy_url)}</a>` : ''}
         <button class="btn-primary" onclick="deployLatestBuild('${p.id}')" style="width:100%" data-tip="Puts this app on a web address other people can visit." title="Puts this app on a web address other people can visit."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg> ${p.status === 'deployed' ? 'Put online again' : 'Put online'}</button>
       </div>
     `).join('');
@@ -1262,24 +1262,45 @@ function lzProjectControls() {
     ? lz.projects.map(p => `<option value="${p.id}" ${String(p.id) === String(lz.projectId) ? 'selected' : ''}>#${p.id} — ${escapeHtml(p.name)}</option>`).join('')
     : `<option value="">No apps yet</option>`;
   const has = !!lz.projectId;
-  return `<select id="lz-project" class="lz-sel" ${lz.busy ? 'disabled' : ''}>${opts}</select>
-<button class="btn-primary" data-lz-act="project" ${lz.busy ? 'disabled' : ''}>${lz.projects.length ? 'Use this one' : 'Make a new app'}</button>
+  const selTip = 'Your existing apps. Pick one to put this build inside it.';
+  const projTip = lz.projects.length
+    ? 'Keeps the app you picked from the list above and carries on with it.'
+    : 'We create a new app for you and pick it straight away. You do not have to choose anything.';
+  return `<select id="lz-project" class="lz-sel" data-tip="${selTip}" title="${selTip}"${lz.busy ? ' disabled' : ''}>${opts}</select>
+<button class="btn-primary" data-lz-act="project" data-tip="${escapeHtml(projTip)}" title="${escapeHtml(projTip)}"${lz.busy ? ' disabled' : ''}>${lz.projects.length ? 'Use this one' : 'Make a new app'}</button>
 <p class="lz-hint">${lz.projects.length ? 'Pick one you already made, or make a new one.' : 'We make one for you and pick it.'}</p>`;
 }
 
 function lzControls(key) {
   const st = lzState(key);
   const hold = lz.busy || st.status === 'working';
-  const btn = (act, label, primary) => `<button class="${primary === false ? 'btn-secondary' : 'btn-primary'}" data-lz-act="${act}"${hold ? ' disabled' : ''}>${label}</button>`;
+  const STEP_TIP = 'Runs this step now. Whatever the site answers is printed underneath, including the status code and how long it took.';
+  const btn = (act, label, primary, tip) => {
+    const t = tip || STEP_TIP;
+    return `<button class="${primary === false ? 'btn-secondary' : 'btn-primary'}" data-lz-act="${act}" data-tip="${escapeHtml(t)}" title="${escapeHtml(t)}"${hold ? ' disabled' : ''}>${label}</button>`;
+  };
   switch (key) {
-    case 'account':  return btn('account', st.status === 'done' ? 'Check the sign-in again' : 'Check you are signed in', false);
-    case 'brief':    return `<textarea id="lz-brief" class="lz-input" rows="3"${hold ? ' disabled' : ''} placeholder="A gym workout tracker with sets, reps and a 1RM calculator">${escapeHtml(lz.brief)}</textarea><p class="lz-hint">These exact words are what the AI will build.</p>`;
+    case 'account':  return btn('account', st.status === 'done' ? 'Check the sign-in again' : 'Check you are signed in', false, 'Asks the server whether you are signed in. It changes nothing — it only looks.');
+    case 'brief':    {
+      const TIP = 'Type one plain sentence about the app you want. These exact words are handed to the AI unchanged.';
+      const examples = [
+        'A gym workout tracker with sets, reps and a 1RM calculator',
+        'A one page site for my bakery with opening hours and a menu',
+        'A recipe box where I can save and search my own recipes',
+        'A simple budget tracker that adds up what I spend',
+      ];
+      return `<label class="lz-fieldlabel" for="lz-brief" data-tip="${TIP}" title="${TIP}"><svg class="lz-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Type your idea here</label>
+<textarea id="lz-brief" class="lz-input lz-input-lg" rows="4"${hold ? ' disabled' : ''} data-tip="${TIP}" title="${TIP}" placeholder="A gym workout tracker with sets, reps and a 1RM calculator">${escapeHtml(lz.brief)}</textarea>
+<div class="lz-examples">${examples.map(e => `<button type="button" class="lz-ex" data-lz-ex="${escapeHtml(e)}" data-tip="Puts this example into the box above so you can edit it. Nothing is sent until you press the button." title="Puts this example into the box above so you can edit it. Nothing is sent until you press the button.">${escapeHtml(e)}</button>`).join('')}</div>
+<button class="btn-primary lz-submit" data-lz-act="brief"${hold ? ' disabled' : ''} data-tip="Saves your sentence, makes a place to keep the files, then starts the build. You do not have to do anything else." title="Saves your sentence, makes a place to keep the files, then starts the build. You do not have to do anything else.">Save my sentence and build it</button>
+<p class="lz-hint">One sentence is enough. Write it the way you would say it out loud.</p>`;
+    }
     case 'project':  return lzProjectControls();
-    case 'generate': return btn('generate', st.status === 'working' ? 'Building…' : (st.status === 'done' ? 'Build it again' : 'Build it'));
-    case 'publish':  return btn('publish', st.status === 'working' ? 'Putting it online…' : (st.status === 'done' ? 'Put online again' : 'Put online'));
-    case 'domain':   return `<input id="lz-host" class="lz-input"${hold ? ' disabled' : ''} placeholder="my-app.fashionistas.ai" value="${escapeHtml(lz.hostname)}">` + btn('domain', st.status === 'working' ? 'Setting it up…' : (st.status === 'done' ? 'Use this address again' : 'Use this address'));
-    case 'live':     return btn('live', st.status === 'working' ? 'Checking…' : 'Check it is live')
-      + (lz.liveUrl ? `<a class="lz-open" href="${escapeHtml(lz.liveUrl)}" target="_blank" rel="noopener">Open ${escapeHtml(lz.liveUrl.replace(/^https?:\/\//, ''))}</a>` : '');
+    case 'generate': return btn('generate', st.status === 'working' ? 'Building…' : (st.status === 'done' ? 'Build it again' : 'Build it'), undefined, 'Hands your sentence to the AI and waits while it writes the HTML, CSS and JavaScript. Usually 1-3 minutes. Leave this tab open.');
+    case 'publish':  return btn('publish', st.status === 'working' ? 'Putting it online…' : (st.status === 'done' ? 'Put online again' : 'Put online'), undefined, 'Copies your files to a public web address so anyone with the link can open them.');
+    case 'domain':   return `<input id="lz-host" class="lz-input" data-tip="Type the address you want, for example my-app.fashionistas.ai. We set up the pointing for you." title="Type the address you want, for example my-app.fashionistas.ai. We set up the pointing for you."${hold ? ' disabled' : ''} placeholder="my-app.fashionistas.ai" value="${escapeHtml(lz.hostname)}">` + btn('domain', st.status === 'working' ? 'Setting it up…' : (st.status === 'done' ? 'Use this address again' : 'Use this address'), undefined, 'Attaches this address to your app and points it at your files.');
+    case 'live':     return btn('live', st.status === 'working' ? 'Checking…' : 'Check it is live', undefined, 'Opens your real web address and prints exactly what came back, including the HTTP status.')
+      + (lz.liveUrl ? `<a class="lz-open" href="${escapeHtml(lz.liveUrl)}" target="_blank" rel="noopener" data-tip="Opens your app in a new tab." title="Opens your app in a new tab.">Open ${escapeHtml(lz.liveUrl.replace(/^https?:\/\//, ''))}</a>` : '');
   }
   return '';
 }
@@ -1301,12 +1322,21 @@ function lzRender() {
       : st.status === 'blocked' ? 'is-blocked'
       : '';
     const badgeCls = st.status === 'done' ? 'ok' : st.status === 'ready' ? 'skip' : st.status === 'working' ? 'work' : st.status === 'blocked' ? 'bad' : (st.badgeCls || '');
+    const stepTip = `Step ${s.letter} of 7 — ${s.title}. ${s.desc}`;
+    const badgeTip = st.status === 'done'
+      ? 'This step has been answered by the real site already. The text under it is what came back.'
+      : st.status === 'working'
+      ? 'Running right now. It prints the answer the moment it arrives.'
+      : st.status === 'blocked'
+      ? 'Something needs your attention. The reason is printed below the title.'
+      : 'Nothing has been checked for this step yet.';
+    const evTip = 'The raw answer the site gave — status code, how long it took, how many bytes. Nothing here is written by hand.';
     return `<li class="lz-step ${cls}" data-step="${s.key}">
-      <div class="lz-letter">${s.letter}</div>
+      <div class="lz-letter" data-tip="${escapeHtml(stepTip)}" title="${escapeHtml(stepTip)}">${s.letter}</div>
       <div class="lz-body">
-        <h3 class="lz-title">${escapeHtml(s.title)}<span class="lz-badge ${badgeCls}">${escapeHtml(st.badge)}</span></h3>
-        <p class="lz-desc">${escapeHtml(s.desc)}</p>
-        <pre class="lz-evidence" id="lz-ev-${s.key}">${escapeHtml(st.detail)}</pre>
+        <h3 class="lz-title" data-tip="${escapeHtml(stepTip)}" title="${escapeHtml(stepTip)}">${escapeHtml(s.title)}<span class="lz-badge ${badgeCls}" data-tip="${escapeHtml(badgeTip)}" title="${escapeHtml(badgeTip)}">${escapeHtml(st.badge)}</span></h3>
+        <p class="lz-desc" data-tip="${escapeHtml(s.desc)}" title="${escapeHtml(s.desc)}">${escapeHtml(s.desc)}</p>
+        <pre class="lz-evidence" id="lz-ev-${s.key}" data-tip="${evTip}" title="${evTip}">${escapeHtml(st.detail)}</pre>
       </div>
       <div class="lz-actions">${lzControls(s.key)}</div>
     </li>`;
@@ -1325,6 +1355,16 @@ function lzRender() {
       lzPaintCount();
     };
   }
+  // example chips: fill the box, never send on their own
+  ol.querySelectorAll('[data-lz-ex]').forEach((b) => {
+    b.onclick = function () {
+      const box = document.getElementById('lz-brief');
+      if (!box) return;
+      box.value = this.dataset.lzEx;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.focus();
+    };
+  });
   const sel = document.getElementById('lz-project');
   if (sel) sel.onchange = function () {
     lz.projectId = this.value ? parseInt(this.value, 10) : null;
@@ -1466,6 +1506,28 @@ async function lzAct(kind, nested) {
   if (owned) lz.busy = true;
   try {
     if (kind === 'account') { await lzCheckAccount(); return; }
+
+    // Step B submit. Before this existed the box had no button at all, so a
+    // person could type their idea and have nothing to press.
+    if (kind === 'brief') {
+      const box = document.getElementById('lz-brief');
+      if (box) lz.brief = box.value;
+      const v = String(lz.brief || '').trim();
+      if (v.length < 12) {
+        lzSet('brief', { status: 'blocked', badge: 'Too short', detail: 'Write one sentence about the app you want.\nNothing has been sent yet.' });
+        showToast('Write a sentence first');
+        return;
+      }
+      lz.brief = v;
+      lzSet('brief', { status: 'done', badge: 'Sent', detail: `Saved ${v.length} characters.\n"${v.slice(0, 200)}${v.length > 200 ? '…' : ''}"` });
+      showToast('Got it — starting your build');
+      // Hand the sentence to the working chat builder. startBuild() makes the
+      // project itself, so step C never has to be a forced choice.
+      if (typeof renderPage === 'function') renderPage('builder');
+      await new Promise(r => setTimeout(r, 120));
+      if (typeof startBuild === 'function') startBuild(v);
+      return;
+    }
 
     if (kind === 'project') {
       lzSet('project', { status: 'working', badge: 'Working', detail: 'Contacting the API…' });

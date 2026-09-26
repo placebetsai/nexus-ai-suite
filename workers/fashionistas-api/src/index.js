@@ -66,6 +66,113 @@ const num = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n :
 const badNum = (v) =>
   v === undefined || v === null || v === "" || !Number.isFinite(Number(v)) || Number(v) < 0;
 
+// ── LIVE SCHEMA PROBE ──────────────────────────────────────────────────────
+// There is no migration file for this database: the only description of the
+// schema is the SQL in this file. Columns the existing queries never touch
+// (orders.processor, listings.created_at) therefore cannot be assumed, and
+// naming a column that is not there fails every request with a D1 500. Reading
+// the real column list lets a route use a column when it exists and degrade
+// cleanly when it does not. The table name is a literal from this file and is
+// checked against this list, so no caller-supplied string reaches SQL.
+// Returns null when the probe is unavailable - callers must then fall back to
+// the columns the existing queries in this file already prove exist.
+const SCHEMA_TTL_MS = 300000;
+const SCHEMA_TABLES = ["listings", "orders", "users"];
+const schemaCache = new Map();
+async function tableColumns(env, table) {
+  if (!SCHEMA_TABLES.includes(table)) return null;
+  const hit = schemaCache.get(table);
+  if (hit && Date.now() - hit.at < SCHEMA_TTL_MS) return hit.cols;
+  let cols = null;
+  try {
+    const r = await env.DB.prepare("PRAGMA table_info(" + table + ")").all();
+    const rows = r?.results || [];
+    if (rows.length) cols = new Set(rows.map((x) => String(x.name)));
+  } catch {
+    cols = null;
+  }
+  schemaCache.set(table, { cols, at: Date.now() });
+  return cols;
+}
+
+// listings.platforms is a JSON array string (every write goes through
+// JSON.stringify). A row that is empty, null, or hand-edited into something
+// else must not take the market feed down, so an unparseable value reads as
+// "no platforms" rather than throwing.
+const parsePlatforms = (raw) => {
+  if (Array.isArray(raw)) return raw.map((x) => String(x)).filter(Boolean);
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const p = JSON.parse(raw);
+    return Array.isArray(p) ? p.map((x) => String(x)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+// A public seller label. Username and display name only - a buyer's market
+// feed must never carry the seller's email address, so the email column is
+// not selected anywhere in the market queries.
+const sellerOf = (row) => ({
+  username: row.seller_username || "unknown",
+  display_name: row.seller_display_name || row.seller_username || "unknown seller",
+});
+
+// ORDER BY cannot be a bind parameter, so the caller's ?sort= is resolved
+// through this fixed map. Only these literal strings ever reach the SQL.
+// "price IS NULL" first pushes unpriced listings to the end of a price sort
+// instead of letting SQLite float NULL to the top.
+const MARKET_SORTS = {
+  new: "listed_at DESC, l.id DESC",
+  price_asc: "l.price IS NULL, l.price ASC, l.id DESC",
+  price_desc: "l.price IS NULL, l.price DESC, l.id DESC",
+};
+const MARKET_LIMIT = 100;
+
+// Shared SELECT list for the two public market reads. `listed_at` prefers
+// listings.created_at (when the column really exists) and falls back to
+// updated_at, which the existing listings queries already prove is there.
+async function marketSelect(env) {
+  const cols = await tableColumns(env, "listings");
+  const timeCol = cols
+    ? (cols.has("created_at") ? "l.created_at" : cols.has("updated_at") ? "l.updated_at" : null)
+    : "l.updated_at";
+  // The extra buyer-facing fields are added by ensureListingCols, which may
+  // not have run yet on a fresh database. Aliasing them to NULL keeps this
+  // query working instead of failing the whole market page on a missing column.
+  const want = ["brand", "color", "material", "ship_city", "ship_country", "local_pickup"];
+  const extra = cols
+    ? want.map((c) => (cols.has(c) ? "l." + c : "NULL AS " + c))
+    : want.map((c) => "NULL AS " + c);
+  return (
+    "SELECT l.id, l.title, l.price, l.condition, l.size, l.category, l.photo_url, l.status, l.platforms, " +
+    extra.join(", ") + ", " +
+    (timeCol ? timeCol + " AS listed_at" : "NULL AS listed_at") +
+    ", u.username AS seller_username, u.display_name AS seller_display_name " +
+    "FROM listings l LEFT JOIN users u ON u.id = l.user_id"
+  );
+}
+const marketItem = (row) => ({
+  id: row.id,
+  title: row.title,
+  price: row.price === null || row.price === undefined ? null : num(row.price),
+  condition: row.condition,
+  size: row.size,
+  category: row.category,
+  photo_url: row.photo_url,
+  status: row.status,
+  platforms: parsePlatforms(row.platforms),
+  // buyer-facing detail: what it is and where it would ship from
+  brand: row.brand || null,
+  color: row.color || null,
+  material: row.material || null,
+  ship_city: row.ship_city || null,
+  ship_country: row.ship_country || null,
+  local_pickup: row.local_pickup ? true : false,
+  seller: sellerOf(row),
+  listed_at: row.listed_at || null,
+});
+
 async function hashPassword(pw) {
   const h = await crypto.subtle.digest("SHA-256", enc.encode("fash:" + pw));
   return b64u(h).split("").map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
@@ -75,6 +182,127 @@ async function requireUser(request) {
   const auth = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!auth) return null;
   return await verifyToken(auth);
+}
+
+/* ── Direct messages: tables are created from INSIDE the Worker.
+   The deploy token has no D1 scope (`wrangler d1 execute` → 7403), so schema
+   for a new feature has to be created this way. Same proven pattern as
+   createstuff's app_data. CREATE TABLE IF NOT EXISTS never alters an existing
+   table, so this is a no-op on every request after the first success. */
+let dmTablesReady = false, dmTablesPending = null;
+async function ensureDmTables(env) {
+  if (dmTablesReady) return;
+  const p = dmTablesPending || (dmTablesPending = (async () => {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS dm_messages (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         from_id INTEGER NOT NULL,
+         to_id INTEGER NOT NULL,
+         body TEXT NOT NULL,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         read_at DATETIME
+       )`
+    ).run();
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_dm_pair ON dm_messages(from_id, to_id, id)").run();
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_dm_unread ON dm_messages(to_id, read_at)").run();
+    // Blocking is its own table so an unblock is a DELETE and never touches
+    // message history — the conversation comes back exactly as it was.
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS dm_blocks (
+         blocker_id INTEGER NOT NULL,
+         blocked_id INTEGER NOT NULL,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (blocker_id, blocked_id)
+       )`
+    ).run();
+  })());
+  try {
+    await p;
+    dmTablesReady = true;
+  } catch (e) {
+    dmTablesPending = null;   // transient D1 failure: retry next request
+    throw e;
+  }
+}
+
+// TRUE if either person has blocked the other. Blocking has to work in both
+// directions or the blocked person could still read and write the thread.
+async function dmBlocked(env, a, b) {
+  if (!a || !b || a === b) return false;
+  const r = await env.DB.prepare(
+    "SELECT 1 AS x FROM dm_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1"
+  ).bind(a, b, b, a).first();
+  return !!r;
+}
+
+// Every id this user cannot message: people they blocked, plus people who
+// blocked them (returned without saying which is which, so learning you have
+// been blocked is impossible from the outside).
+async function dmDeniedIds(env, me) {
+  const r = await env.DB.prepare(
+    "SELECT blocked_id AS id FROM dm_blocks WHERE blocker_id=? UNION SELECT blocker_id AS id FROM dm_blocks WHERE blocked_id=?"
+  ).bind(me, me).all();
+  return new Set((r.results || []).map((x) => x.id));
+}
+
+/* ── Local pop-up stores ──────────────────────────────────────────────────
+   A seller can put a physical stall, market table or garage sale on the map.
+   The map itself is Leaflet + OpenStreetMap tiles and the address lookup is
+   Nominatim — both free and keyless, so nothing here needs a paid service. */
+let popupTablesReady = false, popupTablesPending = null;
+async function ensurePopupTables(env) {
+  if (popupTablesReady) return;
+  const p = popupTablesPending || (popupTablesPending = (async () => {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS popup_stores (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         owner_id INTEGER NOT NULL,
+         name TEXT NOT NULL,
+         description TEXT,
+         address TEXT NOT NULL,
+         city TEXT,
+         lat REAL,
+         lng REAL,
+         starts_at TEXT,
+         ends_at TEXT,
+         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+       )`
+    ).run();
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_popup_owner ON popup_stores(owner_id)").run();
+  })());
+  try { await p; popupTablesReady = true; }
+  catch (e) { popupTablesPending = null; throw e; }
+}
+
+// Great-circle distance in km. Plain JS so the API needs no geo extension.
+function haversineKm(a1, o1, a2, o2) {
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(a2 - a1), dLng = rad(o2 - o1);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a1)) * Math.cos(rad(a2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Listings grew columns after the table was first created. The deploy token
+// has no D1 scope (wrangler d1 execute -> 7403), so the schema change has to
+// run from inside the Worker the same way as every other table here. Each
+// ALTER is individually guarded: re-running is a no-op, and a failure on one
+// column must not stop the others.
+let listingColsReady = false, listingColsPending = null;
+async function ensureListingCols(env) {
+  if (listingColsReady) return;
+  const p = listingColsPending || (listingColsPending = (async () => {
+    const want = [
+      "brand TEXT", "color TEXT", "material TEXT",
+      "ship_city TEXT", "ship_postcode TEXT", "ship_country TEXT",
+      "local_pickup INTEGER DEFAULT 0",
+    ];
+    for (const c of want) {
+      try { await env.DB.prepare(`ALTER TABLE listings ADD COLUMN ${c}`).run(); }
+      catch (e) { /* column already exists */ }
+    }
+  })());
+  try { await p; listingColsReady = true; }
+  catch (e) { listingColsPending = null; throw e; }
 }
 
 async function rateLimit(env, request, bucket, limit = 30, windowSec = 60) {
@@ -120,6 +348,9 @@ const MARKETPLACES = [
   { id: "zalando",   name: "Zalando",        feePct: 10,    maxChar: 100,  api: "deep",  signup: "https://www.zalando.de", note: "estimate" },
   { id: "depop_alt2", name: "eBay Vintage",  feePct: 13.25, maxChar: 80,   api: "deep",  signup: "https://www.ebay.com" },
   { id: "posh_alt",  name: "Mercari Shops",  feePct: 13.9,  maxChar: 60,   api: "deep",  signup: "https://www.mercari.com", note: "estimate" },
+  // Our own storefront. 0% commission — a seller keeps the whole price, which
+  // is why this row carries no signup link: you are already here.
+  { id: "fashionistas", name: "Fashionistas", feePct: 0,   maxChar: 2000, api: "full",  signup: "" },
 ];
 
 // ── FEE ENGINE ─────────────────────────────────────────────────────────────
@@ -270,6 +501,171 @@ const aiText = async (env, system, user, maxTok = 800) => {
   }
 };
 
+/* Multi-turn chat. History is sent as real role-separated messages instead of
+   being concatenated into one user string. Concatenating made the model treat
+   the whole thing as a transcript to CONTINUE, so it emitted fabricated
+   "Shopper: ... Guide: ..." pairs for questions that were never asked. */
+const aiChat = async (env, system, history, last, maxTok = 420) => {
+  try {
+    const messages = [{ role: "system", content: system }];
+    (history || []).slice(-10).forEach((h) => {
+      const text = String((h && h.text) || "").slice(0, 400);
+      if (!text) return;
+      messages.push({ role: h && h.who === "me" ? "user" : "assistant", content: text });
+    });
+    messages.push({ role: "user", content: last });
+    const r = await env.AI.run("@cf/meta/llama-3.2-3b-instruct", { messages, max_tokens: maxTok });
+    const out = r?.response ?? r;
+    const text = typeof out === "string" ? out.trim() : JSON.stringify(out ?? "");
+    // Emitting a transcript back means it did not answer — treat as a miss so
+    // the caller falls through to an honest built-in answer.
+    if (!text || /^\s*Shopper:|\n\s*Shopper:/.test(text)) return "";
+    return text;
+  } catch {
+    return "";
+  }
+};
+
+/* Which of the three chatbots is talking. `guide` needs no data of its own;
+   `items` and `ideas` are fed real rows from this deployment's database so
+   the bot answers about THIS account's products instead of in the abstract. */
+function chatSystem(mode, ctx) {
+  const base =
+    "You are the assistant inside Fashionistas, a resale app for people who buy second-hand clothes to sell on. " +
+    "Answer the last message directly in plain, short sentences a first-time seller can follow — no jargon, no bullet-point walls. " +
+    "Never write out a transcript or repeat the earlier messages back. " +
+    "Never invent prices, postage or fee figures: if you do not know a number, say you do not know it. " +
+    "Keep the answer under 90 words unless the question genuinely needs more.";
+  const role =
+    mode === "ideas"
+      ? "\nYour job is IDEAS: brainstorm what to hunt for, item ideas, listing title angles, photo concepts and bundles to add."
+      : mode === "items"
+        ? "\nYour job is THE USER'S OWN ITEMS — use the listing data below and refer to items by name. If they have no listings yet, say so plainly and ask what they plan to sell first."
+        : "\nYour job is general selling help: photographing, writing listings, pricing and comps, fees per marketplace, postage, and getting paid.";
+  return base + role + (ctx || "");
+}
+
+async function chatContext(env, userId, mode) {
+  if (mode !== "items" && mode !== "ideas") return "";
+  let out = "";
+  if (mode === "items") {
+    try {
+      const r = await env.DB.prepare(
+        "SELECT title, price, condition, category, size, status FROM listings WHERE user_id=? ORDER BY id DESC LIMIT 8"
+      ).bind(userId).all();
+      const rows = r.results || [];
+      out += rows.length
+        ? "\n\nTHE USER'S OWN LISTINGS (most recent 8):\n" + rows.map((x) =>
+            "- " + (x.title || "untitled") +
+            (x.price != null ? " | $" + x.price : " | no price yet") +
+            (x.condition ? " | " + x.condition : "") +
+            (x.category ? " | " + x.category : "") +
+            (x.size ? " | size " + x.size : "") +
+            (x.status ? " | " + x.status : "")).join("\n")
+        : "\n\nTHE USER HAS NO LISTINGS YET.";
+    } catch { /* a context failure must never break the chat */ }
+  }
+  if (mode === "ideas") {
+    try {
+      const r = await env.DB.prepare(
+        "SELECT category, COUNT(*) AS n, ROUND(AVG(price),2) AS avgp FROM listings " +
+        "WHERE status='active' AND category IS NOT NULL GROUP BY category ORDER BY n DESC LIMIT 10"
+      ).all();
+      const rows = r.results || [];
+      if (rows.length) {
+        out += "\n\nWHAT THIS MARKETPLACE CURRENTLY HAS (category | listings | average asking price):\n" +
+          rows.map((x) => "- " + x.category + " | " + x.n + " | " + (x.avgp != null ? "$" + x.avgp : "?")).join("\n");
+      }
+    } catch { /* optional */ }
+  }
+  return out;
+}
+
+/* ── OpenCode agents ──────────────────────────────────────────────────────
+   The messenger and the chatbot are deliberately different systems:
+   messenger = database rows, chatbot = a real OpenCode agent on the Hive.
+
+   The relay is called ASYNCHRONOUSLY (start, then poll) instead of as one
+   long POST because two hard ceilings sit in front of us:
+     · the quick tunnel answers HTTP 524 at ~126s  (measured 3/3)
+     · Cloudflare kills a Worker request at ~180s  (measured HTTP 000 @180.87s)
+   while a single generation takes 40-200s. A chat window cannot hold either,
+   so the poll budget here is deliberately SHORT (26s): if the agent has not
+   finished by then the caller falls back rather than freezing the user. */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function hiveChat(env, system, history, msg, maxTok) {
+  if (!env.HIVE_URL) throw new Error("hive relay not configured");
+  const headers = { "Content-Type": "application/json" };
+  if (env.HIVE_TOKEN) headers.Authorization = "Bearer " + env.HIVE_TOKEN;
+  const messages = [{ role: "system", content: system }];
+  (history || []).slice(-8).forEach((h) => {
+    const t = String((h && h.text) || "").slice(0, 400);
+    if (t) messages.push({ role: h && h.who === "me" ? "user" : "assistant", content: t });
+  });
+  messages.push({ role: "user", content: msg });
+
+  const start = await fetch(env.HIVE_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: "space-bunny-free", messages, max_tokens: maxTok, async: true, deadline_ms: 22000 }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!start.ok) throw new Error("relay HTTP " + start.status + " on start");
+  const s = await start.json();
+  if (!s.job_id) throw new Error("relay returned no job_id: " + JSON.stringify(s).slice(0, 120));
+  const jobUrl = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "") + "/v1/jobs/" + s.job_id;
+
+  const budget = Date.now() + 26000;
+  let last = "no poll yet";
+  while (Date.now() < budget) {
+    await sleep(2000);
+    let j;
+    try {
+      const g = await fetch(jobUrl, { headers, signal: AbortSignal.timeout(10000) });
+      if (!g.ok) { last = "poll HTTP " + g.status; continue; }
+      j = await g.json();
+    } catch (e) { last = "poll failed: " + String((e && e.message) || e); continue; }
+
+    if (j.status === "done") {
+      const text = String(j.content || "").trim();
+      if (!text) throw new Error("agent returned empty content");
+      // An answer that writes the transcript back instead of replying is a
+      // miss, not an answer — never show it to a user.
+      if (/^\s*(Shopper|User|You):|\n\s*(Shopper|User):/.test(text)) throw new Error("agent echoed the transcript");
+      return { text, model: "agent" };
+    }
+    if (j.status === "failed") throw new Error("agent failed: " + String(j.error || "").slice(0, 200));
+    last = "running " + Math.round((Date.now() - (j.started || Date.now())) / 1000) + "s";
+  }
+  throw new Error("agent timed out after 26s (" + last + ")");
+}
+
+/* Used ONLY when Workers AI is unreachable or over its daily quota. It is
+   always returned with source:"fallback" so the UI never presents it as
+   something a model said. Plain text, no invented figures. */
+function guideFallback(msg) {
+  const m = String(msg || "").toLowerCase();
+  const has = (...k) => k.some(w => m.includes(w));
+  let a;
+  if (has("price", "pricing", "worth", "charge", "how much", "comp", "expensive", "cheap"))
+    a = "For pricing, look at what the same item in the same size and condition actually sold for — not what sellers are asking. Start near the middle of that range: higher for excellent condition or a known brand, lower for flaws.";
+  else if (has("ship", "postage", "shipping", "label", "pack", "deliver"))
+    a = "Ship within the window your listing promises. Weigh the packed item before buying the label so the postage price is right, and photograph the packed parcel before it leaves.";
+  else if (has("fee", "fees", "commission", "keep", "profit", "net", "payout", "money"))
+    a = "Open Selling tools and use the fee comparison — it shows what you actually keep on each marketplace at your price, after that platform's cut.";
+  else if (has("photo", "picture", "shoot", "light", "camera", "image", "snapshot"))
+    a = "Shoot in daylight by a window, on a plain background. Take the front, the back, the label and any flaw. Photographing flaws honestly cuts down returns and buyer messages.";
+  else if (has("account", "sign in", "login", "password", "key", "api", "token"))
+    a = "Sign in from the top of any screen. If a service asks you for a key, the app walks you through getting one and then stores it for you.";
+  else if (has("sell", "list", "listing", "start", "begin", "first"))
+    a = "Press Photo on the bottom bar, snap the item, and fill in what it asks. The listing is written for you to edit before it goes live.";
+  else if (has("message", "chat", "buyer", "contact", "reply"))
+    a = "Open Messages to talk to other accounts directly. For buyer replies, Messages and tips has ready-made wording you can copy.";
+  else
+    a = "I can help with photos, pricing, fees, postage and listings. Tell me which one and I will walk you through it.";
+  return a + " (The AI guide is unavailable right now — this is the built-in answer.)";
+}
+
 // Pull a JSON object out of noisy model output. NEVER throws.
 // Models here intermittently reply with markdown fences, a prose preamble,
 // single-quoted keys, or a trailing comma — any of which used to 502 the route.
@@ -408,6 +804,143 @@ async function dispatch(request, env) {
       }
 
       // ── AUTH REQUIRED ───────────────────────────────────────
+      // ── PUBLIC MARKET (the buyer side) ─────────────────────────────────
+      // A shopper is not the seller, so these two reads run before the auth
+      // gate. They return active listings and the seller's public name only —
+      // the email column is never selected here.
+      if (path === "/api/market" && method === "GET") {
+        const u = new URL(request.url);
+        const q = (u.searchParams.get("q") || "").trim().slice(0, 80);
+        const category = (u.searchParams.get("category") || "").trim().slice(0, 40);
+        const sortKey = u.searchParams.get("sort") || "new";
+        const orderBy = MARKET_SORTS[sortKey] || MARKET_SORTS.new;
+        const where = ["l.status = 'active'"];
+        const binds = [];
+        if (q) { where.push("(l.title LIKE ? OR l.description LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
+        if (category) { where.push("l.category = ?"); binds.push(category); }
+        const sql =
+          (await marketSelect(env)) + " WHERE " + where.join(" AND ") +
+          " ORDER BY " + orderBy + " LIMIT " + MARKET_LIMIT;
+        const r = await env.DB.prepare(sql).bind(...binds).all();
+        const rows = (r.results || []).map(marketItem);
+        return json({ market: rows, count: rows.length, sort: sortKey, q, category });
+      }
+      const marketOne = path.match(/^\/api\/market\/(\d+)$/);
+      if (marketOne && method === "GET") {
+        const row = await env.DB.prepare(
+          (await marketSelect(env)) + " WHERE l.id=? AND l.status='active'"
+        ).bind(+marketOne[1]).first();
+        if (!row) return err("Not found", 404);
+        return json({ listing: marketItem(row) });
+      }
+
+      // ── SHOP BY PHOTO ── public + rate-limited, like the market itself.
+      // A shopper photographs a garment they like; we identify it, show what
+      // is listed HERE that matches, and hand back ready-made search links to
+      // the big marketplaces. Those links are where an affiliate placement
+      // would live, so they are built server-side and kept honest.
+      if (path === "/api/shop/photo-search" && method === "POST") {
+        if (!(await rateLimit(env, request, "photosearch", 15))) return err("Too many photo searches — wait a minute", 429);
+        const { image } = await readJson(request);
+        if (!image) return err("Missing image (base64)");
+        if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 100)
+          return err("image must be base64-encoded image bytes");
+
+        let ident = null, visionSource = "ai";
+        try {
+          const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+            prompt:
+              "You are helping a shopper find an item they just photographed. Reply with ONLY one raw JSON object, double quotes, no markdown, no code fences, no prose. " +
+              "Keys: type (e.g. 'denim jacket','white trainers','floral dress'), brand (string or 'Unknown'), color, " +
+              "category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), keywords (array of 5 short lowercase words someone would type into a search box), confidence (0-100). " +
+              "Be specific and honest about what you can actually see.",
+            image,
+            max_tokens: 300,
+          });
+          let text = "";
+          try {
+            text = typeof r === "string" ? r : JSON.stringify(r);
+            if (r?.response) text = typeof r.response === "string" ? r.response : JSON.stringify(r.response);
+          } catch { text = JSON.stringify(r); }
+          ident = aiJson(text, null);
+          if (!ident || !ident.type) { ident = null; visionSource = "unavailable"; }
+        } catch (e) {
+          console.error("photo-search vision:", (e && e.message) || e);
+          visionSource = "unavailable";
+        }
+
+        // Build the actual search phrase. Terms the model could not see are
+        // dropped rather than guessed at.
+        const bits = [ident && ident.type, ident && ident.brand, ident && ident.color]
+          .filter((x) => typeof x === "string" && x.trim() && !/^(unknown|n\/a|none)$/i.test(x.trim()))
+          .map((x) => x.trim());
+        const query = bits.join(" ").slice(0, 80) || "";
+
+        // What we have that matches — same public rows the Shop already shows.
+        let ours = [];
+        if (query) {
+          try {
+            const like = query.split(/\s+/).map((w) => w.replace(/[%_]/g, "")).filter(Boolean).slice(0, 4);
+            const conds = [], binds = [];
+            like.forEach((w) => { conds.push("l.title LIKE ?", "l.description LIKE ?"); binds.push(`%${w}%`, `%${w}%`); });
+            if (ident && ident.category) { conds.push("l.category = ?"); binds.push(ident.category); }
+            const sql = (await marketSelect(env)) +
+              " WHERE l.status='active' AND (" + conds.join(" OR ") + ")" +
+              " ORDER BY (CASE WHEN " +
+              (ident && ident.type ? "l.title LIKE ?" : "1=0") + " THEN 0 ELSE 1 END), l.created_at DESC LIMIT 12";
+            const b2 = ident && ident.type ? binds.concat(`%${ident.type}%`) : binds;
+            const rr = await env.DB.prepare(sql).bind(...b2).all();
+            ours = (rr.results || []).map(marketItem);
+          } catch (e) {
+            console.error("photo-search ours:", (e && e.message) || e);
+          }
+        }
+
+        const mk = (name, url) => ({ name, url });
+        const enc = encodeURIComponent(query);
+        const marketplaces = query ? [
+          mk("eBay",   "https://www.ebay.com/sch/i.html?_nkw=" + enc),
+          mk("Depop",  "https://www.depop.com/search/?q=" + enc),
+          mk("Poshmark","https://poshmark.com/search?query=" + enc),
+          mk("Mercari","https://www.mercari.com/search?keyword=" + enc),
+          mk("Vinted", "https://www.vinted.com/catalog?search_text=" + enc),
+          mk("Etsy",   "https://www.etsy.com/search?q=" + enc),
+        ] : [];
+
+        return json({ identification: ident, vision: visionSource, query, ours, count: ours.length, marketplaces });
+      }
+
+      // ── LOCAL POP-UP STORES ── public: anyone can see what's nearby
+      // before they make an account, the same way the shop is public.
+      if (path === "/api/popups" && method === "GET") {
+        await ensurePopupTables(env);
+        const u2 = new URL(request.url);
+        const myLat = parseFloat(u2.searchParams.get("lat"));
+        const myLng = parseFloat(u2.searchParams.get("lng"));
+        const near = u2.searchParams.get("near") || "";
+        let sql =
+          "SELECT p.id, p.name, p.description, p.address, p.city, p.lat, p.lng, p.starts_at, p.ends_at, " +
+          "p.owner_id, p.created_at, u.username AS owner_username, u.display_name AS owner_name " +
+          "FROM popup_stores p JOIN users u ON u.id = p.owner_id";
+        const binds = [];
+        if (near) { sql += " WHERE p.name LIKE ? OR p.city LIKE ? OR p.address LIKE ?"; binds.push("%"+near+"%","%"+near+"%","%"+near+"%"); }
+        sql += " ORDER BY p.created_at DESC LIMIT 150";
+        const r = await env.DB.prepare(sql).bind(...binds).all();
+        const rows = (r.results || []).map((x) => {
+          const hasGeo = typeof x.lat === "number" && typeof x.lng === "number" && isFinite(x.lat) && isFinite(x.lng);
+          const km = (isFinite(myLat) && isFinite(myLng) && hasGeo) ? haversineKm(myLat, myLng, x.lat, x.lng) : null;
+          return {
+            id: x.id, name: x.name, description: x.description, address: x.address, city: x.city,
+            lat: hasGeo ? x.lat : null, lng: hasGeo ? x.lng : null,
+            starts_at: x.starts_at, ends_at: x.ends_at,
+            owner_id: x.owner_id, owner: x.owner_name || x.owner_username,
+            created_at: x.created_at, km: km === null ? null : Math.round(km * 10) / 10,
+          };
+        });
+        if (isFinite(myLat) && isFinite(myLng)) rows.sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
+        return json({ popups: rows, count: rows.length, coords: isFinite(myLat) && isFinite(myLng) ? { lat: myLat, lng: myLng } : null });
+      }
+
       const user = await requireUser(request);
       if (!user) return json({ error: "Unauthorized" }, 401);
 
@@ -536,6 +1069,7 @@ async function dispatch(request, env) {
         return json({ listings: r.results });
       }
       if (path === "/api/listings" && method === "POST") {
+        await ensureListingCols(env);
         const b = await readJson(request);
         if (typeof b.title !== "string" || !b.title.trim()) return err("title required");
         if (b.price === undefined || b.price === null || b.price === "") return err("price required");
@@ -550,7 +1084,7 @@ async function dispatch(request, env) {
           return c === null ? fallback : c;
         };
         const r = await env.DB.prepare(
-          "INSERT INTO listings (user_id, title, description, price, size, condition, category, photo_url, status, platforms, ai_confidence, cogs, shipping_cost, weight_oz, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+          "INSERT INTO listings (user_id, title, description, price, size, condition, category, photo_url, status, platforms, ai_confidence, cogs, shipping_cost, weight_oz, notes, brand, color, material, ship_city, ship_postcode, ship_country, local_pickup) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         ).bind(
           user.sub,
           safe(b.title),
@@ -566,12 +1100,61 @@ async function dispatch(request, env) {
           Number.isFinite(Number(b.cogs)) ? Number(b.cogs) : 0,
           Number.isFinite(Number(b.shipping_cost)) ? Number(b.shipping_cost) : 0,
           Number.isFinite(Number(b.weight_oz)) ? Number(b.weight_oz) : 0,
-          safe(b.notes)
+          safe(b.notes),
+          // the fields a buyer actually filters and searches on
+          safe(b.brand, null),
+          safe(b.color, null),
+          safe(b.material, null),
+          safe(b.ship_city, null),
+          safe(b.ship_postcode, null),
+          safe(b.ship_country, null),
+          b.local_pickup ? 1 : 0
         ).run();
         const id = r.meta.last_row_id;
         const item = await env.DB.prepare("SELECT * FROM listings WHERE id=?").bind(id).first();
         return json({ listing: item }, 201);
       }
+      // ── BUYER ACTIONS (signed in) ───────────────────────────────────────
+      // Marketplace purchase. Stripe/PayPal are not live yet, so this writes
+      // a demo order and says so in the response — it never claims money moved.
+      const mBuy = path.match(/^\/api\/market\/(\d+)\/buy$/);
+      if (mBuy && method === "POST") {
+        const id = +mBuy[1];
+        const item = await env.DB.prepare("SELECT * FROM listings WHERE id=?").bind(id).first();
+        if (!item || item.status !== "active") return err("This item is no longer for sale.", 404);
+        if (String(item.user_id) === String(user.sub)) return err("This is your own listing.", 409);
+        const price = Number(item.price) || 0;
+        const r = await env.DB.prepare(
+          "INSERT INTO orders (user_id, listing_id, buyer, platform, sale_price, fee, shipping, cogs, profit, status) VALUES (?,?,?,?,?,?,?,?,?,?)"
+        ).bind(
+          item.user_id, id, user.u || user.username || "buyer", "fashionistas",
+          price, 0, 0, Number(item.cogs) || 0, price - (Number(item.cogs) || 0), "demo"
+        ).run();
+        return json({
+          ok: true,
+          demo: true,
+          message: "Demo checkout — no money moved. Stripe and PayPal are not live yet.",
+          order: { id: r.meta.last_row_id, listing_id: id, price, status: "demo", platform: "fashionistas" },
+        }, 201);
+      }
+
+      // A seller opting a listing into our own marketplace. "fashionistas" is
+      // just another entry in the same platforms array the other shops use.
+      const onsale = path.match(/^\/api\/listings\/(\d+)\/onsale$/);
+      if (onsale && method === "POST") {
+        const id = +onsale[1];
+        const owned = await env.DB.prepare("SELECT * FROM listings WHERE id=? AND user_id=?").bind(id, user.sub).first();
+        if (!owned) return err("Not found", 404);
+        const b = await readJson(request);
+        const want = b.on === true || b.on === "true";
+        const plats = parsePlatforms(owned.platforms).filter((p) => p !== "fashionistas");
+        if (want) plats.push("fashionistas");
+        await env.DB.prepare("UPDATE listings SET platforms=? WHERE id=? AND user_id=?")
+          .bind(JSON.stringify(plats), id, user.sub).run();
+        const after = await env.DB.prepare("SELECT * FROM listings WHERE id=? AND user_id=?").bind(id, user.sub).first();
+        return json({ listing: after, on: want });
+      }
+
       const listId = path.match(/^\/api\/listings\/(\d+)(\/[a-z-]+)?$/);
       if (listId) {
         const id = listId[1];
@@ -618,6 +1201,7 @@ async function dispatch(request, env) {
           return json({ ok: true });
         }
         if (method === "PUT") {
+          await ensureListingCols(env);
           const b = await readJson(request);
           // A non-numeric price used to reach D1 as a bad bind or a NaN (500);
           // an empty string would silently overwrite the stored price.
@@ -627,8 +1211,24 @@ async function dispatch(request, env) {
             if (!Number.isFinite(price) || price < 0) return err("price must be a positive number");
             b.price = price;
           }
-          await env.DB.prepare("UPDATE listings SET title=COALESCE(?,title), description=COALESCE(?,description), price=COALESCE(?,price), size=COALESCE(?,size), condition=COALESCE(?,condition), category=COALESCE(?,category), photo_url=COALESCE(?,photo_url), status=COALESCE(?,status), updated_at=CURRENT_TIMESTAMP WHERE id=?")
-            .bind(col(b.title), col(b.description), col(b.price), col(b.size), col(b.condition), col(b.category), col(b.photo_url), col(b.status), id).run();
+          // COALESCE(?, col) keeps the stored value when the caller omits a
+          // field entirely, so a partial edit never blanks the rest of the row.
+          const np = (v) => col(v);
+          await env.DB.prepare(
+            "UPDATE listings SET title=COALESCE(?,title), description=COALESCE(?,description), price=COALESCE(?,price), " +
+            "size=COALESCE(?,size), condition=COALESCE(?,condition), category=COALESCE(?,category), photo_url=COALESCE(?,photo_url), " +
+            "status=COALESCE(?,status), brand=COALESCE(?,brand), color=COALESCE(?,color), material=COALESCE(?,material), " +
+            "ship_city=COALESCE(?,ship_city), ship_postcode=COALESCE(?,ship_postcode), ship_country=COALESCE(?,ship_country), " +
+            "weight_oz=COALESCE(?,weight_oz), shipping_cost=COALESCE(?,shipping_cost), notes=COALESCE(?,notes), " +
+            "local_pickup=COALESCE(?,local_pickup), updated_at=CURRENT_TIMESTAMP WHERE id=?"
+          ).bind(
+            np(b.title), np(b.description), np(b.price), np(b.size), np(b.condition), np(b.category),
+            np(b.photo_url), np(b.status), np(b.brand), np(b.color), np(b.material),
+            np(b.ship_city), np(b.ship_postcode), np(b.ship_country),
+            np(b.weight_oz === "" ? null : b.weight_oz), np(b.shipping_cost === "" ? null : b.shipping_cost), np(b.notes),
+            b.local_pickup === undefined ? null : (b.local_pickup ? 1 : 0),
+            id
+          ).run();
           const item = await env.DB.prepare("SELECT * FROM listings WHERE id=?").bind(id).first();
           return json({ listing: item });
         }
@@ -782,6 +1382,202 @@ async function dispatch(request, env) {
         const r = await env.DB.prepare("INSERT INTO messages (user_id, listing_id, template_name, body) VALUES (?,?,?,?)")
           .bind(user.sub, col(b.listing_id), col(b.template_name), b.body).run();
         return json({ message: { id: r.meta.last_row_id } }, 201);
+      }
+
+      // ── LOCAL POP-UP STORES (write side) ──
+      if (path === "/api/popups/mine" && method === "GET") {
+        await ensurePopupTables(env);
+        const r = await env.DB.prepare(
+          "SELECT id, name, description, address, city, lat, lng, starts_at, ends_at, created_at " +
+          "FROM popup_stores WHERE owner_id=? ORDER BY created_at DESC LIMIT 50"
+        ).bind(user.sub).all();
+        return json({ popups: r.results || [] });
+      }
+      const popupOne = path.match(/^\/api\/popups\/(\d+)$/);
+      if (popupOne && method === "DELETE") {
+        await ensurePopupTables(env);
+        const id = +popupOne[1];
+        const own = await env.DB.prepare("SELECT id FROM popup_stores WHERE id=? AND owner_id=?").bind(id, user.sub).first();
+        if (!own) return err("Not yours to remove", 403);
+        await env.DB.prepare("DELETE FROM popup_stores WHERE id=?").bind(id).run();
+        return json({ deleted: id });
+      }
+      if (path === "/api/popups" && method === "POST") {
+        await ensurePopupTables(env);
+        if (!(await rateLimit(env, request, "popup", 10))) return err("Too many pop-ups too quickly — wait a minute", 429);
+        const b = await readJson(request);
+        const name = typeof b.name === "string" ? b.name.trim() : "";
+        const address = typeof b.address === "string" ? b.address.trim() : "";
+        if (!name) return err("Give the pop-up a name");
+        if (name.length > 80) return err("Name is too long (80 characters max)");
+        if (!address) return err("An address is needed so people can find it");
+        if (address.length > 200) return err("Address is too long (200 characters max)");
+        const city = typeof b.city === "string" ? b.city.trim().slice(0, 80) : "";
+        const description = typeof b.description === "string" ? b.description.trim().slice(0, 600) : "";
+        const lat = parseFloat(b.lat), lng = parseFloat(b.lng);
+        // Coordinates are optional: a listing without them still shows in the
+        // list, it just cannot be pinned on the map.
+        const hasGeo = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        const starts = typeof b.starts_at === "string" ? b.starts_at.trim().slice(0, 40) : "";
+        const ends = typeof b.ends_at === "string" ? b.ends_at.trim().slice(0, 40) : "";
+        const r = await env.DB.prepare(
+          "INSERT INTO popup_stores (owner_id, name, description, address, city, lat, lng, starts_at, ends_at) " +
+          "VALUES (?,?,?,?,?,?,?,?,?)"
+        ).bind(user.sub, name, description || null, address, city || null,
+               hasGeo ? lat : null, hasGeo ? lng : null, starts || null, ends || null).run();
+        return json({ popup: { id: r.meta.last_row_id, name, address, city, lat: hasGeo ? lat : null, lng: hasGeo ? lng : null } }, 201);
+      }
+
+      // ── DIRECT MESSAGES — free. DB only, no third-party chat service ──
+      if (path === "/api/dm/blocks" && method === "GET") {
+        await ensureDmTables(env);
+        const r = await env.DB.prepare(
+          "SELECT b.blocked_id AS id, b.created_at AS since, COALESCE(u.display_name, u.username) AS name " +
+          "FROM dm_blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id=? ORDER BY b.created_at DESC LIMIT 100"
+        ).bind(user.sub).all();
+        return json({ blocked: r.results || [] });
+      }
+      const dmBlock = path.match(/^\/api\/dm\/block\/(\d+)$/);
+      if (dmBlock && method === "POST") {
+        await ensureDmTables(env);
+        const target = +dmBlock[1];
+        if (target === user.sub) return err("You cannot block yourself", 422);
+        const who = await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(target).first();
+        if (!who) return err("No such person", 404);
+        if (!(await rateLimit(env, request, "block", 60))) return err("Too many requests", 429);
+        // INSERT OR IGNORE keeps the composite PK idempotent — pressing it twice is not an error.
+        await env.DB.prepare("INSERT OR IGNORE INTO dm_blocks (blocker_id, blocked_id) VALUES (?,?)")
+          .bind(user.sub, target).run();
+        return json({ blocked: true, id: target }, 201);
+      }
+      if (dmBlock && method === "DELETE") {
+        await ensureDmTables(env);
+        await env.DB.prepare("DELETE FROM dm_blocks WHERE blocker_id=? AND blocked_id=?")
+          .bind(user.sub, +dmBlock[1]).run();
+        return json({ blocked: false, id: +dmBlock[1] });
+      }
+
+      if (path === "/api/dm" && method === "GET") {
+        await ensureDmTables(env);
+        const denied = await dmDeniedIds(env, user.sub);
+        const people = await env.DB.prepare(
+          "SELECT id, username, display_name FROM users WHERE id<>? ORDER BY COALESCE(display_name,username) ASC LIMIT 100"
+        ).bind(user.sub).all();
+        // Blocked people vanish from the list entirely — showing them greyed
+        // out would tell the other side that a block exists.
+        const visible = (people.results || []).filter((p) => !denied.has(p.id));
+        // One pass for the newest line per person and one for unread counts.
+        // Doing this per contact would be 3 queries x 100 people.
+        const [lastR, unreadR] = await Promise.all([
+          env.DB.prepare("SELECT id, from_id, to_id, body, created_at FROM dm_messages WHERE from_id=? OR to_id=? ORDER BY id DESC LIMIT 300")
+            .bind(user.sub, user.sub).all(),
+          env.DB.prepare("SELECT from_id, COUNT(*) AS n FROM dm_messages WHERE to_id=? AND read_at IS NULL GROUP BY from_id")
+            .bind(user.sub).all(),
+        ]);
+        const unread = {};
+        (unreadR.results || []).forEach(r => { unread[r.from_id] = r.n; });
+        const lastBy = {};
+        (lastR.results || []).forEach(m => {
+          const peer = m.from_id === user.sub ? m.to_id : m.from_id;
+          if (!(peer in lastBy)) lastBy[peer] = m;
+        });
+        const contacts = visible.map(p => {
+          const l = lastBy[p.id];
+          return {
+            id: p.id,
+            name: p.display_name || p.username,
+            last: l ? l.body : "",
+            lastAt: l ? l.created_at : "",
+            lastMine: l ? l.from_id === user.sub : false,
+            unread: unread[p.id] || 0,
+          };
+        });
+        contacts.sort((a, b) =>
+          (b.unread > 0) - (a.unread > 0) ||
+          (b.last ? 1 : 0) - (a.last ? 1 : 0) ||
+          String(a.name).localeCompare(String(b.name)));
+        return json({ contacts });
+      }
+
+      const dmOne = path.match(/^\/api\/dm\/(\d+)$/);
+      if (dmOne && method === "GET") {
+        await ensureDmTables(env);
+        const other = +dmOne[1];
+        if (other === user.sub) return err("That is you", 422);
+        const after = parseInt(url.searchParams.get("after") || "0", 10) || 0;
+        // Same neutral wording both ways: it must be impossible to tell
+        // whether YOU blocked them or THEY blocked you.
+        if (await dmBlocked(env, user.sub, other))
+          return json({ blocked: true, messages: [], latest: after, error: "Messaging with this person is turned off." }, 403);
+        const r = await env.DB.prepare(
+          "SELECT id, from_id, body, created_at, read_at FROM dm_messages " +
+          "WHERE ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?)) AND id>? ORDER BY id ASC LIMIT 200"
+        ).bind(user.sub, other, other, user.sub, after).all();
+        // reading them marks the other side's messages as read
+        if ((r.results || []).length) {
+          await env.DB.prepare("UPDATE dm_messages SET read_at=CURRENT_TIMESTAMP WHERE to_id=? AND from_id=? AND read_at IS NULL")
+            .bind(user.sub, other).run();
+        }
+        const messages = (r.results || []).map(m => ({
+          id: m.id, mine: m.from_id === user.sub, body: m.body, at: m.created_at, read: !!m.read_at,
+        }));
+        return json({ messages, latest: messages.length ? messages[messages.length - 1].id : after });
+      }
+
+      if (dmOne && method === "POST") {
+        await ensureDmTables(env);
+        const other = +dmOne[1];
+        if (other === user.sub) return err("That is you", 422);
+        if (await dmBlocked(env, user.sub, other))
+          return err("Messaging with this person is turned off.", 403);
+        if (!(await rateLimit(env, request, "dm", 30))) return err("Too many messages — wait a moment", 429);
+        const b = await readJson(request);
+        const body = typeof b.body === "string" ? b.body.trim() : "";
+        if (!body) return err("body required");
+        if (body.length > 2000) return err("Keep it under 2000 characters", 422);
+        const target = await env.DB.prepare("SELECT id FROM users WHERE id=?").bind(other).first();
+        if (!target) return err("No such person", 404);
+        const r = await env.DB.prepare("INSERT INTO dm_messages (from_id, to_id, body) VALUES (?,?,?)")
+          .bind(user.sub, other, body).run();
+        return json({ message: { id: r.meta.last_row_id, mine: true, body, read: false } }, 201);
+      }
+
+      // ── CHATBOTS — separate from the messenger, run on OpenCode agents ──
+      // Three bots, one window: `mode` picks which one is talking.
+      if (path === "/api/chat" && method === "POST") {
+        if (!(await rateLimit(env, request, "chat", 20))) return err("Too many requests", 429);
+        const b = await readJson(request);
+        const msg = typeof b.message === "string" ? b.message.trim() : "";
+        if (!msg) return err("message required");
+        if (msg.length > 1500) return err("Keep it under 1500 characters", 422);
+        const mode = ["guide", "ideas", "items"].includes(b.mode) ? b.mode : "guide";
+        const history = Array.isArray(b.history) ? b.history.slice(-10) : [];
+        let ctx = "";
+        try { ctx = await chatContext(env, user.sub, mode); } catch { /* context is optional */ }
+        const sys = chatSystem(mode, ctx);
+
+        // source is ALWAYS reported so the window never dresses up a built-in
+        // rule as something an agent said. Nothing provider-specific leaves
+        // this endpoint: the browser gets a neutral reason, the detail goes
+        // to the Worker log.
+        let reply = null, source = null, reason = "";
+        if (env.HIVE_URL) {
+          try {
+            const r = await hiveChat(env, sys, history, msg, 420);
+            reply = r.text; source = "agent";
+          } catch (e) {
+            console.error("chat agent:", (e && e.message) || e);
+            reason = /timed out|too long/i.test(String((e && e.message) || e)) ? "it took too long" : "it was unavailable";
+          }
+        } else reason = "no agent is configured";
+        if (!reply) {
+          const t = await aiChat(env, sys, history, msg, 420);
+          if (t) { reply = t; source = "backup"; }
+        }
+        if (!reply) { reply = guideFallback(msg); source = "builtin"; }
+        return json(reason
+          ? { reply, source, model: source, mode, fallback_reason: reason }
+          : { reply, source, model: source, mode });
       }
 
       // ── AI TRY-ON — computes garment OVERLAY JSON only.
