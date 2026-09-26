@@ -1762,8 +1762,17 @@ async function renderShop(el){
     return;
   }
   if (S.photoPending){ S.photoPending = false; setTimeout(photoSearchGo, 90); }
-  function canonCat(c){if(typeof c!=="string"||!c.trim())return"";const s=c.trim().toLowerCase();return{"/tops":"Tops","/bottoms":"Bottoms","/dresses":"Dresses","/outerwear":"Outerwear","/shoes":"Shoes","/accessories":"Accessories","/athletic":"Athletic"}[s]||""}
-  const cats = [...new Set((S.market||[]).map(m=>canonCat(m.category))).filter(c=>c)].sort();
+  /* Canonical category key. The market feed spells the same garment type more
+     than one way ("Tops" and "tops"), and some rows carry no category at all,
+     so every value is folded to one spelling before the chip list is built.
+     A leading slash is tolerated because the lookup used to be written with
+     "/tops" keys while the API sends "Tops" — every lookup missed, the filter
+     dropped the empty strings, and the Shop showed NO category chips at all. */
+  function canonCat(c){if(typeof c!=="string"||!c.trim())return"";let s=c.trim().toLowerCase();if(s.charAt(0)==="/")s=s.slice(1);return{"tops":"Tops","bottoms":"Bottoms","dresses":"Dresses","outerwear":"Outerwear","shoes":"Shoes","accessories":"Accessories","athletic":"Athletic"}[s]||""}
+  /* Spread FIRST, then filter: `[...new Set(X).filter(...)]` calls .filter on the
+     Set itself, which throws "Set.filter is not a function" and aborts renderShop
+     entirely — the Shop then sits on "Loading what is for sale…" forever. */
+  const cats = [...new Set((S.market||[]).map(m=>canonCat(m.category)))].filter(c=>c).sort();
   if (S.marketCat && !cats.includes(S.marketCat)) S.marketCat = "";
   el.innerHTML = roleSwitchHtml()
   + photoSearchCard()
