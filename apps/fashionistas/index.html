@@ -1270,6 +1270,31 @@ async function doSignup(){
 }
 function afterAuth(d){ TOKEN = d.token; USER = d.user; localStorage.setItem("fash_token", TOKEN); localStorage.setItem("fash_user", JSON.stringify(USER)); $("#view-auth").classList.add("hidden"); $("#view-app").classList.remove("hidden"); $("#tabbar").classList.remove("hidden"); $("#guide-fab").classList.remove("hidden"); go("home"); }
 function logout(){ TOKEN = ""; USER = null; localStorage.removeItem("fash_token"); localStorage.removeItem("fash_user"); $("#view-app").classList.add("hidden"); $("#tabbar").classList.add("hidden"); $("#guide-fab").classList.add("hidden"); guideToggle(false); $("#view-auth").classList.remove("hidden"); }
+function showAuth(tab){
+  $("#view-app").classList.add("hidden");
+  $("#tabbar").classList.add("hidden");
+  $("#guide-fab").classList.add("hidden");
+  guideToggle(false);
+  $("#view-auth").classList.remove("hidden");
+  authTab(tab || "login");
+  const c = document.querySelector(".land-card");
+  if (c) c.scrollIntoView({ behavior:"smooth", block:"center" });
+}
+function renderAuthPrompt(title, subtitle){
+  return `<div class="card" style="text-align:center;padding:32px 20px;max-width:440px;margin:24px auto;">`
+    + `<div class="brand" style="justify-content:center;margin-bottom:12px">`
+    + `<span class="mark" aria-hidden="true"><svg class="mark-fb" width="22" height="22" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"><path d="M32 28v-4.5a6 6 0 1 1 6-6"/><path d="M10 46 32 28l22 18z"/></svg></span>fashionistas.ai`
+    + `</div>`
+    + `<h3 style="margin:0 0 8px">${escapeHtml(title || "Log in to your account")}</h3>`
+    + `<p class="mut" style="margin:0 0 20px">${escapeHtml(subtitle || "Sign in to see your clothes, sales and seller tools.")}</p>`
+    + `<div style="display:flex;flex-direction:column;gap:10px;align-items:center">`
+    + `<button class="btn btn-primary" onclick="showAuth('login')" style="width:100%;max-width:280px" data-tip="Open the sign-in screen to type your username and password." title="Open the sign-in screen to type your username and password.">Log in</button>`
+    + `<button class="btn btn-accent" onclick="showAuth('signup')" style="width:100%;max-width:280px" data-tip="Create a free seller account with username, email and password." title="Create a free seller account with username, email and password.">Create free account</button>`
+    + `<button class="btn btn-soft btn-sm" onclick="demoLogin()" style="width:100%;max-width:280px;margin-top:4px" data-tip="Try the app with the seeded demo account first." title="Try the app with the seeded demo account first.">Log in as demo seller</button>`
+    + `<button class="btn btn-ghost btn-sm" onclick="go('shop')" style="width:100%;max-width:280px" data-tip="See what is for sale from other sellers without signing in." title="See what is for sale from other sellers without signing in.">Browse the shop instead</button>`
+    + `</div>`
+    + `</div>`;
+}
 
 /* ================= NAV ================= */
 /* The bottom tabs are the single source of truth for what this app contains.
@@ -1339,6 +1364,21 @@ function roleSwitchHtml(){
 function refreshTips(){ try{ if (window.syncTips) window.syncTips(document); }catch(e){} }
 S.market = S.market || []; S.marketCount = S.marketCount || 0;
 S.marketQ = S.marketQ || ""; S.marketCat = S.marketCat || ""; S.marketSort = S.marketSort || "new";
+/* ================= CATEGORY KEYS (module scope — see note) =================
+   The market feed spells the same garment type more than one way ("Tops" and
+   "tops") and some rows carry no category at all, so every value is folded to
+   one spelling before a chip list is built or a filter is applied.
+   A leading slash is tolerated because an earlier lookup used "/tops" keys
+   while the API sends "Tops" — every lookup missed and the Shop showed no
+   category chips at all.
+
+   IMPORTANT: this must stay at module scope. It used to be declared INSIDE
+   renderShop(), while marketRows() and the item-detail builder call it from
+   outside. The initial load was shielded by `if (S.marketCat)`, so the Shop
+   looked fine until a shopper clicked a category chip — then it threw
+   "ReferenceError: canonCat is not defined" and the filter silently did
+   nothing. */
+function canonCat(c){if(typeof c!=="string"||!c.trim())return"";let s=c.trim().toLowerCase();if(s.charAt(0)==="/")s=s.slice(1);return{"tops":"Tops","bottoms":"Bottoms","dresses":"Dresses","outerwear":"Outerwear","shoes":"Shoes","accessories":"Accessories","athletic":"Athletic","bags":"Accessories","jewellery":"Accessories","jewelry":"Accessories"}[s]||""}
 /* ================= MAP + POP-UP STORES ================= */
 let LEAFLET_P = null;
 function loadLeaflet(){
@@ -1762,13 +1802,8 @@ async function renderShop(el){
     return;
   }
   if (S.photoPending){ S.photoPending = false; setTimeout(photoSearchGo, 90); }
-  /* Canonical category key. The market feed spells the same garment type more
-     than one way ("Tops" and "tops"), and some rows carry no category at all,
-     so every value is folded to one spelling before the chip list is built.
-     A leading slash is tolerated because the lookup used to be written with
-     "/tops" keys while the API sends "Tops" — every lookup missed, the filter
-     dropped the empty strings, and the Shop showed NO category chips at all. */
-  function canonCat(c){if(typeof c!=="string"||!c.trim())return"";let s=c.trim().toLowerCase();if(s.charAt(0)==="/")s=s.slice(1);return{"tops":"Tops","bottoms":"Bottoms","dresses":"Dresses","outerwear":"Outerwear","shoes":"Shoes","accessories":"Accessories","athletic":"Athletic"}[s]||""}
+  /* canonCat() now lives at module scope (search "CATEGORY KEYS") so marketRows
+     and the item-detail builder can use it too. */
   /* Spread FIRST, then filter: `[...new Set(X).filter(...)]` calls .filter on the
      Set itself, which throws "Set.filter is not a function" and aborts renderShop
      entirely — the Shop then sits on "Loading what is for sale…" forever. */
@@ -1946,6 +1981,11 @@ async function toggleOnsale(id, btn){
 /* ================= HOME ================= */
 /* ================= MULTILIST HUB (marketplace lister + admin) ================= */
 async function renderXL(el){
+  if (!TOKEN || !USER) {
+    el.innerHTML = renderAuthPrompt("Log in to multilist", "Sign in to prepare your listings for every shop and track fees and admin.");
+    refreshTips();
+    return;
+  }
   el.innerHTML = showLoader();
   try {
     const [mp, ld] = await Promise.all([api("/api/marketplaces"), api("/api/listings")]);
@@ -2011,6 +2051,11 @@ async function renderXL(el){
     </div>`;
     refreshTips();
   } catch(e){
+    if (e.message === "unauthorized") {
+      el.innerHTML = renderAuthPrompt("Session expired — please log in", "Your session has ended. Sign in to use the multilister.");
+      refreshTips();
+      return;
+    }
     el.innerHTML = `<div class="empty">${escapeHtml(e.message)}</div>`;
   }
 }
@@ -2044,6 +2089,11 @@ async function xlExport(ev, name){
 
 /* ================= HOME ================= */
 async function renderHome(el){
+ if (!TOKEN || !USER) {
+   el.innerHTML = roleSwitchHtml() + renderAuthPrompt("Log in to see your home screen", "Sign in to see your sales, active listings and daily profit.");
+   refreshTips();
+   return;
+ }
  el.innerHTML = showLoader();
  try {
  const [a, p, mp] = await Promise.all([ api("/api/analytics"), api("/api/profit/summary"), api("/api/marketplaces") ]);
@@ -2146,6 +2196,10 @@ async function renderCloset(el){
  return;
  }
  S.closetStatus = S.closetStatus || "";
+ S.closetCat = S.closetCat || "";
+ /* If the chosen type no longer exists (you deleted the last pair of shoes),
+    drop the filter so the closet can't silently show nothing. */
+ if (S.closetCat && !closetCatList().some(c => c.k === S.closetCat)) S.closetCat = "";
  el.innerHTML = `
  <div class="closet-tools">
  <button type="button" class="btn btn-soft closet-select" id="closet-select" data-tip="Tick several items to copy, duplicate or delete together." onclick="closetSelMode()">Select</button>
@@ -2162,6 +2216,10 @@ async function renderCloset(el){
  <button type="button" class="chip${S.closetStatus==="active"?" on":""}" data-tip="Only the ones still waiting to sell." onclick="closetStatus('active',this)">For sale</button>
  <button type="button" class="chip${S.closetStatus==="sold"?" on":""}" data-tip="Only the ones you've already sold." onclick="closetStatus('sold',this)">Sold</button>
  </div>
+  <div class="chips" id="closet-cats" data-tip="Only show one kind of item. Only the types you actually own are listed here.">
+  <button type="button" class="chip${!S.closetCat?" on":""}" data-tip="Show every kind of item in your closet." onclick="closetCat('',this)">All types</button>
+  ${closetCatList().map(c=>`<button type="button" class="chip${S.closetCat===c.k?" on":""}" data-tip="Show only ${escapeAttr(c.label.toLowerCase())} items." onclick="closetCat('${escapeAttr(c.k)}',this)">${escapeHtml(c.label)}</button>`).join("")}
+  </div>
   <div class="card" id="quality-card" data-tip="Checks your photos, title, description and price before you post it.">
   <h3 style="margin-top:0">Is this listing ready?</h3>
   <p class="mut" style="margin-top:0">Checks your photos, title, description and price before you post it, and tells you what to fix.</p>
@@ -2294,6 +2352,25 @@ function qualityTip(l){
   if(!(l.size && l.condition)) tips.push("fill in size and condition (+7)");
   return tips.length ? tips.join(" · ") : "complete — no fixes needed";
 }
+/* Which item types does this seller actually own? Only those are offered as
+   chips — showing 8 categories when someone owns 3 kinds of item is noise.
+   Items saved before a category was picked are grouped under "Unfiled" so a
+   seller can find and fix them instead of losing them in the list. */
+function closetCatList(){
+  const seen = new Map();
+  for (const l of (S.listings||[])){
+    const k = canonCat(l.category) || "__none";
+    if (!seen.has(k)) seen.set(k, k === "__none" ? "Unfiled" : k);
+  }
+  return [...seen.entries()].map(([k,label]) => ({k,label}))
+    .sort((a,b) => a.k === "__none" ? 1 : b.k === "__none" ? -1 : a.label.localeCompare(b.label));
+}
+function closetCat(c, btn){
+  S.closetCat = c || "";
+  const bar = document.getElementById("closet-cats");
+  if (bar) [...bar.querySelectorAll(".chip")].forEach(x => x.classList.toggle("on", x === btn));
+  closetRefresh();
+}
 function closetRefresh(){
  const grid = document.getElementById("closet-grid");
  if (!grid) return;
@@ -2302,6 +2379,13 @@ function closetRefresh(){
  let rows = (S.listings||[]).slice();
  if (q) rows = rows.filter(l=>((l.title||"")+" "+(l.description||"")+" "+(l.brand||"")+" "+(l.category||"")).toLowerCase().includes(q));
  if (S.closetStatus) rows = rows.filter(l=>(l.status||"active")===S.closetStatus);
+ /* Category filter. CanonCat first so "tops" and "Tops" land in the same
+    bucket; uncategorised items only appear under the "Unfiled" chip. */
+ if (S.closetCat){
+   rows = rows.filter(l => S.closetCat === "__none"
+     ? !canonCat(l.category)
+     : canonCat(l.category) === S.closetCat);
+ }
  const n2 = v => Number(v)||0;
  rows.sort((a,b)=>{
    if (sort==="price-hi") return n2(b.price)-n2(a.price);
@@ -2456,6 +2540,16 @@ function toListingForm(){
 function renderListingForm(it){
  const edit = !!it.id;
  CURRENT.form = { ...it, _b64: it._b64||null };
+ /* Always have ONE chip selected. `saveListing` reads the selected chip, and
+    a brand-new item (or one saved before these fields existed) has no value —
+    without a default there is no `.on` node, the read returns null, and saving
+    dies with "Cannot read properties of null (reading 'textContent')" so the
+    seller sees nothing happen. */
+ const CAT_OPTS = ["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories","Athletic","Bags"];
+ const COND_OPTS = ["Poor","Fair","Good","Excellent"];
+ const wantCat = CAT_OPTS.includes(it.category) ? it.category
+   : (canonCat(it.category) && CAT_OPTS.includes(canonCat(it.category)) ? canonCat(it.category) : CAT_OPTS[0]);
+ const wantCond = COND_OPTS.includes(it.condition) ? it.condition : COND_OPTS[2];
  $("#screen").innerHTML = `
  <div class="card">
  ${it._preview ? `<img class="img" style="max-height:230px;object-fit:contain;background:#f1ece4" src="${it._preview}">` : ""}
@@ -2465,14 +2559,14 @@ function renderListingForm(it){
  <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="optimizeTitle()" data-tip="Rewrites the title so it fits every shop length limit and still reads well." title="Rewrites the title so it fits every shop length limit and still reads well."><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M11 4.5 12.5 9l4.5 1.5L12.5 12 11 16.5 9.5 12 5 10.5 9.5 9z'/><path d='m18.5 15 .7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z'/></svg> Let AI improve this title</button>
  <label>Type of item</label>
  <div id="f-cat" data-tip="Pick what kind of item this is.">
- ${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories","Athletic","Bags"].map(c=>`<button class="chip ${c===it.category?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}
+ ${CAT_OPTS.map(c=>`<button class="chip ${c===wantCat?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}
  </div>
  <div class="two">
  <div><label>Price ($)</label><input class="input" id="f-price" type="number" min="1" step="1" value="${it.priceMin||it.price||""}" placeholder="Sale price"></div>
  <div><label>Size</label><input class="input" id="f-size" value="${escapeAttr(it.sizeHint||it.size||"")}" placeholder="e.g. M / 10"></div>
  </div>
  <label>Condition</label>
- <div id="f-cond" data-tip="How used does it look? Be honest — buyers trust you more.">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c===it.condition?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
+ <div id="f-cond" data-tip="How used does it look? Be honest — buyers trust you more.">${COND_OPTS.map(c=>`<button class="chip ${c===wantCond?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
  <fieldset class="form-sec" data-tip="These are the fields shoppers filter and search by — filling them in is what gets you found.">
   <legend>What it is</legend>
   <div class="two">
@@ -2533,8 +2627,10 @@ async function saveListing(){
  const title = $("#f-title").value.trim();
  const price = parseFloat($("#f-price").value);
  if (!title || !price || isNaN(price)) return toast("Title and a valid price are required");
- const category = $("#f-cat .on").textContent;
- const condition = $("#f-cond .on").textContent;
+ /* Null-safe: if the chip group is somehow empty, fall back instead of
+    throwing away the whole save. */
+ const category = ((($("#f-cat .on")||{}).textContent)||"Tops").trim();
+ const condition = ((($("#f-cond .on")||{}).textContent)||"Good").trim();
  const size = $("#f-size").value.trim();
  const desc = $("#f-desc").value.trim();
  // optional detail fields — an empty box means "unknown", not "0"
@@ -3265,7 +3361,7 @@ function openAdd(){
  `);
 }
 async function saveManual(){
- const body = { title: $("#m-title").value.trim(), price: parseFloat($("#m-price").value), size: $("#m-size").value.trim(), category: $("#m-cat .on").textContent, condition: $("#m-cond .on").textContent, description: $("#m-desc").value.trim(), photo_url: $("#m-photo").value.trim()||null };
+ const body = { title: $("#m-title").value.trim(), price: parseFloat($("#m-price").value), size: $("#m-size").value.trim(), category: ((($("#m-cat .on")||{}).textContent)||"Tops").trim(), condition: ((($("#m-cond .on")||{}).textContent)||"Good").trim(), description: $("#m-desc").value.trim(), photo_url: $("#m-photo").value.trim()||null };
  if (!body.title || !body.price) return toast("Title and price are required");
  try { await api("/api/listings", { method:"POST", body: JSON.stringify(body) }); closeSheet(); toast("Added ✓"); go("closet"); } catch(e){ toast(e.message); }
 }
