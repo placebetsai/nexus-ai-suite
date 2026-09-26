@@ -384,6 +384,102 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
 @media (hover:none){
   .cs-card:hover,.cs-step:hover,.cs-btn:hover{transform:none}
 }
+
+/* ---------- live panel (shown after deploy/publish) ---------- */
+.cs-live-panel{
+  position:fixed;
+  left:0;right:0;bottom:0;
+  z-index:1000;
+  padding:1rem 1.25rem;
+  background:linear-gradient(180deg, rgba(11,11,26,.98), rgba(6,6,15,1));
+  border-top:1px solid var(--cs-line);
+  box-shadow:0 -20px 50px -20px rgba(0,0,0,.8);
+  -webkit-backdrop-filter:blur(12px);
+  backdrop-filter:blur(12px);
+  transform:translateY(100%);
+  transition:transform .35s var(--cs-ease);
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+  max-height:70vh;
+  overflow:auto;
+}
+.cs-live-panel.is-visible{ transform:translateY(0) }
+.cs-live-panel__inner{
+  max-width:var(--cs-max);
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:1rem;
+  align-items:start;
+}
+.cs-live-panel__headline{
+  font-family:var(--font-display);
+  font-size:1.15rem;
+  font-weight:700;
+  color:#fff;
+  line-height:1.3;
+  margin:0;
+}
+.cs-live-panel__url{
+  display:block;
+  font-family:var(--font-mono);
+  font-size:.85rem;
+  color:var(--cs-cyan);
+  word-break:break-all;
+  margin-top:.25rem;
+  text-decoration:none;
+}
+.cs-live-panel__url:hover{ text-decoration:underline }
+.cs-live-panel__actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem;
+  align-items:center;
+}
+.cs-live-panel__btn{
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  padding:.6rem 1rem;
+  border-radius:999px;
+  font-weight:600;
+  font-size:.85rem;
+  line-height:1;
+  border:1px solid transparent;
+  cursor:pointer;
+  transition:transform .2s var(--cs-ease), box-shadow .2s var(--cs-ease), background-color .2s var(--cs-ease), border-color .2s var(--cs-ease);
+  white-space:nowrap;
+}
+.cs-live-panel__btn--primary{
+  background:linear-gradient(135deg,var(--cs-violet),var(--cs-blue));
+  color:#fff;
+  box-shadow:0 10px 24px -10px rgba(124,58,237,.9);
+}
+.cs-live-panel__btn--primary:hover{ transform:translateY(-2px); box-shadow:0 16px 32px -12px rgba(124,58,237,1) }
+.cs-live-panel__btn--secondary{
+  background:rgba(255,255,255,.06);
+  border-color:var(--cs-line-2);
+  color:var(--cs-text);
+}
+.cs-live-panel__btn--secondary:hover{ border-color:rgba(167,139,250,.5); background:rgba(124,58,237,.12) }
+.cs-live-panel__btn--close{
+  width:36px;height:36px;padding:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.05);
+  border-color:var(--cs-line-2);
+  color:var(--cs-text-2);
+  display:flex;align-items:center;justify-content:center;
+}
+.cs-live-panel__btn--close:hover{ background:rgba(255,255,255,.1); color:var(--cs-text); border-color:rgba(255,255,255,.2) }
+.cs-live-panel__btn svg{ width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round }
+.cs-live-panel__btn:focus-visible{ outline:2px solid var(--cs-violet-l); outline-offset:2px }
+@media(max-width:760px){
+  .cs-live-panel__inner{ grid-template-columns:1fr; }
+  .cs-live-panel__actions{ width:100%; justify-content:stretch }
+  .cs-live-panel__btn{ flex:1; justify-content:center }
+  .cs-live-panel__btn--close{ width:auto; padding:0 1rem; border-radius:999px }
+}
 </style>
 <!--SEO-START-->
 <meta name="description" content="Describe what you want. CreateStuff writes the code, shows it live and puts it on a free web address. Bring in any GitHub project.">
@@ -881,6 +977,29 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
       </div>
     </div>
   </main>
+
+  <!-- Live panel (shown after deploy/publish) -->
+  <div id="live-panel" class="cs-live-panel" role="region" aria-label="Your app is live" aria-hidden="true">
+    <div class="cs-live-panel__inner">
+      <div>
+        <h2 id="live-panel-headline" class="cs-live-panel__headline"></h2>
+        <a id="live-panel-url" class="cs-live-panel__url" href="#" target="_blank" rel="noopener" aria-hidden="true"></a>
+      </div>
+      <div class="cs-live-panel__actions">
+        <button id="live-panel-open" class="cs-live-panel__btn cs-live-panel__btn--primary" data-tip="Opens your app in a new tab." title="Opens your app in a new tab.">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+          <span id="live-panel-open-text">Open your app</span>
+        </button>
+        <button id="live-panel-copy" class="cs-live-panel__btn cs-live-panel__btn--secondary" data-tip="Copies the web address to your clipboard." title="Copies the web address to your clipboard.">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="live-panel-copy-text">Copy the link</span>
+        </button>
+        <button id="live-panel-close" class="cs-live-panel__btn cs-live-panel__btn--close" data-tip="Hides this panel for the rest of this session." title="Hides this panel for the rest of this session." aria-label="Dismiss">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -1039,6 +1158,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }
 })();
 </script>
-<script src="/app.js?v=3334cfc4e600"></script>
+<script src="/app.js?v=c97d9f603c97"></script>
 </body>
 </html>

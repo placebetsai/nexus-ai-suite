@@ -201,6 +201,7 @@ async function csStartBuild(promptText, projectId) {
       }
       b.done = true;
       const all = csBuilds(); all[id] = b; csSaveBuilds(all);
+      lpAfterBuild(projectId).catch(() => {});
     })
     .catch((e) => {
       const b = csBuilds()[id];
@@ -283,6 +284,7 @@ async function csShim(path, options = {}) {
     b.published_url = url;
     b.published_at = Date.now();
     { const all = csBuilds(); all[b.id] = b; csSaveBuilds(all); }
+    showLivePanel(url, { projectId: b.project_id, reason: 'publish' }).catch(() => {});
     return { ok: true, value: { url, ok: true } };
   }
 
@@ -1675,10 +1677,12 @@ async function lzAct(kind, nested) {
       }
       lz.liveUrl = p.body.publishUrl || lz.liveUrl;
       const g = await lzCall(`${API_BASE}/published/${lz.projectId}/index.html`, { headers: { Authorization: `Bearer ${getToken()}` } });
-      lzSet('publish', (g.status === 200 && g.bytes)
+      const lpOk = !!(g.status === 200 && g.bytes);
+      lzSet('publish', lpOk
         ? { status: 'done', badge: 'Published', detail: `POST /api/ai/publish → ${p.status} in ${lzMs(p.ms)}\n${p.body.publishUrl || ''}\nthen GET …/index.html → ${g.status}, ${lzNum(g.bytes)} bytes in ${lzMs(g.ms)}` }
         : { status: 'blocked', badge: 'Not readable back', detail: `publish returned ${p.status}, but reading it back gave ${g.status} (${lzNum(g.bytes)} B)\n${lzErr(g)}` });
-      showToast('It is online');
+      showToast(lpOk ? 'It is online' : 'Published, but the address is not answering yet');
+      showLivePanel(lz.liveUrl, { projectId: lz.projectId, live: lpOk, reason: 'publish' }).catch(() => {});
       return;
     }
 
@@ -1778,6 +1782,196 @@ function showToast(msg) {
   t.textContent = msg;
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// ============================================================
+// LIVE PANEL — after a build or a publish, one panel in the
+// user's face telling them where their app is.
+//
+// Hard rule: the words "Your app is live" are only ever shown
+// after a real HTTP 200 read back from that exact address.
+// A finished build that has never been published shows
+// "Your app is ready to go online" and a working
+// "Put it online" button instead.
+// ============================================================
+const lp = { url: '', projectId: null, live: false, busy: false, wired: false };
+
+function lpEl(id) { return document.getElementById(id) }
+function lpOff() { try { return sessionStorage.getItem('cs_lp_off') === '1' } catch { return false } }
+function lpSetOff(v) { try { v ? sessionStorage.setItem('cs_lp_off', '1') : sessionStorage.removeItem('cs_lp_off') } catch { /* private mode */ } }
+
+// Real read of the address itself. Nothing else counts as proof.
+async function lpCheck(url) {
+  if (!url) return { live: false, status: 0, bytes: 0 };
+  try {
+    const r = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` }, cache: 'no-store' });
+    let bytes = 0;
+    try { bytes = (await r.text()).length } catch { bytes = 0 }
+    return { live: !!r.ok, status: r.status, bytes };
+  } catch (e) {
+    return { live: false, status: 0, bytes: 0, error: String((e && e.message) || e) };
+  }
+}
+
+// Where does this project currently live, if anywhere?
+async function lpProjectUrl(pid) {
+  if (!pid) return '';
+  try {
+    const r = await fetch(`${API_BASE}/api/projects`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+    if (!r.ok) return '';
+    const j = await r.json();
+    const list = Array.isArray(j) ? j : (j.projects || []);
+    const p = list.find((x) => Number(x.id) === Number(pid));
+    return (p && p.deploy_url) || '';
+  } catch { return '' }
+}
+
+function lpRender() {
+  const panel = lpEl('live-panel');
+  if (!panel) return;
+  const head = lpEl('live-panel-headline');
+  const a = lpEl('live-panel-url');
+  const open = lpEl('live-panel-open');
+  const openText = lpEl('live-panel-open-text');
+  const copy = lpEl('live-panel-copy');
+
+  if (head) head.textContent = lp.live ? 'Your app is live' : 'Your app is ready to go online';
+
+  if (a) {
+    if (lp.url) {
+      a.textContent = lp.url;
+      a.href = lp.url;
+      a.removeAttribute('aria-hidden');
+      a.style.display = '';
+    } else {
+      a.textContent = '';
+      a.href = '#';
+      a.setAttribute('aria-hidden', 'true');
+      a.style.display = 'none';
+    }
+  }
+  const label = lp.live ? 'Open your app' : 'Put it online';
+  const tip = lp.live
+    ? 'Opens your app in a new tab.'
+    : 'Sends this build online, then shows you the address.';
+  if (openText) openText.textContent = label;
+  if (open) { open.setAttribute('data-tip', tip); open.setAttribute('title', tip); }
+  if (copy) copy.style.display = lp.url ? '' : 'none';
+}
+
+function lpShow(on) {
+  const panel = lpEl('live-panel');
+  if (!panel) return;
+  panel.classList.toggle('is-visible', !!on);
+  panel.setAttribute('aria-hidden', on ? 'false' : 'true');
+}
+
+async function lpPublish() {
+  const pid = lp.projectId;
+  if (!pid) { showToast('Choose a project first'); return; }
+  if (lp.busy) return;
+  lp.busy = true;
+  const open = lpEl('live-panel-open');
+  const openText = lpEl('live-panel-open-text');
+  if (openText) openText.textContent = 'Putting it online...';
+  if (open) open.disabled = true;
+  try {
+    const r = await fetch(`${API_BASE}/api/ai/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+      body: JSON.stringify({ projectId: pid }),
+    });
+    const j = await r.json().catch(() => null);
+    const url = (j && (j.publishUrl || j.publish_url || j.url)) || lp.url;
+    if (!r.ok) throw new Error((j && (j.error || j.message)) || 'HTTP ' + r.status);
+    if (!url) throw new Error('the service did not give back an address');
+    const c = await lpCheck(url);
+    lp.url = url;
+    lp.live = c.live;
+    lpSetOff(false);
+    lpRender();
+    showToast(c.live ? 'It is online' : 'Published, but it is not answering yet');
+    if (typeof lz !== 'undefined' && lz && Number(lz.projectId) === Number(pid)) lz.liveUrl = url;
+  } catch (e) {
+    showToast('Could not put it online: ' + String((e && e.message) || e));
+    lpRender();
+  } finally {
+    lp.busy = false;
+    if (open) open.disabled = false;
+  }
+}
+
+function lpWire() {
+  if (lp.wired) return;
+  const open = lpEl('live-panel-open');
+  const copy = lpEl('live-panel-copy');
+  const close = lpEl('live-panel-close');
+  if (!open || !copy || !close) return;
+  lp.wired = true;
+
+  open.addEventListener('click', () => {
+    if (lp.live && lp.url) window.open(lp.url, '_blank', 'noopener');
+    else lpPublish();
+  });
+
+  copy.addEventListener('click', async () => {
+    const url = lp.url;
+    if (!url) return;
+    const t = lpEl('live-panel-copy-text');
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(url); ok = true; }
+    } catch { ok = false }
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { ok = false }
+    }
+    if (t) {
+      t.textContent = ok ? 'Copied' : 'Copy failed';
+      setTimeout(() => { if (t.isConnected) t.textContent = 'Copy the link' }, 2000);
+    }
+    showToast(ok ? 'Link copied' : 'This browser would not copy it');
+  });
+
+  close.addEventListener('click', () => {
+    lpSetOff(true);
+    lpShow(false);
+  });
+}
+
+// opts: { projectId, live (known HTTP result), forceReady (this build is
+// unpublished), reason: 'publish' | 'build' }
+async function showLivePanel(url, opts) {
+  opts = opts || {};
+  if (!lp.wired) lpWire();
+  lp.url = url || '';
+  if (opts.projectId != null) lp.projectId = opts.projectId;
+  lpRender();
+
+  if (opts.reason === 'publish') lpSetOff(false);
+  if (lpOff()) { lpShow(false); return; }
+
+  if (opts.forceReady) lp.live = false;
+  else if (typeof opts.live === 'boolean') lp.live = opts.live;
+  else { const c = await lpCheck(lp.url); lp.live = c.live; }
+
+  lpRender();
+  lpShow(true);
+}
+
+// After a plain build: we know this build is not published yet, so the
+// panel never claims live here. It offers "Put it online" instead.
+async function lpAfterBuild(pid) {
+  const url = await lpProjectUrl(pid);
+  try { showLivePanel(url, { projectId: pid, forceReady: true, reason: 'build' }); } catch { /* panel missing */ }
 }
 
 // Inline onclick="..." handlers in HTML resolve against `window`, but this file
