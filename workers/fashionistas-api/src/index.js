@@ -827,15 +827,21 @@ async function dispatch(request, env) {
       if (path === "/api/market" && method === "GET") {
         const u = new URL(request.url);
         const q = (u.searchParams.get("q") || "").trim().slice(0, 80);
-        const category = (u.searchParams.get("category") || "").trim().slice(0, 40);
+        const category = (u.searchParams.get("category") || "").trim().slice(0, 80);
         const sortKey = u.searchParams.get("sort") || "new";
         const orderBy = MARKET_SORTS[sortKey] || MARKET_SORTS.new;
         const where = ["l.status = 'active'"];
         const binds = [];
         if (q) { where.push("(l.title LIKE ? OR l.description LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
-        // Compare ignoring case/space so a canonical chip still reaches rows
-        // written before canonCategory existed ("Tops" must find "tops").
-        if (category) { where.push("LOWER(TRIM(l.category)) = LOWER(?)"); binds.push(category); }
+        // Category arrives three ways: a full path ("Women's Clothing/Tops & Shirts"),
+        // a bare department ("Women's Clothing"), or a legacy flat word ("Tops") —
+        // rows written before the tree existed still hold the flat word. Match
+        // exact path, the leaf on its own, and anything stored under the path.
+        if (category) {
+          const leaf = category.split("/").pop().trim();
+          where.push("(LOWER(TRIM(l.category)) = LOWER(?) OR LOWER(TRIM(l.category)) = LOWER(?) OR LOWER(TRIM(l.category)) LIKE LOWER(?))");
+          binds.push(category, leaf, category + "/%");
+        }
         const sql =
           (await marketSelect(env)) + " WHERE " + where.join(" AND ") +
           " ORDER BY " + orderBy + " LIMIT " + MARKET_LIMIT;

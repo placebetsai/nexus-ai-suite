@@ -1,13 +1,17 @@
-/* Category controls harness for fashionistas.
-   Guards the three defects found on 2026-09-26:
+/* Category tree harness for fashionistas.
+   Guards the defects found on 2026-09-26:
      1. canonCat declared inside renderShop -> ReferenceError when a chip is clicked
      2. Closet had no category filter at all
      3. saveListing read $("#f-cat .on").textContent on a null -> save died silently
-   Run: node tests/harness-categories.mjs                       */
+     4. flat one-level chips instead of department -> subcategory like a real site
+     5. inline onclick handlers built with escapeAttr, which does NOT escape
+        apostrophes -> "Women's Clothing" would truncate the call on click
+   The functions under test are SLICED OUT OF THE APP and executed, so this
+   cannot drift from what actually ships.
+   Run: node tests/harness-categories.mjs                                */
 import { readFileSync } from "node:fs";
 
-const FILE = new URL("../apps/fashionistas/index.html", import.meta.url);
-const html = readFileSync(FILE, "utf8");
+const html = readFileSync(new URL("../apps/fashionistas/index.html", import.meta.url), "utf8");
 const script = html.split("<script>").sort((a, b) => b.length - a.length)[0];
 
 let pass = 0, total = 0;
@@ -17,129 +21,145 @@ const t = (name, got, want) => {
   if (ok) pass++;
   console.log(`${ok ? "PASS" : "FAIL"}  ${name} -> ${JSON.stringify(got)}${ok ? "" : "  want " + JSON.stringify(want)}`);
 };
+const has = (name, cond) => t(name, !!cond, true);
 
-/* ---------- 1. scope: canonCat must be reachable from marketRows ---------- */
-const declLines = script.split("\n").filter(l => /(^|\s)function canonCat\(/.test(l));
-t("canonCat declared exactly once", declLines.length, 1);
+/* ---------- slice the real code out of the app and run it ---------- */
+const start = script.indexOf("const TAX = {");
+has("app contains the TAX block", start > -1);
+const endMark = script.indexOf("function taxUnq");
+has("app contains taxUnq", endMark > -1);
+const block = script.slice(start, script.indexOf("\n", endMark));
+let X = null;
+try {
+  X = new Function(block + "\nreturn {TAX,TAX_LEGACY,taxDepts,taxSubs,taxPath,taxDept,taxSub,taxLabel,taxMatches,canonCat,taxQ,taxUnq};")();
+} catch (e) {
+  console.log("FAIL  could not evaluate the category block: " + e.message);
+  console.log("\nHARNESS 0/0\nRESULT FAIL");
+  process.exit(1);
+}
+const { TAX, taxDepts, taxSubs, taxPath, taxDept, taxSub, taxLabel, taxMatches, canonCat, taxQ, taxUnq } = X;
 
-const canonLine = script.split("\n").findIndex(l => /(^|\s)function canonCat\(/.test(l));
-const renderShopLine = script.split("\n").findIndex(l => /async function renderShop\(/.test(l));
-t("canonCat is declared at column 0 (module scope)", declLines[0].startsWith("function canonCat("), true);
+/* ---------- 1. the tree itself is well formed ---------- */
+const depts = taxDepts();
+t("department count (a real catalogue, not 3 flat chips)", depts.length >= 8, true);
+t("no duplicate departments", new Set(depts).size, depts.length);
+t("every department has subcategories", depts.every(d => taxSubs(d).length > 0), true);
+t("every subcategory is a non-empty string", depts.every(d => taxSubs(d).every(s => typeof s === "string" && s.trim() && s === s.trim())), true);
+t("no duplicate subcategories within a department", depts.every(d => new Set(taxSubs(d)).size === taxSubs(d).length), true);
+t("no department shares its name with a subcategory of another",
+  depts.every(d => depts.every(o => o === d || !taxSubs(o).includes(d))), true);
+t("total subcategories is catalogue-sized", Object.values(TAX).reduce((n, a) => n + a.length, 0) >= 40, true);
+t("every department name is URL/attr-safe once encoded", depts.every(d => !/['"<>&]/.test(taxQ(d))), true);
+
+/* ---------- 2. scope: the module-scope rule that caused the outage ---------- */
+const lines = script.split("\n");
+const canonLine = lines.findIndex(l => /(^|\s)function canonCat\(/.test(l));
+const renderShopLine = lines.findIndex(l => /async function renderShop\(/.test(l));
+const taxLine = lines.findIndex(l => /^const TAX = \{/.test(l));
+t("canonCat declared exactly once", lines.filter(l => /(^|\s)function canonCat\(/.test(l)).length, 1);
+t("canonCat is at column 0 (module scope)", lines[canonLine].startsWith("function canonCat("), true);
 t("canonCat is declared BEFORE renderShop", canonLine < renderShopLine, true);
+t("TAX is at column 0 (module scope)", taxLine > -1, true);
+has("market filter calls taxMatches", script.includes("taxMatches(m.category, S.marketCat)"));
+has("closet filter calls taxMatches", script.includes("taxMatches(l.category, S.closetCat)"));
+t("no leftover reference to the old chip group", script.includes("#f-cat"), false);
 
-// The old bug, restated: a declaration nested inside renderShop is invisible
-// to marketRows. Prove the test can detect that shape.
-const nested = "\nasync function renderShop(el){\n  function canonCat(c){return c;}\n}\nfunction marketRows(){ return canonCat('Tops'); }";
-t("nested declaration WOULD be caught by this check",
-  nested.split("\n").findIndex(l => /(^|\s)function canonCat\(/.test(l)) >
-  nested.split("\n").findIndex(l => /async function renderShop\(/.test(l)),
-  true);
+// prove the scope check would discriminate: a nested declaration must not
+// satisfy the column-0 pattern, while the shipped one must.
+const nested = "\nasync function renderShop(el){\n  const TAX = {};\n}\nfunction marketRows(){ return TAX; }";
+t("a nested declaration is NOT seen at column 0 (so the check catches it)", /^const TAX = \{/m.test(nested), false);
+t("the shipped TAX IS at column 0", /^const TAX = \{/m.test(script), true);
 
-/* ---------- 2. behaviour: the real functions ---------- */
-const canonSrc = script.split("\n").find(l => /(^|\s)function canonCat\(/.test(l));
-const canonCat = eval(`(${canonSrc.replace(/^\s*function canonCat/, "function canonCat")})`);
+/* ---------- 3. taxPath: every stored spelling resolves ---------- */
+t("legacy 'Tops' lands in the tree", taxPath("Tops"), "Women's Clothing/Tops & Shirts");
+t("lowercase legacy 'tops' lands in the same place", taxPath("tops"), "Women's Clothing/Tops & Shirts");
+t("legacy 'Dresses'", taxPath("Dresses"), "Women's Clothing/Dresses");
+t("legacy 'Outerwear'", taxPath("Outerwear"), "Women's Clothing/Outerwear");
+t("legacy 'Shoes' stays a department", taxPath("Shoes"), "Shoes");
+t("legacy 'Accessories' stays a department", taxPath("Accessories"), "Accessories");
+t("legacy 'Athletic' maps to sportswear", taxPath("Athletic"), "Sports & Outdoor/Activewear");
+t("legacy 'Bags'", taxPath("Bags"), "Bags & Luggage");
+t("leading slash still tolerated", taxPath("/tops"), "Women's Clothing/Tops & Shirts");
+t("valid full path passes through", taxPath("Shoes/Women's Shoes"), "Shoes/Women's Shoes");
+t("department with no sub is kept", taxPath("Shoes"), "Shoes");
+t("unknown subcategory drops to its department", taxPath("Shoes/Wellingtons"), "Shoes");
+t("unknown department is rejected", taxPath("Furniture/Lamps"), "");
+t("department name in any case is found", taxPath("women's clothing"), "Women's Clothing");
+t("bare subcategory is attached to its department", taxPath("Dresses"), "Women's Clothing/Dresses");
+t("junk is rejected", taxPath("random-thing"), "");
+t("null is rejected", taxPath(null), "");
+t("empty is rejected", taxPath("   "), "");
+t("non-string is rejected", taxPath(42), "");
+t("trimmed on the way in", taxPath("  Shoes  "), "Shoes");
+t("round-trips through the encoder", taxPath(taxUnq(taxQ("Women's Clothing/Tops & Shirts"))), "Women's Clothing/Tops & Shirts");
 
-t("canonCat folds case", canonCat("tops"), "Tops");
-t("canonCat passes through valid key", canonCat("Outerwear"), "Outerwear");
-t("canonCat strips leading slash", canonCat("/tops"), "Tops");
-t("canonCat rejects junk", canonCat("random-thing"), "");
-t("canonCat rejects null", canonCat(null), "");
-t("canonCat rejects empty", canonCat("   "), "");
-t("canonCat groups Bags under Accessories", canonCat("Bags"), "Accessories");
-
-// chip list built the way renderShop builds it (spread BEFORE filter)
+/* ---------- 4. drill-down matching ---------- */
 const feed = [
-  { category: "Tops" }, { category: "tops" }, { category: "Outerwear" },
-  { category: "Bottoms" }, { category: "Dresses" }, { category: "Shoes" },
-  { category: "Athletic" }, { category: "Accessories" }, { category: null },
-  { category: "" }, { category: "random-thing" },
+  { category: "Women's Clothing/Tops & Shirts" },
+  { category: "tops" },
+  { category: "Shoes" },
+  { category: "Shoes/Men's Shoes" },
+  { category: "Dresses" },
+  { category: null },
+  { category: "random-thing" },
 ];
-const cats = [...new Set(feed.map(m => canonCat(m.category)))].filter(c => c).sort();
-t("chip list yields 7 unique types", cats, ["Accessories", "Athletic", "Bottoms", "Dresses", "Outerwear", "Shoes", "Tops"]);
-t("no duplicate Tops/Tops", cats.filter(c => c === "Tops").length, 1);
+t("no filter shows everything", feed.filter(r => taxMatches(r.category, "")).length, feed.length);
+t("a department matches the items filed under it", feed.filter(r => taxMatches(r.category, "Shoes")).length, 2);
+t("a department matches every row beneath it (incl. legacy spellings)", feed.filter(r => taxMatches(r.category, "Women's Clothing")).length, 3);
+t("a subcategory matches only itself", feed.filter(r => taxMatches(r.category, "Shoes/Men's Shoes")).length, 1);
+t("a subcategory does not match its sibling", feed.filter(r => taxMatches(r.category, "Shoes/Women's Shoes")).length, 0);
+t("a subcategory does not match the bare department", taxMatches("Women's Clothing", "Women's Clothing/Tops & Shirts"), false);
+t("unlisted junk never matches a department", feed.filter(r => taxMatches(r.category, "Accessories")).length, 0);
+t("uncategorised rows never match a department", feed.filter(r => taxMatches(r.category, "Kids & Baby")).length, 0);
 
-// the crashing form must still throw — proves this test is sensitive
-let threw = "";
-try { [...new Set(feed.map(m => canonCat(m.category))).filter(c => c)]; }
-catch (e) { threw = e.constructor.name; }
-t("the old Set.filter form still throws", threw, "TypeError");
+/* ---------- 5. the exact crashes that used to happen still throw ---------- */
+let e1 = ""; try { [...new Set(feed.map(m => m.category)).filter(c => c)]; } catch (e) { e1 = e.constructor.name; }
+t("the old Set.filter form still throws", e1, "TypeError");
+let e2 = ""; try { const n = null; void n.textContent; } catch (e) { e2 = e.constructor.name; }
+t("the old unguarded chip read still throws", e2, "TypeError");
 
-// marketRows filter, same code path as line 1843
-function marketRows(S) {
-  let rows = (S.market || []).slice();
-  if (S.marketCat) rows = rows.filter(m => (canonCat(m.category) || "") === S.marketCat);
-  return rows;
-}
-t("filter by Tops returns only Tops", marketRows({ market: feed, marketCat: "Tops" }).length, 2);
-t("no filter returns everything", marketRows({ market: feed, marketCat: "" }).length, feed.length);
-t("filter by unknown type returns none", marketRows({ market: feed, marketCat: "Hats" }).length, 0);
+/* ---------- 6. inline handlers cannot break on an apostrophe ---------- */
+const nasty = ["Women's Clothing", "Kids' Shoes", "a\"b<c>d", "Shoes/Men's Shoes"];
+t("encoded values contain no quote or angle bracket",
+  nasty.every(v => !/['"<>&]/.test(taxQ(v))), true);
+t("decoding restores the original exactly",
+  nasty.every(v => taxUnq(taxQ(v)) === v), true);
+t("a genuinely bad sequence does not throw", taxUnq("%zz"), "%zz");
 
-// clicking a chip sets the value then re-reads — this is what threw before
-const clicked = (() => { try { const S = { market: feed, marketCat: "Tops" }; return marketRows(S).length; } catch (e) { return e.message; } })();
-t("clicking a chip no longer throws", typeof clicked === "number", true);
+/* ---------- 7. the shop chip list has no duplicates ---------- */
+const cats = [...new Set(feed.map(m => taxPath(m.category)).filter(Boolean))].map(taxLabel);
+t("labels are unique", new Set(cats).size, cats.length);
 
-/* ---------- 3. closet category list ---------- */
-function closetCatList(listings) {
-  const seen = new Map();
-  for (const l of listings) {
-    const k = canonCat(l.category) || "__none";
-    if (!seen.has(k)) seen.set(k, k === "__none" ? "Unfiled" : k);
-  }
-  return [...seen.entries()].map(([k, label]) => ({ k, label }))
-    .sort((a, b) => a.k === "__none" ? 1 : b.k === "__none" ? -1 : a.label.localeCompare(b.label));
-}
+/* ---------- 8. closet behaves like a real catalogue ---------- */
 const mine = [
-  { category: "Tops" }, { category: "Shoes" }, { category: null },
+  { category: "Tops" }, { category: "Shoes/Men's Shoes" }, { category: null },
   { category: "shoes" }, { category: "Dresses" },
 ];
-const list = closetCatList(mine);
-t("closet chips only show owned types", list.map(c => c.label), ["Dresses", "Shoes", "Tops", "Unfiled"]);
-t("types are not duplicated across spellings", list.filter(c => c.k === "Shoes").length, 1);
-t("uncategorised items are findable", list.some(c => c.k === "__none"), true);
-t("empty closet shows no chips", closetCatList([]).length, 0);
+const paths = mine.map(l => taxPath(l.category));
+const ownedDepts = depts.filter(d => paths.some(p => taxMatches(p, d)));
+t("only departments the seller owns are offered", ownedDepts.sort(), ["Shoes", "Women's Clothing"].sort());
+t("uncategorised items are detectable", mine.filter(l => !taxPath(l.category)).length, 1);
+t("spelling variants collapse to one department",
+  mine.filter(l => taxMatches(l.category, "Shoes")).length, 2);
+const closetFilter = (rows, sel) => !sel ? rows
+  : sel === "__none" ? rows.filter(l => !taxPath(l.category))
+  : rows.filter(l => taxMatches(l.category, sel));
+t("department filter on the closet", closetFilter(mine, "Shoes").length, 2);
+t("sub filter on the closet", closetFilter(mine, "Shoes/Men's Shoes").length, 1);
+t("uncategorised filter on the closet", closetFilter(mine, "__none").length, 1);
+t("clearing shows everything", closetFilter(mine, "").length, mine.length);
 
-// stale selection must be dropped (last pair of shoes sold/deleted)
-const chips = list.map(c => c.k);
-const staleCat = "Boots";
-t("stale selected category is reset", chips.includes(staleCat) ? staleCat : "", "");
-
-// closet filter, same code path as closetRefresh
-function closetFilter(listings, sel) {
-  let rows = listings.slice();
-  if (sel) rows = rows.filter(l => sel === "__none" ? !canonCat(l.category) : canonCat(l.category) === sel);
-  return rows;
-}
-t("closet filter by Shoes matches both spellings", closetFilter(mine, "Shoes").length, 2);
-t("closet filter Unfiled catches null category", closetFilter(mine, "__none").length, 1);
-t("closet filter with nothing selected shows all", closetFilter(mine, "").length, mine.length);
-
-/* ---------- 4. save path must survive a missing chip ---------- */
-const readChip = (node, fallback) => ((node || {}).textContent || fallback).trim();
-t("chip present -> its text", readChip({ textContent: " Dresses " }, "Tops"), "Dresses");
-t("chip missing -> fallback, no throw", readChip(null, "Tops"), "Tops");
-t("chip present but empty -> fallback", readChip({ textContent: "" }, "Tops"), "Tops");
-
-// the exact old expression must still explode, so the guard is doing work
-let oldThrew = "";
-try { const x = null; void x.textContent; } catch (e) { oldThrew = e.constructor.name; }
-t("the old unguarded read still throws", oldThrew, "TypeError");
-
-// the form must always pre-select one chip for a brand-new item
-const CAT_OPTS = ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Athletic", "Bags"];
-const COND_OPTS = ["Poor", "Fair", "Good", "Excellent"];
-const pick = (value, opts, fallback) => opts.includes(value) ? value : (canonCat(value) && opts.includes(canonCat(value)) ? canonCat(value) : fallback);
-t("new item defaults to a category", CAT_OPTS.includes(pick(undefined, CAT_OPTS, CAT_OPTS[0])), true);
-t("new item defaults to a condition", COND_OPTS.includes(pick(undefined, COND_OPTS, COND_OPTS[2])), true);
-t("existing category is kept", pick("Dresses", CAT_OPTS, CAT_OPTS[0]), "Dresses");
-t("spelling variant is canonicalised", pick("dresses", CAT_OPTS, CAT_OPTS[0]), "Dresses");
-t("unknown stored value falls back", pick("Bikini", CAT_OPTS, CAT_OPTS[0]), "Tops");
-t("value outside the option list is canonicalised", pick("Jewellery", CAT_OPTS, CAT_OPTS[0]), "Accessories");
-t("a listed option is kept as-is", pick("Bags", CAT_OPTS, CAT_OPTS[0]), "Bags");
+/* ---------- 9. saving requires a place to live ---------- */
+has("saveListing reads the department select", script.includes('fReadCat("f-dept", "f-sub-wrap")'));
+has("saveListing refuses to save without a department",
+  script.includes('Pick a department so buyers can find this item'));
+has("manual sheet reads its own department select", script.includes('fReadCat("m-dept","m-sub-wrap")'));
+has("manual sheet refuses to save without a department",
+  script.split('async function saveManual')[1].includes('Pick a department so buyers can find this item'));
+has("price estimator reads the department select", script.includes('fReadCat("sp-dept", "sp-sub-wrap")'));
+has("price estimator refuses a blank department", script.includes('Pick a department so we know what to price'));
 
 /* ---------- summary ---------- */
 console.log(`\nHARNESS ${pass}/${total} passed`);
-if (pass !== total) {
-  console.log("RESULT FAIL");
-  process.exit(1);
-}
+if (pass !== total) { console.log("RESULT FAIL"); process.exit(1); }
 console.log("RESULT PASS");

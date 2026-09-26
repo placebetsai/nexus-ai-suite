@@ -805,6 +805,101 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
 .chip{border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;transition:transform .06s,background .15s,border-color .15s}
 .chip:active{transform:scale(.96)}
 .chip.on{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(255,78,58,.3)}
+/* ============ CATEGORY BROWSING ============
+   Department -> subcategory, laid out the way a real marketplace lays out a
+   catalogue: a breadcrumb for where you are, a labelled department row, then a
+   labelled type row. The lead-in labels stop the two chip rows from reading as
+   one long unstructured blob, and the counts tell you a click is worth making. */
+.cat-lead{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);margin:14px 0 5px}
+.chip .cnt{font-size:10px;font-weight:800;opacity:.55;margin-left:5px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.chip.on .cnt{opacity:.9}
+.chip[aria-pressed="true"]{outline:none}
+#market-nav nav,#closet-nav nav{padding-bottom:2px;min-height:30px}
+@media (max-width:390px){
+  .cat-lead{font-size:10.5px;margin:12px 0 4px;letter-spacing:.06em}
+  .chip{padding:6px 11px;font-size:12.5px}
+  #market-nav nav .chip,#closet-nav nav .chip{font-size:11.5px;padding:5px 10px}
+}
+
+/* ============ GRAPHIC CARDS, BACKDROPS + MOVING WORDS ============
+   Hero banners and department tiles for the buyer (Shop) and seller (Closet)
+   screens. Art is drawn from the brand asset pack plus gradients, so nothing
+   depends on a third-party image host and every card still carries a word. */
+.hero{position:relative;overflow:hidden;border-radius:20px;border:1px solid var(--line);box-shadow:var(--sh-2);isolation:isolate;animation:cardIn .55s cubic-bezier(.22,1,.36,1) backwards;animation-delay:.05s}
+.hero-art{position:absolute;inset:-6%;background-size:cover;background-position:center;opacity:.95;animation:bgDrift 24s ease-in-out infinite alternate;will-change:transform}
+.hero-scrim{position:absolute;inset:0;background:linear-gradient(100deg,
+  color-mix(in srgb,var(--card) 95%,transparent) 0%,
+  color-mix(in srgb,var(--card) 86%,transparent) 44%,
+  color-mix(in srgb,var(--card) 34%,transparent) 100%)}
+.hero-mono{position:absolute;right:-30px;bottom:-46px;width:190px;height:190px;opacity:.14;animation:monoSpin 40s linear infinite;pointer-events:none}
+.hero-in{position:relative;z-index:2;padding:20px 18px 18px}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:9px}
+.hero-eyebrow::before{content:"";width:16px;height:1.6px;background:var(--grad);border-radius:2px;animation:ruleGrow .7s cubic-bezier(.2,.9,.25,1) backwards}
+.hero-h{font-size:clamp(22px,6vw,32px);line-height:1.12;font-weight:900;letter-spacing:-.02em;margin:0 0 8px}
+.hero-sub{color:var(--mut);font-size:14px;line-height:1.5;margin:0 0 14px;max-width:52ch}
+.hero-cta{display:flex;gap:9px;flex-wrap:wrap}
+.hero-tags{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}
+.hero-tag{font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:999px;background:color-mix(in srgb,var(--card) 82%,transparent);border:1px solid var(--line);backdrop-filter:blur(6px)}
+
+/* rolling words: every candidate shares one grid cell, so the box is always
+   sized to the widest word and no fixed line-height math is needed */
+.roll{display:inline-grid;vertical-align:baseline;overflow:hidden}
+.roll > b{grid-area:1/1;font-weight:900;opacity:0;transform:translateY(.5em) scale(.97);filter:blur(5px);color:var(--accent);
+  transition:opacity .45s ease,transform .6s cubic-bezier(.2,.9,.25,1),filter .45s ease;white-space:nowrap}
+.roll > b.on{opacity:1;transform:none;filter:none}
+.roll.static > b:not(:first-child){display:none}
+.roll.static > b:first-child{opacity:1;transform:none;filter:none}
+
+/* seller stat strip */
+.stat-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+.stat-box{background:color-mix(in srgb,var(--card) 84%,transparent);border:1px solid var(--line);border-radius:14px;padding:10px 11px;backdrop-filter:blur(8px);animation:fadeUp .5s cubic-bezier(.22,1,.36,1) backwards}
+.stat-box:nth-child(1){animation-delay:.10s}.stat-box:nth-child(2){animation-delay:.17s}.stat-box:nth-child(3){animation-delay:.24s}
+.stat-box b{display:block;font-size:21px;font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15}
+.stat-box span{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+
+/* department tiles: graphic card + word + count, in a swipeable rail */
+.catrail{display:flex;gap:11px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 12px;margin:0 -2px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.catrail::-webkit-scrollbar{height:6px}
+.catrail::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px}
+.catcard{position:relative;flex:0 0 auto;width:148px;min-height:112px;scroll-snap-align:start;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;
+  padding:12px;border-radius:16px;border:1px solid transparent;overflow:hidden;cursor:pointer;text-align:left;color:#fff;isolation:isolate;
+  background:linear-gradient(150deg,var(--a),var(--b));
+  box-shadow:0 8px 22px color-mix(in srgb,var(--b) 30%,transparent);
+  transition:transform .28s cubic-bezier(.2,.9,.25,1),box-shadow .28s,filter .28s;
+  animation:cardIn .5s cubic-bezier(.22,1,.36,1) backwards;animation-delay:calc(var(--i,0) * .05s + .1s)}
+.catcard:hover{transform:translateY(-4px) scale(1.015);box-shadow:0 16px 34px color-mix(in srgb,var(--b) 42%,transparent);filter:saturate(1.12)}
+.catcard:active{transform:translateY(-1px) scale(.99)}
+.catcard:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.catcard::before{content:"";position:absolute;inset:0;z-index:1;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 34%,rgba(0,0,0,.42) 100%)}
+.catcard::after{content:"";position:absolute;top:0;left:-70%;width:55%;height:100%;z-index:2;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);transform:skewX(-18deg);
+  transition:left .6s cubic-bezier(.2,.9,.25,1);pointer-events:none}
+.catcard:hover::after{left:130%}
+.catcard-ico{position:absolute;top:-8px;right:-8px;width:74px;height:74px;opacity:.3;transform:rotate(-12deg);z-index:1;pointer-events:none;transition:transform .4s cubic-bezier(.2,.9,.25,1)}
+.catcard:hover .catcard-ico{transform:rotate(-4deg) scale(1.08)}
+.catcard-word{position:relative;z-index:3;font-size:14px;font-weight:900;line-height:1.15;letter-spacing:-.01em;text-shadow:0 1px 3px rgba(0,0,0,.32)}
+.catcard-n{position:relative;z-index:3;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.catcard.on{outline:3px solid var(--ink);outline-offset:2px;transform:translateY(-3px)}
+/* the outline already marks the active department — no extra glyph, it just
+   wrapped onto its own line and looked like a stray character */
+.catcard.on .catcard-word{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px}
+.catrail-empty{color:var(--mut);font-size:13px;padding:4px 2px 10px}
+
+@media (max-width:390px){
+  .hero-in{padding:16px 14px 15px}
+  .hero-mono{width:140px;height:140px;right:-38px;bottom:-40px}
+  .stat-strip{gap:7px}
+  .stat-box{padding:8px 9px}
+  .stat-box b{font-size:18px}
+  .catcard{width:132px;min-height:104px}
+}
+@media (prefers-reduced-motion:reduce){
+  .hero-art,.hero-mono{animation:none}
+  .catcard,.hero,.stat-box{animation:none}
+  .catcard::after{display:none}
+  .roll > b{transition:none;filter:none;transform:none}
+}
 .xl-bar{display:flex;align-items:center;gap:7px;margin-bottom:9px;flex-wrap:wrap}
 .xl-bar .btn{margin:0}
 .xl-bar #xl-count{font-size:12.5px;font-weight:700}
@@ -842,6 +937,10 @@ footer{color:var(--mut);font-size:12px;text-align:center;padding:22px 0 8px}
 @keyframes screenIn{from{opacity:.01;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes lockupIn{from{opacity:0;transform:translateY(-10px) scale(.95)}to{opacity:1;transform:none}}
 @keyframes wordShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+/* ---- hero backdrops: slow drift so a static card still feels alive ---- */
+@keyframes bgDrift{0%{transform:translate3d(0,0,0) scale(1.06)}50%{transform:translate3d(-1.6%,1.4%,0) scale(1.11)}100%{transform:translate3d(1.4%,-1.2%,0) scale(1.06)}}
+@keyframes monoSpin{to{transform:rotate(360deg)}}
+@keyframes ruleGrow{from{width:0;opacity:0}to{width:16px;opacity:1}}
 @keyframes barIn{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 /* ---- kinetic type: section headers ---- */
 .kt{display:inline-block;animation:ktIn .5s cubic-bezier(.2,.9,.25,1) backwards}
@@ -1364,13 +1463,13 @@ function roleSwitchHtml(){
 function refreshTips(){ try{ if (window.syncTips) window.syncTips(document); }catch(e){} }
 S.market = S.market || []; S.marketCount = S.marketCount || 0;
 S.marketQ = S.marketQ || ""; S.marketCat = S.marketCat || ""; S.marketSort = S.marketSort || "new";
-/* ================= CATEGORY KEYS (module scope — see note) =================
-   The market feed spells the same garment type more than one way ("Tops" and
-   "tops") and some rows carry no category at all, so every value is folded to
-   one spelling before a chip list is built or a filter is applied.
-   A leading slash is tolerated because an earlier lookup used "/tops" keys
-   while the API sends "Tops" — every lookup missed and the Shop showed no
-   category chips at all.
+/* ================= CATEGORY TREE (module scope — see note) =================
+   Real two-level categories, the way eBay and Craigslist organise a catalogue:
+   DEPARTMENT -> SUBCATEGORY. Stored as one slash-joined path in the existing
+   `category` column, so no schema change is needed (remote D1 is read-only
+   here). Old rows still hold a single flat word ("Tops", "Shoes") — LEGACY
+   maps those onto the new tree so nothing is stranded and no re-write is
+   required.
 
    IMPORTANT: this must stay at module scope. It used to be declared INSIDE
    renderShop(), while marketRows() and the item-detail builder call it from
@@ -1378,7 +1477,218 @@ S.marketQ = S.marketQ || ""; S.marketCat = S.marketCat || ""; S.marketSort = S.m
    looked fine until a shopper clicked a category chip — then it threw
    "ReferenceError: canonCat is not defined" and the filter silently did
    nothing. */
-function canonCat(c){if(typeof c!=="string"||!c.trim())return"";let s=c.trim().toLowerCase();if(s.charAt(0)==="/")s=s.slice(1);return{"tops":"Tops","bottoms":"Bottoms","dresses":"Dresses","outerwear":"Outerwear","shoes":"Shoes","accessories":"Accessories","athletic":"Athletic","bags":"Accessories","jewellery":"Accessories","jewelry":"Accessories"}[s]||""}
+const TAX = {
+  "Women's Clothing": ["Tops & Shirts","Bottoms","Dresses","Outerwear","Activewear","Lingerie & Sleepwear","Swimwear"],
+  "Men's Clothing":    ["Tops & Shirts","Bottoms","Outerwear","Suits & Formal","Activewear","Underwear & Sleepwear"],
+  "Kids & Baby":       ["Girls' Clothing","Boys' Clothing","Baby & Toddler","Kids' Shoes","School Uniform"],
+  "Shoes":             ["Women's Shoes","Men's Shoes","Kids' Shoes","Athletic Shoes","Boots","Sandals & Flip Flops"],
+  "Bags & Luggage":    ["Handbags","Backpacks","Totes & Shoppers","Crossbody Bags","Luggage & Suitcases"],
+  "Accessories":       ["Jewellery","Watches","Hats & Caps","Belts","Scarves & Wraps","Sunglasses","Wallets & Cardholders"],
+  "Vintage & Designer":["Vintage","Designer","Streetwear","Band Merch"],
+  "Sports & Outdoor":  ["Activewear","Camping & Hiking","Cycling","Yoga & Pilates","Water Sports"]
+};
+/* Flat values written before the tree existed -> where they live now. */
+const TAX_LEGACY = {
+  "top":"Women's Clothing/Tops & Shirts", "tops":"Women's Clothing/Tops & Shirts", "shirt":"Women's Clothing/Tops & Shirts", "t-shirt":"Women's Clothing/Tops & Shirts",
+  "bottom":"Women's Clothing/Bottoms", "bottoms":"Women's Clothing/Bottoms", "trousers":"Women's Clothing/Bottoms", "jeans":"Women's Clothing/Bottoms",
+  "dress":"Women's Clothing/Dresses", "dresses":"Women's Clothing/Dresses",
+  "outerwear":"Women's Clothing/Outerwear", "jacket":"Women's Clothing/Outerwear", "coat":"Women's Clothing/Outerwear",
+  "lingerie":"Women's Clothing/Lingerie & Sleepwear", "swimwear":"Women's Clothing/Swimwear",
+  "shoe":"Shoes", "shoes":"Shoes",
+  "accessory":"Accessories", "accessories":"Accessories",
+  "athletic":"Sports & Outdoor/Activewear", "sport":"Sports & Outdoor/Activewear", "sports":"Sports & Outdoor/Activewear",
+  "bag":"Bags & Luggage", "bags":"Bags & Luggage", "handbag":"Bags & Luggage/Handbags", "purse":"Bags & Luggage/Handbags",
+  "kid":"Kids & Baby", "kids":"Kids & Baby", "baby":"Kids & Baby/Baby & Toddler",
+  "vintage":"Vintage & Designer/Vintage", "designer":"Vintage & Designer/Designer",
+  "hat":"Accessories/Hats & Caps", "cap":"Accessories/Hats & Caps", "jewellery":"Accessories/Jewellery", "jewelry":"Accessories/Jewellery", "watch":"Accessories/Watches"
+};
+function taxDepts(){ return Object.keys(TAX); }
+function taxSubs(dept){ return (TAX[dept] || []).slice(); }
+/* Any stored value -> canonical path ("", "Dept" or "Dept/Sub"). */
+function taxPath(raw){
+  if (typeof raw !== "string") return "";
+  /* Tolerate a leading slash: older rows were keyed "/tops", and a value that
+     can't be resolved is worse than one resolved one step loosely. */
+  const v = raw.trim().replace(/^\/+/, ""); if (!v) return "";
+  if (v.indexOf("/") > -1){
+    const parts = v.split("/").map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 1 && TAX[parts[0]]) {
+      const sub = parts[1];
+      if (!sub) return parts[0];
+      return taxSubs(parts[0]).indexOf(sub) > -1 ? parts[0] + "/" + sub : parts[0];
+    }
+  }
+  const k = v.toLowerCase();
+  if (TAX_LEGACY[k]) return TAX_LEGACY[k];
+  /* exact department name, any capitalisation */
+  const hit = taxDepts().find(d => d.toLowerCase() === k);
+  if (hit) return hit;
+  /* exact subcategory name on its own -> attach to its department */
+  for (const d of taxDepts()) if (taxSubs(d).some(s => s.toLowerCase() === k)) return d + "/" + v;
+  return "";
+}
+function taxDept(p){ p = p || ""; return p.split("/")[0] || ""; }
+function taxSub(p){ p = p || ""; return p.split("/").slice(1).join("/"); }
+function taxLabel(p){ p = p || ""; return p ? p.split("/").pop() : ""; }
+/* Does this stored value sit under the selected path? A bare department
+   matches everything beneath it; a full path matches only itself (and
+   anything deeper, should a third level ever be added). */
+function taxMatches(raw, sel){
+  if (!sel) return true;
+  const p = taxPath(raw); if (!p) return false;
+  return p === sel || p.indexOf(sel + "/") === 0;
+}
+/* Back-compatible helper used by the item pill: shows the most specific
+   name we can resolve for a stored value. */
+function canonCat(c){ return taxLabel(taxPath(c)); }
+/* Safe to drop inside an inline onclick="…" attribute. escapeAttr() only
+   handles double quotes, and department names contain apostrophes
+   ("Women's Clothing"), which would truncate the call and throw a syntax
+   error on click. Encoded, the attribute holds no quote characters at all. */
+function taxQ(s){ return encodeURIComponent(String(s == null ? "" : s)).replace(/'/g, "%27"); }
+function taxUnq(s){ try { return decodeURIComponent(String(s || "")); } catch(e){ return String(s || ""); } }
+
+/* ================= GRAPHICS, BACKDROPS + MOVING WORDS =================
+   Hero banners and department tiles for the buyer (Shop) and seller (Closet)
+   screens. Every card carries a word; the artwork is a gradient plus a drawn
+   mark from this file, so nothing depends on an external image host and the
+   cards still read correctly with images blocked. */
+function REDUCED(){ try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch(e){ return false; } }
+const ICONS = {
+  dress:'<path d="M9 3h6l-1 4.5 6.5 4.2-2.2 9.3H5.7L3.5 11.7 10 7.5 9 3Z"/>',
+  shirt:'<path d="M8.5 3 12 4.6 15.5 3 20 6l-2.2 3.4L16.5 8.4V21h-9V8.4L6.2 9.4 4 6l4.5-3Z"/>',
+  kid:'<path d="M12 3.5 14.2 9l5.8.3-4.5 3.6 1.6 5.6L12 15.6 6.9 18.5l1.6-5.6L4 9.3 9.8 9 12 3.5Z"/>',
+  shoe:'<path d="M2.6 16.4h7.6l3 1.6H21a1 1 0 0 1 1 1v1.4H2.6v-4Zm1.3-1.2V9.3l3.2-1.5 2.1 2.5 3-1.6-4.2-4.8H5.7L3.2 8.4V15h.7Z"/>',
+  bag:'<path d="M5.6 8h12.8l-1 12.6H6.6L5.6 8Z"/><path d="M9 8V6.3a3 3 0 0 1 6 0V8"/>',
+  gem:'<path d="M12 3.5 20 9l-8 11.5L4 9l8-5.5Z"/><path d="M4 9h16M12 3.5 8.4 9l3.6 11.5L15.6 9 12 3.5Z"/>',
+  bolt:'<path d="M13.5 2.5 5 13.4h5.6L9.8 21.5 19 10.4h-5.7l.2-7.9Z"/>',
+  tag:'<path d="M3.5 11.4V4.5h6.9l9.1 9.1-6.9 6.9-9.1-9.1Z"/><circle cx="7.5" cy="8.5" r="1.4"/>'
+};
+const DEPT_ART = {
+  "Women's Clothing":    { a:"#ff8a3d", b:"#ff3d6e", ic:"dress" },
+  "Men's Clothing":      { a:"#4f7cff", b:"#7c5cff", ic:"shirt" },
+  "Kids & Baby":         { a:"#24c6a5", b:"#2f80ed", ic:"kid"   },
+  "Shoes":               { a:"#ff5e3a", b:"#b13cff", ic:"shoe"  },
+  "Bags & Luggage":      { a:"#f7971e", b:"#c84b31", ic:"bag"   },
+  "Accessories":         { a:"#00c2ff", b:"#5b5bd6", ic:"gem"   },
+  "Vintage & Designer":  { a:"#c8860a", b:"#8b5cf6", ic:"tag"   },
+  "Sports & Outdoor":    { a:"#1f9d55", b:"#11998e", ic:"bolt"  }
+};
+const DEFAULT_ART = { a:"#ff8a3d", b:"#7c5cff", ic:"tag" };
+function deptArt(d){ return DEPT_ART[d] || DEFAULT_ART; }
+function deptIcon(d){
+  const s = ICONS[(DEPT_ART[d] || DEFAULT_ART).ic] || ICONS.tag;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${s}</svg>`;
+}
+/* Rolling words. Every candidate sits in the same grid cell, so the box sizes
+   itself to the widest word — no fixed line-height arithmetic to break. */
+let ROLL_TIMERS = [];
+function stopRolls(){ try{ ROLL_TIMERS.forEach(clearInterval); }catch(e){} ROLL_TIMERS = []; }
+function rollHtml(words){
+  const w = (words || []).filter(Boolean);
+  if (!w.length) return "";
+  if (REDUCED()) return `<span class="roll static">${w.map(x => `<b class="on">${escapeHtml(x)}</b>`).join("")}</span>`;
+  return `<span class="roll" data-roll>${w.map((x,i) => `<b class="${i?"":"on"}">${escapeHtml(x)}</b>`).join("")}</span>`;
+}
+function startRolls(root){
+  if (REDUCED()) return;
+  (root || document).querySelectorAll("[data-roll]").forEach(el => {
+    if (el.__rolled) return; el.__rolled = true;
+    const items = [...el.querySelectorAll("b")];
+    if (items.length < 2) return;
+    let i = 0;
+    ROLL_TIMERS.push(setInterval(() => {
+      i = (i + 1) % items.length;
+      items.forEach((n,k) => n.classList.toggle("on", k === i));
+    }, 2600));
+  });
+}
+/* The seller stat strip. The count-up itself is the app's own number roll
+   (`countUp`, [data-count]/[data-pre]) — declared further down this file, so a
+   second definition here would have silently overridden it. Figures come from
+   /api/analytics when we have it, so "Sold" matches the home screen. */
+function sellerStatsHtml(){
+  const st = S.stats || {};
+  const known = st && (st.activeListings != null || st.sales != null);
+  const active = known ? (Number(st.activeListings) || 0) : (S.listings || []).length;
+  const sold = known ? (Number(st.sales) || 0) : (S.listings || []).length - active;
+  const value = (S.listings || []).reduce((s,l) => s + (Number(l.price) || 0), 0);
+  const box = (v, pre, label) => `<div class="stat-box"><b data-count="${Math.round(v)||0}"${pre?` data-pre="${pre}"`:""}>0</b><span>${label}</span></div>`;
+  return `<div class="stat-strip" id="seller-stats" data-tip="Live figures from your account.">`
+    + box(active, "", "For sale")
+    + box(sold, "", "Sold")
+    + box(value, "$", "Listed value")
+    + `</div>`;
+}
+/* Fetch the real numbers once, then repaint the strip in place. */
+function statsRefresh(){
+  if (S.statsPromise) return S.statsPromise;
+  S.statsPromise = api("/api/analytics").then(a => {
+    S.stats = a.stats || a;
+    const old = document.getElementById("seller-stats");
+    if (old){
+      const tmp = document.createElement("div");
+      tmp.innerHTML = sellerStatsHtml();
+      old.replaceWith(tmp.firstElementChild);
+      countUp(document.getElementById("screen"));
+    }
+    return S.stats;
+  }).catch(e => { S.statsPromise = null; return null; });
+  return S.statsPromise;
+}
+/* Department tile: graphic card + word + count, in a swipeable rail. */
+function catRailHtml(kind, depts, countFn, selectedDept, id){
+  if (!depts.length) return `<p class="catrail-empty">No departments to show yet.</p>`;
+  return `<div class="catrail"${id ? ` id="${id}"` : ""} data-tip="Swipe sideways through the departments.">` + depts.map((d,i) => {
+    const art = deptArt(d), n = countFn(d), on = selectedDept === d;
+    const tip = (n ? n + " item" + (n===1?"":"s") + " in " : "Nothing in ") + d + " yet. Click to look inside.";
+    return `<button type="button" class="catcard${on?" on":""}" aria-pressed="${on}" style="--a:${art.a};--b:${art.b};--i:${i}"`
+      + ` onclick="${kind}Pick(decodeURIComponent('${taxQ(d)}'))" data-tip="${escapeAttr(tip)}" title="${escapeAttr(tip)}">`
+      + `<span class="catcard-ico">${deptIcon(d)}</span>`
+      + `<span class="catcard-word">${escapeHtml(d)}</span>`
+      + `<span class="catcard-n">${n} ${n===1?"item":"items"}</span>`
+      + `</button>`;
+  }).join("") + `</div>`;
+}
+function heroArt(file){
+  return `<div class="hero-art" style="background-image:url('${file}')"></div>`;
+}
+/* BUYER — top of the Shop. Leads with the market, then the moving words. */
+function buyerHero(){
+  const n = (S.market || []).length;
+  const caps = Object.keys(TAX).length;
+  return `<section class="hero">`
+    + heroArt("assets/fashionistas-bg-aurora-animated.svg")
+    + `<div class="hero-scrim"></div>`
+    + `<img class="hero-mono" src="assets/fashionistas-monogram-animated.svg" alt="" aria-hidden="true">`
+    + `<div class="hero-in">`
+    + `<div class="hero-eyebrow">Buy from real sellers</div>`
+    + `<h2 class="hero-h">Find your next ${rollHtml(["vintage","statement piece","designer find","one-off","steal"])}</h2>`
+    + `<p class="hero-sub">${n} item${n===1?"":"s"} live across ${caps} departments. Search by photo, then narrow it down department by department.</p>`
+    + `<div class="hero-cta">`
+    + `<button type="button" class="btn btn-accent" onclick="document.getElementById('market-nav').scrollIntoView({behavior:'smooth',block:'start'})" data-tip="Jump straight to the departments." title="Jump straight to the departments.">Browse departments</button>`
+    + `<button type="button" class="btn btn-soft" onclick="go('snap')" data-tip="Photograph something and we'll tell you what it is and what it sells for." title="Photograph something to identify it.">Search by photo</button>`
+    + `</div>`
+    + `<div class="hero-tags"><span class="hero-tag">${n} items live</span><span class="hero-tag">${caps} departments</span><span class="hero-tag">Photo search</span><span class="hero-tag">Price check</span></div>`
+    + `</div></section>`;
+}
+/* SELLER — top of the Closet. Live counts, counted up on arrival. */
+function sellerHero(){
+  return `<section class="hero">`
+    + heroArt("assets/fashionistas-bg-ribbon.svg")
+    + `<div class="hero-scrim"></div>`
+    + `<img class="hero-mono" src="assets/fashionistas-monogram-animated.svg" alt="" aria-hidden="true">`
+    + `<div class="hero-in">`
+    + `<div class="hero-eyebrow">Your selling space</div>`
+    + `<h2 class="hero-h">Turn your closet into ${rollHtml(["cash","a shop","a stall","a side income"])}</h2>`
+    + `<p class="hero-sub">Snap it, price it, file it in a department, and put it in front of buyers. Everything you own is filed below.</p>`
+    + `<div class="hero-cta">`
+    + `<button type="button" class="btn btn-accent" onclick="go('snap')" data-tip="Open the camera to photograph an item and have it identified." title="Open the camera.">Add an item</button>`
+    + `<button type="button" class="btn btn-soft" onclick="go('sell')" data-tip="Ask what your item is realistically worth before you list it." title="Ask what it's worth.">Check a price</button>`
+    + `</div>`
+    + sellerStatsHtml()
+    + `</div></section>`;
+}
 /* ================= MAP + POP-UP STORES ================= */
 let LEAFLET_P = null;
 function loadLeaflet(){
@@ -1649,7 +1959,9 @@ function photoSearchCard(){
    sign-up page. Rates and windows come from each shop's own pages; the
    "checked" date is shown so nobody thinks a stale figure is live. */
 function affCard(){
-  const term = S.marketQ || S.marketCat || "vintage clothing";
+  /* Never hand a raw path ("Women's Clothing/Tops & Shirts") to the matcher —
+     use what the shopper is actually looking at, in words. */
+  const term = (S.marketQ||"").trim() || taxLabel(S.marketCat) || "vintage clothing";
   const q = encodeURIComponent(term);
   const rows = [
     { n:"eBay",   u:`https://www.ebay.com/sch/i.html?_nkw=${q}` },
@@ -1802,14 +2114,10 @@ async function renderShop(el){
     return;
   }
   if (S.photoPending){ S.photoPending = false; setTimeout(photoSearchGo, 90); }
-  /* canonCat() now lives at module scope (search "CATEGORY KEYS") so marketRows
-     and the item-detail builder can use it too. */
-  /* Spread FIRST, then filter: `[...new Set(X).filter(...)]` calls .filter on the
-     Set itself, which throws "Set.filter is not a function" and aborts renderShop
-     entirely — the Shop then sits on "Loading what is for sale…" forever. */
-  const cats = [...new Set((S.market||[]).map(m=>canonCat(m.category)))].filter(c=>c).sort();
-  if (S.marketCat && !cats.includes(S.marketCat)) S.marketCat = "";
+  if (S.photoPending){ S.photoPending = false; setTimeout(photoSearchGo, 90); }
+  stopRolls();
   el.innerHTML = roleSwitchHtml()
+  + buyerHero()
   + photoSearchCard()
   + affCard()
   + `<div class="closet-tools">`
@@ -1819,28 +2127,59 @@ async function renderShop(el){
   + `<option value="price-lo"${S.marketSort==="price-lo"?" selected":""}>Price low to high</option>`
   + `<option value="price-hi"${S.marketSort==="price-hi"?" selected":""}>Price high to low</option>`
   + `</select></div>`
-  + `<div class="chips" id="market-cats">`
-  + `<button type="button" class="chip${!S.marketCat?" on":""}" onclick="marketCat('',this)" data-tip="Show every type of item.">All</button>`
-  + cats.map(c=>`<button type="button" class="chip${S.marketCat===c?" on":""}" onclick="marketCat('${escapeAttr(c)}',this)" data-tip="Show only ${escapeAttr(c).toLowerCase()} items.">${escapeHtml(c)}</button>`).join("")
-  + `</div>`
+  + `<div id="market-nav">${marketNavHtml()}</div>`
   + `<p class="mut" id="market-count" style="margin:2px 0 8px"></p>`
   + `<div class="grid" id="market-grid"></div>`;
   refreshTips();
   marketRefresh();
+  startRolls(el);
+  countUp(el);
+}
+/* Department -> subcategory browser plus breadcrumb. Split out of renderShop so
+   picking a department repaints the nav in place instead of refetching the
+   whole feed (which also would have thrown away whatever the shopper typed). */
+function marketNavHtml(){
+  if (S.marketCat && !taxPath(S.marketCat)) S.marketCat = "";
+  const mDept = taxDept(S.marketCat), mSub = taxSub(S.marketCat);
+  const mCount = sel => (S.market||[]).filter(m => taxMatches(m.category, sel)).length;
+  const mChip = (label, path, on, tip) => {
+    const n = mCount(path);
+    return `<button type="button" class="chip${on?" on":""}" aria-pressed="${on?"true":"false"}" onclick="marketPick(decodeURIComponent('${taxQ(path)}'))" data-tip="${escapeAttr(tip)}" title="${escapeAttr(tip)}">${escapeHtml(label)}<b class="cnt">${n}</b></button>`;
+  };
+  const crumbs = `<nav aria-label="Where you are in the shop" data-tip="Where you are in the catalogue. Click a step to go back up." style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 8px;font-size:13px">`
+    + `<button type="button" class="chip${!S.marketCat?" on":""}" aria-pressed="${!S.marketCat}" style="font-size:12px" onclick="marketPick('')" data-tip="Back to every department.">All departments</button>`
+    + (mDept ? `<span style="opacity:.5">›</span><button type="button" class="chip${mDept&&!mSub?" on":""}" aria-pressed="${mDept&&!mSub}" style="font-size:12px" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}.">${escapeHtml(mDept)}</button>` : "")
+    + (mSub ? `<span style="opacity:.5">›</span><button type="button" class="chip on" aria-pressed="true" style="font-size:12px;cursor:default" data-tip="Currently showing ${escapeAttr(mSub)} only.">${escapeHtml(mSub)}</button>` : "")
+    + `</nav>`;
+  const deptRow = `<div class="cat-lead">Browse by department <span style="text-transform:none;letter-spacing:0;font-weight:600;opacity:.72">— swipe sideways for more</span></div>`
+    + catRailHtml("market", taxDepts(), d => mCount(d), mDept, "market-rail");
+  const subRow = mDept
+    ? `<div class="cat-lead">Type of item in ${escapeHtml(mDept)}</div>`
+      + `<div class="chips" id="market-subs" aria-label="Types of item" data-tip="Types of item inside this department.">`
+      + `<button type="button" class="chip${!mSub?" on":""}" aria-pressed="${!mSub}" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}, whatever type it is.">All ${escapeHtml(mDept)}<b class="cnt">${mCount(mDept)}</b></button>`
+      + taxSubs(mDept).map(s => mChip(s, mDept + "/" + s, mSub === s, "Show only " + s.toLowerCase() + " items.")).join("")
+      + `</div>`
+    : `<p class="mut" style="margin:2px 0 8px">Pick a department above to narrow the list down by type of item.</p>`;
+  return crumbs + deptRow + subRow;
 }
 function marketQ(v){ S.marketQ = v || ""; marketRefresh(); }
 function marketSort(v){ S.marketSort = v || "new"; marketRefresh(); }
-function marketCat(c, btn){
-  S.marketCat = c || "";
-  const bar = document.getElementById("market-cats");
-  if (bar) [...bar.querySelectorAll(".chip")].forEach(x=>x.classList.toggle("on", x===btn));
+function marketPick(path){
+  /* Normalise through taxPath so "Women's Clothing/Tops & Shirts" (and any
+     stray legacy spelling) land on one canonical value. Tapping the step you
+     are already on climbs one level back up, so the nav is never a dead end. */
+  const p = taxPath(taxUnq(path));
+  S.marketCat = (p && p === S.marketCat) ? (taxSub(p) ? taxDept(p) : "") : p;
+  const nav = document.getElementById("market-nav");
+  if (nav) nav.innerHTML = marketNavHtml();
   marketRefresh();
+  refreshTips();
 }
 function marketRows(){
   const q = (S.marketQ || "").toLowerCase().trim();
   let rows = (S.market || []).slice();
   if (q) rows = rows.filter(m=>((m.title||"")+" "+(m.description||"")+" "+(m.category||"")+" "+((m.seller&&m.seller.username)||"")).toLowerCase().includes(q));
-  if (S.marketCat) rows = rows.filter(m=>(canonCat(m.category)||"")===S.marketCat);
+  if (S.marketCat) rows = rows.filter(m => taxMatches(m.category, S.marketCat));
   const n2 = v => Number(v) || 0;
   rows.sort((a,b)=>{
     if (S.marketSort === "price-lo") return n2(a.price) - n2(b.price);
@@ -1853,14 +2192,38 @@ function marketRefresh(){
   const grid = document.getElementById("market-grid");
   if (!grid) return;
   const rows = marketRows();
+  /* Name where the shopper is, not just a bare number: a count with no
+     context reads like a bug when a filter is on. */
+  const where = marketWhere();
+  const qbit = (S.marketQ||"").trim() ? (' for "' + S.marketQ.trim() + '"') : "";
   const cc = document.getElementById("market-count");
-  if (cc) cc.textContent = rows.length ? (rows.length + " for sale") : "";
+  if (cc) cc.textContent = rows.length ? (rows.length + (rows.length===1?" item":" items") + qbit + where) : "";
   if (!rows.length){
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 8h15.6l-1.1 11.2A2 2 0 0 1 16.7 21H7.3a2 2 0 0 1-2-1.8z'/><path d='M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8'/></svg><p>Nothing is for sale right now. Check back soon, or list your own item to get started.</p></div>`;
+    const filtered = !!(S.marketCat || (S.marketQ||"").trim());
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>`
+    + `<p>${filtered ? "Nothing here matches" + (qbit||"") + where + "." : "Nothing is for sale right now. Check back soon, or list your own item to get started."}</p>`
+    + `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">`
+    + (filtered ? `<button type="button" class="btn btn-soft" onclick="marketClearFilters()" data-tip="Show everything for sale again." title="Show everything for sale again.">Clear filters</button>` : "")
+    + `<button type="button" class="btn btn-accent" onclick="go('snap')" data-tip="Photograph an item and describe it — it lands here for buyers." title="Photograph an item and describe it.">List your own item</button>`
+    + `</div></div>`;
     refreshTips();
     return;
   }
   grid.innerHTML = rows.map((m,i)=>marketCard(m,i)).join("");
+  refreshTips();
+}
+/* " in Women's Clothing › Tops & Shirts", or "" at the top of the catalogue. */
+function marketWhere(){
+  if (!S.marketCat) return "";
+  const d = taxDept(S.marketCat), s = taxSub(S.marketCat);
+  return " in " + d + (s ? " › " + s : "");
+}
+function marketClearFilters(){
+  S.marketQ = "";
+  S.marketCat = "";
+  const si = document.getElementById("market-search"); if (si) si.value = "";
+  const nav = document.getElementById("market-nav"); if (nav) nav.innerHTML = marketNavHtml();
+  marketRefresh();
   refreshTips();
 }
 function marketCard(m, i){
@@ -2134,7 +2497,14 @@ async function renderHome(el){
  </div>
  </div>`;
   countUp(el); startHeroTick(); refreshTips();
- } catch(e){ el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>${escapeHtml(e.message)}</div>`; }
+ } catch(e){
+  if (e.message === "unauthorized") {
+    el.innerHTML = roleSwitchHtml() + renderAuthPrompt("Session expired — please log in", "Your session has ended. Sign in to see your listings and profit.");
+    refreshTips();
+    return;
+  }
+  el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>${escapeHtml(e.message)}</div>`;
+ }
 }
 
 /* animated number roll-up */
@@ -2186,21 +2556,29 @@ function renderPlatforms(rows){
 
 /* ================= CLOSET ================= */
 async function renderCloset(el){
+ if (!TOKEN || !USER) {
+   el.innerHTML = renderAuthPrompt("Log in to see your clothes", "Sign in to search, sort and manage everything you are selling.");
+   refreshTips();
+   return;
+ }
  el.innerHTML = showLoader();
  try {
  const d = await api("/api/listings");
  S.listings = d.listings || [];
  await loadMarketplaces();
  if (!S.listings.length) {
- el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 8h15.6l-1.1 11.2A2 2 0 0 1 16.7 21H7.3a2 2 0 0 1-2-1.8z'/><path d='M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8'/></svg>You haven't added anything yet.<br><br><button class="btn btn-accent" onclick="go('snap')" data-tip="Opens the camera so you can snap an item right now." title="Opens the camera so you can snap an item right now.">Add your first item</button> <button class="btn btn-soft" onclick="openAdd()" data-tip="Adds an item to your closet by hand." title="Adds an item to your closet by hand.">Add manually</button></div>`;
+ stopRolls();
+ el.innerHTML = sellerHero() + `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 8h15.6l-1.1 11.2A2 2 0 0 1 16.7 21H7.3a2 2 0 0 1-2-1.8z'/><path d='M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8'/></svg>You haven't added anything yet.<br><br><button class="btn btn-accent" onclick="go('snap')" data-tip="Opens the camera so you can snap an item right now." title="Opens the camera so you can snap an item right now.">Add your first item</button> <button class="btn btn-soft" onclick="openAdd()" data-tip="Adds an item to your closet by hand." title="Adds an item to your closet by hand.">Add manually</button></div>`;
+ startRolls(el);
+ countUp(el);
  return;
  }
  S.closetStatus = S.closetStatus || "";
  S.closetCat = S.closetCat || "";
  /* If the chosen type no longer exists (you deleted the last pair of shoes),
-    drop the filter so the closet can't silently show nothing. */
- if (S.closetCat && !closetCatList().some(c => c.k === S.closetCat)) S.closetCat = "";
- el.innerHTML = `
+    closetNavHtml() drops the filter so the closet can't silently show nothing. */
+   stopRolls();
+   el.innerHTML = sellerHero() + `
  <div class="closet-tools">
  <button type="button" class="btn btn-soft closet-select" id="closet-select" data-tip="Tick several items to copy, duplicate or delete together." onclick="closetSelMode()">Select</button>
  <input class="input" id="closet-search" placeholder="Search your clothes\u2026" oninput="closetRefresh()" style="margin:0">
@@ -2216,10 +2594,7 @@ async function renderCloset(el){
  <button type="button" class="chip${S.closetStatus==="active"?" on":""}" data-tip="Only the ones still waiting to sell." onclick="closetStatus('active',this)">For sale</button>
  <button type="button" class="chip${S.closetStatus==="sold"?" on":""}" data-tip="Only the ones you've already sold." onclick="closetStatus('sold',this)">Sold</button>
  </div>
-  <div class="chips" id="closet-cats" data-tip="Only show one kind of item. Only the types you actually own are listed here.">
-  <button type="button" class="chip${!S.closetCat?" on":""}" data-tip="Show every kind of item in your closet." onclick="closetCat('',this)">All types</button>
-  ${closetCatList().map(c=>`<button type="button" class="chip${S.closetCat===c.k?" on":""}" data-tip="Show only ${escapeAttr(c.label.toLowerCase())} items." onclick="closetCat('${escapeAttr(c.k)}',this)">${escapeHtml(c.label)}</button>`).join("")}
-  </div>
+  <div id="closet-nav">${closetNavHtml()}</div>
   <div class="card" id="quality-card" data-tip="Checks your photos, title, description and price before you post it.">
   <h3 style="margin-top:0">Is this listing ready?</h3>
   <p class="mut" style="margin-top:0">Checks your photos, title, description and price before you post it, and tells you what to fix.</p>
@@ -2229,7 +2604,17 @@ async function renderCloset(el){
   <div class="grid" id="closet-grid"></div>
  <div id="closet-bulk" class="hidden"></div>`;
  closetRefresh();
- } catch(e){ el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>${escapeHtml(e.message)}</div>`; }
+ startRolls(el);
+ countUp(el);
+ statsRefresh();
+ } catch(e){
+  if (e.message === "unauthorized") {
+    el.innerHTML = renderAuthPrompt("Session expired — please log in", "Your session has ended. Sign in to view and edit your closet.");
+    refreshTips();
+    return;
+  }
+  el.innerHTML = `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>${escapeHtml(e.message)}</div>`;
+ }
 }
 /* photo-less tiles fall back to the matching flat-lay artwork shipped in ./assets */
 const PH_ASSET = { Outerwear:"assets/listing-placeholder-jacket.svg", Dresses:"assets/listing-placeholder-dress.svg", Tops:"assets/listing-placeholder-shirt.svg" };
@@ -2352,24 +2737,63 @@ function qualityTip(l){
   if(!(l.size && l.condition)) tips.push("fill in size and condition (+7)");
   return tips.length ? tips.join(" · ") : "complete — no fixes needed";
 }
-/* Which item types does this seller actually own? Only those are offered as
-   chips — showing 8 categories when someone owns 3 kinds of item is noise.
-   Items saved before a category was picked are grouped under "Unfiled" so a
-   seller can find and fix them instead of losing them in the list. */
-function closetCatList(){
-  const seen = new Map();
-  for (const l of (S.listings||[])){
-    const k = canonCat(l.category) || "__none";
-    if (!seen.has(k)) seen.set(k, k === "__none" ? "Unfiled" : k);
+/* Same department -> subcategory browser for the seller's own closet, built
+   from what they actually own — departments with nothing in them are not
+   offered, so the list stays short. Items saved before a category was picked
+   are grouped under "Uncategorised" so they can be found and fixed instead of
+   sitting invisible in the list. */
+const CLOSET_NONE = "__none";
+function closetPaths(){ return (S.listings||[]).map(l => taxPath(l.category)); }
+function closetNavHtml(){
+  const owned = closetPaths().filter(Boolean);
+  const hasNone = (S.listings||[]).some(l => !taxPath(l.category));
+  if (S.closetCat === CLOSET_NONE && !hasNone) S.closetCat = "";
+  if (S.closetCat && S.closetCat !== CLOSET_NONE){
+    const d = taxDept(S.closetCat);
+    if (!d || owned.indexOf(S.closetCat) < 0 && !owned.some(p => p.indexOf(S.closetCat + "/") === 0 || p === S.closetCat)) S.closetCat = "";
   }
-  return [...seen.entries()].map(([k,label]) => ({k,label}))
-    .sort((a,b) => a.k === "__none" ? 1 : b.k === "__none" ? -1 : a.label.localeCompare(b.label));
+  const sel = S.closetCat;
+  const cDept = sel === CLOSET_NONE ? "" : taxDept(sel);
+  const cSub  = sel === CLOSET_NONE ? "" : taxSub(sel);
+  const n = p => owned.filter(x => p ? taxMatches(x, p) : true).length;
+  const chip = (label, path, on, tip) => `<button type="button" class="chip${on?" on":""}" aria-pressed="${on?"true":"false"}" onclick="closetPick(decodeURIComponent('${taxQ(path)}'))" data-tip="${escapeAttr(tip)}" title="${escapeAttr(tip)}">${escapeHtml(label)}<b class="cnt">${path ? n(path) : (S.listings||[]).length}</b></button>`;
+
+  let out = `<nav aria-label="Where you are in your closet" data-tip="Where you are in your own catalogue. Click a step to go back up." style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 8px;font-size:13px">`
+    + `<button type="button" class="chip${!sel?" on":""}" aria-pressed="${!sel}" style="font-size:12px" onclick="closetPick('')" data-tip="Show everything in your closet.">All types</button>`
+    + (cDept ? `<span style="opacity:.5">›</span><button type="button" class="chip${cDept&&!cSub?" on":""}" aria-pressed="${cDept&&!cSub}" style="font-size:12px" onclick="closetPick(decodeURIComponent('${taxQ(cDept)}'))" data-tip="Everything you have in ${escapeAttr(cDept)}.">${escapeHtml(cDept)}</button>` : "")
+    + (cSub ? `<span style="opacity:.5">›</span><button type="button" class="chip on" aria-pressed="true" style="font-size:12px;cursor:default" data-tip="Currently showing ${escapeAttr(cSub)} only.">${escapeHtml(cSub)}</button>` : "")
+    + (sel === CLOSET_NONE ? `<span style="opacity:.5">›</span><button type="button" class="chip on" aria-pressed="true" style="font-size:12px;cursor:default" data-tip="Items you saved without picking a category.">Uncategorised</button>` : "")
+    + `</nav>`;
+
+  const ownedDeptList = taxDepts().filter(d => owned.some(p => taxMatches(p, d)));
+  out += `<div class="cat-lead">Browse your closet by department <span style="text-transform:none;letter-spacing:0;font-weight:600;opacity:.72">— swipe sideways for more</span></div>`
+    + catRailHtml("closet", ownedDeptList, d => owned.filter(p => taxMatches(p, d)).length, cDept, "closet-rail");
+
+  if (cDept){
+    out += `<div class="cat-lead">Type of item in ${escapeHtml(cDept)}</div>`
+      + `<div class="chips" id="closet-subs" aria-label="Types of item" data-tip="Types of item inside this department.">`
+      + `<button type="button" class="chip${!cSub?" on":""}" aria-pressed="${!cSub}" onclick="closetPick(decodeURIComponent('${taxQ(cDept)}'))" data-tip="Everything in ${escapeAttr(cDept)}, whatever type it is.">All ${escapeHtml(cDept)}<b class="cnt">${n(cDept)}</b></button>`
+      + taxSubs(cDept).filter(s => n(cDept + "/" + s))
+          .map(s => chip(s, cDept + "/" + s, cSub === s, "Show only " + s.toLowerCase() + " items.")).join("")
+      + `</div>`;
+  }
+  if (hasNone){
+    out += `<div class="chips" id="closet-unfiled">`
+      + chip("Uncategorised", CLOSET_NONE, sel === CLOSET_NONE, "Items you saved without picking a category. Give them one so buyers can find them.")
+      + `</div>`;
+  }
+  return out;
 }
-function closetCat(c, btn){
-  S.closetCat = c || "";
-  const bar = document.getElementById("closet-cats");
-  if (bar) [...bar.querySelectorAll(".chip")].forEach(x => x.classList.toggle("on", x === btn));
+function closetPick(path){
+  const raw = taxUnq(path);
+  const p = raw === CLOSET_NONE ? CLOSET_NONE : taxPath(raw);
+  /* Same gesture as the shop: tap what you already have to climb one level. */
+  if (p && p === S.closetCat) S.closetCat = (p !== CLOSET_NONE && taxSub(p)) ? taxDept(p) : "";
+  else S.closetCat = p;
+  const nav = document.getElementById("closet-nav");
+  if (nav) nav.innerHTML = closetNavHtml();
   closetRefresh();
+  refreshTips();
 }
 function closetRefresh(){
  const grid = document.getElementById("closet-grid");
@@ -2379,12 +2803,12 @@ function closetRefresh(){
  let rows = (S.listings||[]).slice();
  if (q) rows = rows.filter(l=>((l.title||"")+" "+(l.description||"")+" "+(l.brand||"")+" "+(l.category||"")).toLowerCase().includes(q));
  if (S.closetStatus) rows = rows.filter(l=>(l.status||"active")===S.closetStatus);
- /* Category filter. CanonCat first so "tops" and "Tops" land in the same
-    bucket; uncategorised items only appear under the "Unfiled" chip. */
+ /* Category filter: a bare department matches everything under it, a full
+    path matches only that subcategory, "__none" catches the uncategorised. */
  if (S.closetCat){
-   rows = rows.filter(l => S.closetCat === "__none"
-     ? !canonCat(l.category)
-     : canonCat(l.category) === S.closetCat);
+   rows = S.closetCat === CLOSET_NONE
+     ? rows.filter(l => !taxPath(l.category))
+     : rows.filter(l => taxMatches(l.category, S.closetCat));
  }
  const n2 = v => Number(v)||0;
  rows.sort((a,b)=>{
@@ -2396,7 +2820,33 @@ function closetRefresh(){
  });
   grid.innerHTML = rows.length
     ? rows.map((l,i)=>`<div style="display:flex;flex-direction:column;gap:0;min-width:0">${liGrid(l,i)}<button type="button" class="btn ${onsaleState(l)?"btn-soft":"btn-accent"} btn-sm" style="margin:6px 0 10px;width:100%" onclick="toggleOnsale(${Number(l.id)},this)" data-tip="Show this item to buyers in Shop, or hide it again.">${onsaleState(l)?"Stop selling here":"Sell it here too"}</button></div>`).join("")
-    : `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='6.5'/><path d='m15.8 15.8 4.7 4.7'/></svg>No items match.</div>`;
+    : (() => {
+        const filtered = !!(S.closetCat || S.closetStatus || q);
+        const where = S.closetCat === CLOSET_NONE ? " in Uncategorised"
+          : S.closetCat ? " in " + taxDept(S.closetCat) + (taxSub(S.closetCat) ? " › " + taxSub(S.closetCat) : "") : "";
+        const bits = [];
+        if (q) bits.push('for "' + q + '"');
+        if (S.closetStatus) bits.push(S.closetStatus === "sold" ? "you've sold" : "still for sale");
+        const why = bits.length ? " " + bits.join(" and ") : "";
+        return `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='6.5'/><path d='m15.8 15.8 4.7 4.7'/></svg>`
+          + `<p>${filtered ? "Nothing in your closet matches" + why + where + "." : "You haven't added anything yet."}</p>`
+          + `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">`
+          + (filtered
+              ? `<button type="button" class="btn btn-soft" onclick="closetClearFilters()" data-tip="Show your whole closet again." title="Show your whole closet again.">Clear filters</button>`
+              : `<button type="button" class="btn btn-accent" onclick="go('snap')" data-tip="Opens the camera so you can snap an item right now." title="Opens the camera so you can snap an item right now.">Add your first item</button> <button type="button" class="btn btn-soft" onclick="openAdd()" data-tip="Adds an item to your closet by hand." title="Adds an item to your closet by hand.">Add manually</button>`)
+          + `</div></div>`;
+      })();
+  refreshTips();
+}
+/* One switch back to "everything", across search + status + category. */
+function closetClearFilters(){
+  S.closetCat = "";
+  S.closetStatus = "";
+  const s = document.getElementById("closet-search"); if (s) s.value = "";
+  const st = document.getElementById("closet-status");
+  if (st) [...st.querySelectorAll(".chip")].forEach(b => b.classList.toggle("on", (b.innerText||"").trim() === "All"));
+  const nav = document.getElementById("closet-nav"); if (nav) nav.innerHTML = closetNavHtml();
+  closetRefresh();
   refreshTips();
 }
 const catEmoji = (c)=>"<svg width='46' height='46' viewBox='0 0 64 64' fill='none' stroke='currentColor' stroke-width='4.4' stroke-linecap='round' stroke-linejoin='round'><path d='M32 28v-4.5a6 6 0 1 1 6-6'/><path d='M10 46 32 28l22 18z'/></svg>";
@@ -2537,18 +2987,40 @@ function toListingForm(){
 }
 
 /* ================= LISTING FORM (create/edit) ================= */
+function fSubInner(dept, sel){
+  if (!dept) return `<p class="mut" style="margin:6px 0 0">Choose a department above, then the type of item.</p>`;
+  return `<div class="chips" id="f-sub" data-tip="The type of item inside this department.">`
+    + taxSubs(dept).map(s => `<button type="button" class="chip ${s===sel?"on":""}" onclick="pickSub(this)" data-tip="Files this item under ${escapeAttr(s.toLowerCase())}." title="Files this item under ${escapeAttr(s.toLowerCase())}.">${escapeHtml(s)}</button>`).join("")
+    + `</div>`;
+}
+function pickSub(el){
+  /* Scope to the chips' own container rather than a fixed id, so the same
+     handler works on the main form and the "add by hand" sheet. */
+  const box = el && el.parentNode; if (!box) return;
+  [...box.querySelectorAll(".chip")].forEach(x => x.classList.toggle("on", x === el));
+}
+function fDeptChange(deptId, wrapId){
+  deptId = deptId || "f-dept"; wrapId = wrapId || "f-sub-wrap";
+  const box = document.getElementById(wrapId); if (!box) return;
+  box.innerHTML = fSubInner(((document.getElementById(deptId)||{}).value || ""), "");
+}
+/* Current picker state -> stored path, e.g. "Women's Clothing/Tops & Shirts". */
+function fReadCat(deptId, subWrapId){
+  const d = ((document.getElementById(deptId)||{}).value || "").trim();
+  if (!d) return "";
+  const subEl = document.querySelector("#" + subWrapId + " .chip.on");
+  const s = subEl ? (subEl.textContent || "").trim() : "";
+  return s ? d + "/" + s : d;
+}
 function renderListingForm(it){
  const edit = !!it.id;
  CURRENT.form = { ...it, _b64: it._b64||null };
- /* Always have ONE chip selected. `saveListing` reads the selected chip, and
-    a brand-new item (or one saved before these fields existed) has no value —
-    without a default there is no `.on` node, the read returns null, and saving
-    dies with "Cannot read properties of null (reading 'textContent')" so the
-    seller sees nothing happen. */
- const CAT_OPTS = ["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories","Athletic","Bags"];
+ /* Always resolve to a department + subcategory pair. An item saved before the
+    tree existed holds a flat word ("Tops"); taxPath() maps it onto the new
+    tree so the seller sees where it currently sits and can move it. */
  const COND_OPTS = ["Poor","Fair","Good","Excellent"];
- const wantCat = CAT_OPTS.includes(it.category) ? it.category
-   : (canonCat(it.category) && CAT_OPTS.includes(canonCat(it.category)) ? canonCat(it.category) : CAT_OPTS[0]);
+ const wantPath = taxPath(it.category);
+ const wantDept = taxDept(wantPath), wantSub = taxSub(wantPath);
  const wantCond = COND_OPTS.includes(it.condition) ? it.condition : COND_OPTS[2];
  $("#screen").innerHTML = `
  <div class="card">
@@ -2557,10 +3029,13 @@ function renderListingForm(it){
  <label>Title</label>
  <input class="input" id="f-title" value="${escapeAttr(it.title||"")}">
  <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px" onclick="optimizeTitle()" data-tip="Rewrites the title so it fits every shop length limit and still reads well." title="Rewrites the title so it fits every shop length limit and still reads well."><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M11 4.5 12.5 9l4.5 1.5L12.5 12 11 16.5 9.5 12 5 10.5 9.5 9z'/><path d='m18.5 15 .7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z'/></svg> Let AI improve this title</button>
+ <label>Department</label>
+ <select class="input" id="f-dept" onchange="fDeptChange()" data-tip="Pick which part of the shop this belongs in. Buyers browse departments first, then the type of item." title="Pick which part of the shop this belongs in.">
+ <option value="">Choose a department…</option>
+ ${taxDepts().map(d=>`<option value="${escapeAttr(d)}"${d===wantDept?" selected":""}>${escapeHtml(d)}</option>`).join("")}
+ </select>
  <label>Type of item</label>
- <div id="f-cat" data-tip="Pick what kind of item this is.">
- ${CAT_OPTS.map(c=>`<button class="chip ${c===wantCat?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}
- </div>
+ <div id="f-sub-wrap">${fSubInner(wantDept, wantSub)}</div>
  <div class="two">
  <div><label>Price ($)</label><input class="input" id="f-price" type="number" min="1" step="1" value="${it.priceMin||it.price||""}" placeholder="Sale price"></div>
  <div><label>Size</label><input class="input" id="f-size" value="${escapeAttr(it.sizeHint||it.size||"")}" placeholder="e.g. M / 10"></div>
@@ -2608,8 +3083,11 @@ function renderListingForm(it){
  ${edit?`<button class="btn btn-danger btn-sm" style="width:100%;margin-top:8px" onclick="delListing(${it.id})" data-tip="Removes it for good.">Delete listing</button>`:""}
  </div>`;
 }
-function pickCat(el, c){ document.querySelectorAll("#f-cat .chip").forEach(x=>x.classList.remove("on")); el.classList.add("on"); }
-function pickCond(el, c){ document.querySelectorAll("#f-cond .chip").forEach(x=>x.classList.remove("on")); el.classList.add("on"); }
+/* Scope to the clicked chip's OWN container. These used to hard-code "#f-cond .chip",
+   so chips in the pricing tool (#sp-cond) and the "add by hand" sheet (#m-cond)
+   never cleared each other: several stayed `.on`, the read returned the first
+   one, and both tools silently kept reporting the default value. */
+function pickCond(el, c){ const box = el && el.parentNode; if (box) [...box.querySelectorAll(".chip")].forEach(x => x.classList.toggle("on", x === el)); }
 function defaultDesc(it){ return `${it.brand&&it.brand!=="Unknown"?"Brand: "+it.brand+". ":""}${it.color?"Color: "+it.color+". ":""}${it.sizeHint?"Size: "+it.sizeHint+". ":""}${it.condition?"Condition: "+it.condition+". ":""}Ships fast, smoke-free home. Open to reasonable offers.`; }
 async function optimizeTitle(){
  const title = $("#f-title").value.trim();
@@ -2627,9 +3105,10 @@ async function saveListing(){
  const title = $("#f-title").value.trim();
  const price = parseFloat($("#f-price").value);
  if (!title || !price || isNaN(price)) return toast("Title and a valid price are required");
- /* Null-safe: if the chip group is somehow empty, fall back instead of
-    throwing away the whole save. */
- const category = ((($("#f-cat .on")||{}).textContent)||"Tops").trim();
+ /* Category is a department + type pair. Required, the way a real marketplace
+    requires it — an item with nowhere to live can never be browsed to. */
+ const category = fReadCat("f-dept", "f-sub-wrap");
+ if (!category) return toast("Pick a department so buyers can find this item");
  const condition = ((($("#f-cond .on")||{}).textContent)||"Good").trim();
  const size = $("#f-size").value.trim();
  const desc = $("#f-desc").value.trim();
@@ -2842,8 +3321,13 @@ async function renderSell(el){
  </div>
  <div class="card">
  <h3 style="margin-top:0"><svg class='i16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M9.5 17.5h5M10.5 21h3'/><path d='M12 3a6 6 0 0 0-3.6 10.8c.6.5.9 1.1.9 1.8v.4h5.4v-.4c0-.7.3-1.3.9-1.8A6 6 0 0 0 12 3z'/></svg> What should I charge?</h3>
+ <label>Department</label>
+ <select class="input" id="sp-dept" onchange="fDeptChange('sp-dept','sp-sub-wrap')" data-tip="Pick which part of the shop this item belongs in. Buyers browse departments first, then the type of item." title="Pick which part of the shop this belongs in.">
+ <option value="">Choose a department…</option>
+ ${taxDepts().map(d=>`<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join("")}
+ </select>
  <label>Type of item</label>
- <div id="sp-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Shoes"?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}</div>
+ <div id="sp-sub-wrap">${fSubInner("", "")}</div>
  <label>Brand (if you know it)</label>
  <input class="input" id="sp-brand" placeholder="e.g. Levi's">
  <label>Condition</label>
@@ -2905,7 +3389,11 @@ async function calcShipping(){
  } catch(e){ toast(e.message); }
 }
 async function suggestPrice(){
- const cat = document.querySelector("#sp-cat .on").textContent;
+ /* Department + type, flattened to a readable path ("Women's Clothing, Tops & Shirts")
+    so the pricing model gets both pieces of context instead of one ambiguous word. */
+ const path = fReadCat("sp-dept", "sp-sub-wrap");
+ if (!path) return toast("Pick a department so we know what to price");
+ const cat = path.split("/").join(", ");
  const cond = document.querySelector("#sp-cond .on").textContent;
  const brand = $("#sp-brand").value.trim();
  const btn = this; 
@@ -3351,8 +3839,13 @@ function openAdd(){
  <div><label>Price ($)</label><input class="input" id="m-price" type="number" min="1"></div>
  <div><label>Size</label><input class="input" id="m-size" placeholder="M"></div>
  </div>
+ <label>Department</label>
+ <select class="input" id="m-dept" onchange="fDeptChange('m-dept','m-sub-wrap')" data-tip="Pick which part of the shop this belongs in. Buyers browse departments first, then the type of item." title="Pick which part of the shop this belongs in.">
+ <option value="">Choose a department…</option>
+ ${taxDepts().map(d=>`<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join("")}
+ </select>
  <label>Type of item</label>
- <div id="m-cat">${["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"].map(c=>`<button class="chip ${c==="Tops"?"on":""}" onclick="pickCat(this,'${c}')" data-tip="Sets the category for this listing." title="Sets the category for this listing.">${c}</button>`).join("")}</div>
+ <div id="m-sub-wrap">${fSubInner("", "")}</div>
  <label>Condition</label>
  <div id="m-cond">${["Poor","Fair","Good","Excellent"].map(c=>`<button class="chip ${c==="Good"?"on":""}" onclick="pickCond(this,'${c}')" data-tip="Sets the condition for this listing." title="Sets the condition for this listing.">${c}</button>`).join("")}</div>
  <label>Description</label><textarea class="input" id="m-desc" rows="3"></textarea>
@@ -3361,8 +3854,12 @@ function openAdd(){
  `);
 }
 async function saveManual(){
- const body = { title: $("#m-title").value.trim(), price: parseFloat($("#m-price").value), size: $("#m-size").value.trim(), category: ((($("#m-cat .on")||{}).textContent)||"Tops").trim(), condition: ((($("#m-cond .on")||{}).textContent)||"Good").trim(), description: $("#m-desc").value.trim(), photo_url: $("#m-photo").value.trim()||null };
+ const body = { title: $("#m-title").value.trim(), price: parseFloat($("#m-price").value), size: $("#m-size").value.trim(), category: fReadCat("m-dept","m-sub-wrap"), condition: ((($("#m-cond .on")||{}).textContent)||"Good").trim(), description: $("#m-desc").value.trim(), photo_url: $("#m-photo").value.trim()||null };
  if (!body.title || !body.price) return toast("Title and price are required");
+ /* Same rule as the main form: every item gets a department, or it can never
+    be browsed to. The old code read a chip group that no longer exists and
+    silently fell back to a fixed category. */
+ if (!body.category) return toast("Pick a department so buyers can find this item");
  try { await api("/api/listings", { method:"POST", body: JSON.stringify(body) }); closeSheet(); toast("Added ✓"); go("closet"); } catch(e){ toast(e.message); }
 }
 
