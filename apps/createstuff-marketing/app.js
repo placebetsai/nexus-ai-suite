@@ -190,6 +190,17 @@ async function csStartBuild(promptText, projectId) {
       b.model = r && r.model;
       b.generated_code = csInline(files);
       const bytes = files.reduce((n, f) => n + String(f.content || '').length, 0);
+      // The classifier answered instead of building. That is an answer, not a
+      // failure — calling a correct refusal "Build failed" would teach the
+      // user that the agent saying no is an error.
+      if (r && r.ok === false && r.notes) {
+        b.status = 'answered';
+        b.error = null;
+        b.agent_log.push({ agent: 'Planner', message: r.notes });
+        b.done = true;
+        const a1 = csBuilds(); a1[id] = b; csSaveBuilds(a1);
+        return;
+      }
       if (b.generated_code) {
         b.agent_log.push({ agent: 'Planner', message: `${b.model || 'model'} returned ${files.length} file(s): ${files.map((f) => f.path).join(', ')}` });
         b.agent_log.push({ agent: 'Frontend', message: `${bytes} chars of real code, CSS and JS inlined into the preview` });
@@ -978,7 +989,7 @@ async function startBuild(prompt) {
 
   agentStatusBar.innerHTML = '<span class="status-dot active"></span>The team is working…';
   agentLogSeen = 0;
-  addAgentMsg('Planner', 'Reading what you asked for and writing a short plan...');
+  addAgentMsg('Planner', 'Reading what you asked for...');
 
   try {
     const projectResp = await api('/api/projects', {
@@ -1039,6 +1050,10 @@ async function startBuild(prompt) {
 
           addAgentMsg('Online', 'All done! Press Put online to get a web address people can visit.');
           showToast('Build complete!');
+        } else if (buildStatus.status === 'answered') {
+          clearInterval(pollInterval);
+          agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>No site was built - the answer is above.';
+          showToast('Answered above');
         } else if (buildStatus.status === 'failed') {
           clearInterval(pollInterval);
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>Build failed';
@@ -1046,19 +1061,22 @@ async function startBuild(prompt) {
           showToast('Build failed');
         }
 
-        const agentNames = ['Planner', 'Architect', 'Frontend', 'Backend', 'Style', 'Test', 'Deploy'];
-        const completedCount = buildStatus.agent_log?.length || 0;
-        agentNames.forEach((name, i) => {
+        // Chips must reflect which agent actually wrote a log entry. Numbering
+        // them off by index claimed "Architect: Done / Backend: Done" and
+        // "Frontend: Working" on runs where none of those were ever called —
+        // including a refusal, where only the Planner answered.
+        const ran = new Set((buildStatus.agent_log || []).map((l) => String((l && l.agent) || '').toLowerCase()));
+        ['Planner', 'Architect', 'Frontend', 'Backend', 'Style', 'Test', 'Deploy'].forEach((name) => {
           const chip = document.querySelector(`.agent-chip[data-agent="${name.toLowerCase()}"]`);
-          if (chip) {
-            if (i < completedCount) {
-              chip.classList.remove('working');
-              chip.classList.add('done');
-              chip.querySelector('.agent-status-text').textContent = 'Done';
-            } else if (i === completedCount) {
-              chip.classList.add('working');
-              chip.querySelector('.agent-status-text').textContent = 'Working...';
-            }
+          if (!chip) return;
+          const txt = chip.querySelector('.agent-status-text');
+          if (ran.has(name.toLowerCase())) {
+            chip.classList.remove('working');
+            chip.classList.add('done');
+            if (txt) txt.textContent = 'Done';
+          } else {
+            chip.classList.remove('working', 'done');
+            if (txt) txt.textContent = 'Idle';
           }
         });
 
