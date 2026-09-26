@@ -44,6 +44,33 @@ Every item names the agent that owns it. No item is DONE until a live HTTP/brows
 
 ---
 
+## E. PLACEBETS + MARKETPICKS — missions 1–3
+
+Status as of 2026-09-26 20:30 UTC. Detail + evidence lives in `Placebetsai-src/FIXES-2026-09-26.md`.
+
+| # | Task | Status | Proof so far |
+|---|------|--------|--------------|
+| P1 | **Mission 1 — placebets data freshness** (odds, edges, injuries, comparisons) | DONE (audited live) | `/api/odds` `updatedAt` = today, **233 events / 7 sports / 20 live / 11,810 odds values**; `/api/edges` + `/api/injuries` today; `/api/odds-comparison` 336 rows; **307/307** team-logo URLs HTTP 200 |
+| P2 | **News pipeline — empty feed root-caused and rebuilt** | DONE | cron **never wrote a row** (the doc's "just run it" advice could not have worked); rebuilt with **12 fallback-chain slots + Wikipedia + Grokipedia**; ingest `saved:54` → re-run **`saved:0`**; maintenance `clamped:9, relinked:20, deduped:18` → second run **all zeros**; `/api/news` **30 items / 15 sources / 0 future-dated / 0 bad links**; new **Top stories rail** browser-verified with screenshot; commits `4bd4f06` `4ec115a` `3fbea45` |
+| P3 | **Mission 2 — content current + accurate image/logo cards on marketpicks** | TODO | not started (placebets side done: logos 307/307, news real) |
+| P4 | **Mission 3 — audit both sites vs best-in-industry + money potential** | TODO | — |
+| P5 | Known-empty endpoints: `/api/trending` → `topics: []`, `/api/kalshi` → `source: "unavailable"` | TODO | observed live 2026-09-26 |
+| P6 | React error #418 (hydration text mismatch), placebets homepage only | TODO | **pre-existing, not from P2**: reproduced in a build where a bundle scan proved the rail absent from every shipped chunk; `/compare` shows no #418; needs a non-minified trace — see FIXES §5.5 |
+| P7 | Google News article links (JS-redirect URLs) not browser-verified here | TODO | proxy returned `ERR_TUNNEL_CONNECTION_FAILED` on several unrelated domains during the test; minority source (1 primary slot + 3 fallbacks) |
+| M1 | marketpicks defect fixes | TODO | no changes made yet |
+
+## F. Cross-cutting — still open from the original brief
+
+| # | Task | Status |
+|---|------|--------|
+| Q1 | Two-account buyer↔seller messaging walk on fashionistas | **untested** — must be run and recorded honestly |
+| Q2 | Does fashionistas need a shopping cart/checkout? (recommendation on record: no cart until checkout exists) | awaiting your answer |
+| Q3 | `tests/e2e/run.mjs` | **not written** (`tests/e2e/` is empty — not a working command) |
+| Q4 | Production `forge-api` / `api.createstuff.ai` undeployed (third Cloudflare account, no token) | BLOCKED |
+| Q5 | Camera path | BLOCKED — embedder auto-denies `getUserMedia`; stays labelled untested |
+
+---
+
 ## D. Shipped and browser-verified 2026-09-26 (this session)
 
 | What | Measured proof |
@@ -63,6 +90,7 @@ Every item names the agent that owns it. No item is DONE until a live HTTP/brows
 | **A build can no longer ship a page that opens broken** | Found by running it: project 159's writer returned `index.html` alone while it links `styles.css`/`script.js` → publish 200 but both assets **404**. Now `missingAssets()` → a second editor call for those files by name → honest failure if still missing → `POST /api/ai/publish` **409** on a stored broken set. Proof: harness **9/9**; project 160 generate **200, 3 files, 29,768 chars**; publish **200 in 551 ms**; assets **200/12,740 · 200/13,330 · 200/3,768 B**; project 159 publish **409** naming both files. *Second-chance recovery call: coded + checked, not yet observed firing live.* |
 | Refusals are answers, not failures | client showed `"Build failed: The model returned no usable files."` for a correct refusal. Now status `answered`, bar reads "No site was built - the answer is above.", no "Press Put online", agent chips driven by which agent actually logged (was lit by **index**, showing "Architect/Backend Done, Frontend Working" on a refusal). Measured 3502 ms GitHub / same for Stripe; real build → chips planner/frontend/git/fix Done, rest Idle |
 | **fashionistas category tree + visual layer** | Harness **67/67**. Live drill `72 → 58 → 25 → 72`, breadcrumb `All departments › Women's Clothing › Tops & Shirts`, 8 graphic department cards with per-department counts, seller stats `11 / 5 / $277` counting up from real analytics, all 3 brand assets **HTTP 200**, **390px no horizontal overflow (375 ≤ 390)**, **0 JS errors**. Deployed sha256-matched **`c417f408…` 343,171 B** |
+| **placebets news: real feed + real rail** | Ingest with fallback chains: `84` headlines, `17` sources incl. **Wikipedia + Grokipedia**, idempotent re-run `saved:0`, link maintenance `relinked:20/deduped:18` → `0/0`, `/api/news` `count:30` `generatedAt` fresh `future-dated:0` `&amp;=0` dup-links `0`, rail browser-verified: 8 unique cards / 4 hosts / Wikipedia+Grokipedia alternating / tips+rel ok / exact-text copy check / screenshot captured. Commits `4bd4f06` `4ec115a` `3fbea45` |
 
 Commits this session: `9422f12` `4f041a0` `5e22436` `03ac7a2` `f17a912` `92dbff4` `2a85395` `c23b01b` `0d94850` `0b186a6` `0584633` `cb5bd6f`.
 

@@ -244,6 +244,10 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 > real day-change math, congress tape labels, constant-speed tickers and a conversational
 > bot on marketpicks, plus /ev, /movers, /books-vs-kalshi, the track-record delete guard,
 > the laptop Kalshi timer (`placebets-kalshi.timer`) and the chatbot cap fix on placebets.
+> **News pipeline (later same day):** the ingest cron **never wrote a row** — the fixes doc's
+> "just run it" advice could not have worked. Rebuilt with fallback chains + Wikipedia +
+> Grokipedia and given the homepage a real rail. Full evidence in
+> `Placebetsai-src/FIXES-2026-09-26.md` §5 and HANDOFF §10.
 
 ### DONE and verified on the live sites — 2026-09-26
 
@@ -275,6 +279,15 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 | Landing page lied | Fake `aggregateRating 4.8/1263` removed; banned-word scan = 0; `data-tip` **0 → 43**. |
 | app-host served 13 asset types as `application/octet-stream` | `webp/mp4/woff2` etc. now correct types — with `nosniff` the old behaviour made browsers refuse them. Before/after harness pasted in the agent log. |
 | Landing copy honesty | Provider names, `Free forever`, `permanent`, `in 60s`, `high-converting` all removed or made measurable. |
+
+**placebets.ai** — deployed and re-measured in the browser (this session):
+
+| Fix | Proof |
+|---|---|
+| **News feed was empty everywhere** | Root cause was code, not ops: `app/api/cron/ingest-top-stories/route.js` fetched RSS and returned JSON **without a single INSERT**, so "run the cron" (the advice recorded in the fixes doc) could never have worked. Rebuilt: 12 fallback-chain slots (ESPN/Yahoo/BBC/Guardian/Sky/CNBC/Bloomberg/MarketWatch/NPR/Google News…), **Wikipedia** featured feed, **Grokipedia** via `/search` (it has no feed — every endpoint 404s, sitemap `lastmod` stops Jan 2026). Proof: ingest `84` headlines / `17` sources → re-run **`saved:0`** (idempotent); maintenance `clamped:9, relinked:20, deduped:18` → second run **all zeros**; `/api/news` **30 items, 15 sources, `generatedAt` fresh, 0 future-dated, 0 `&amp;` links, 0 duplicate links**. |
+| **Every ticker headline was a hardcoded fallback** | `/api/news` returned `link`/`published_at`; `NewsTicker` reads `item.url`/`item.publishedAt`. Now both are emitted (snake_case kept), plus `generatedAt` — which both health crons require and which never existed, so the news health check was permanently failing. Browser: 8 real headlines, each to its own distinct publisher URL, 0 hardcoded fallbacks. |
+| **Homepage news fetch was dead code** | `HomePageClient` fetched `/api/news` into state **nothing rendered** — and it is imported by no file in the tree. New `components/TopStories.js` (rendered by `SportsbookHomepage`, the component that actually ships) draws the rail: 8 unique cards from 4 hosts, `data-tip`+`title`+`rel=noopener` on every link, "Background reading" chips alternating **Wikipedia / Grokipedia**, exact-text copy verified, screenshot captured. |
+| **One source pinned to the top of the ticker** | ESPN stamps headlines up to ~36 min ahead of real time; the ticker sorts newest-first. Future `published_at` values are clamped (a story cannot publish in the future) — live: `clamped: 9`, then `future-dated: 0`. |
 
 **Infrastructure**
 - `external_directory` was `ask` → headless auto-reject killed agents. Fixed to `allow`; proven with a live `PERMISSION-OK` run.
