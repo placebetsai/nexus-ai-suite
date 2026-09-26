@@ -589,6 +589,30 @@ nav.tabbar a.on{color:var(--accent)}
 @keyframes focusPop{from{transform:scale(.97)}to{transform:none}}
 @keyframes navLine{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 
+/* ---- affiliate money panel ---- */
+.aff{margin:14px 0 4px;padding:16px 15px 15px;border-radius:20px;border:1.5px solid var(--line);
+  background:radial-gradient(340px 150px at 100% 0,rgba(46,204,113,.10),transparent 70%),var(--card);
+  box-shadow:var(--sh-1);animation:cardIn .55s cubic-bezier(.22,1,.36,1) both;animation-delay:.14s}
+.aff-head h3{font-size:17.5px;line-height:1.3;margin:9px 0 6px;text-wrap:balance}
+.aff-head p{font-size:13.4px;line-height:1.55;margin:0}
+.af-kick{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
+  color:#2ecc71;background:rgba(46,204,113,.14);padding:4px 10px;border-radius:999px}
+.af-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;
+  border:1.5px solid var(--line);border-radius:15px;padding:12px 13px;margin-top:10px;background:var(--bg-tint);
+  transition:transform .2s cubic-bezier(.22,1,.36,1),border-color .2s}
+@media (hover:hover){.af-row:hover{transform:translateY(-3px);border-color:rgba(46,204,113,.45)}}
+.af-b{min-width:0;display:flex;flex-direction:column;gap:3px}
+.af-b b{font-size:14.8px}
+.af-rate{font-size:13.2px;font-weight:700;color:var(--good)}
+.af-meta{font-size:12.2px;color:var(--mut);line-height:1.45}
+.af-note{font-size:12.6px;line-height:1.5;color:var(--mut)}
+.af-go{flex:none;white-space:nowrap}
+.af-rest{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:5px;
+  font-size:12.7px;line-height:1.55;color:var(--mut)}
+.af-rest b{color:var(--ink)}
+.af-date{font-size:11.6px;opacity:.85;font-style:italic}
+@media (max-width:520px){.af-row{flex-direction:column;gap:9px}.af-go{align-self:flex-start}}
+
 /* ---- map / pop-ups ---- */
 .map-tools{border:1.5px solid var(--line);border-radius:18px;padding:14px 15px;background:var(--card);
   margin-bottom:13px;box-shadow:var(--sh-1)}
@@ -1562,6 +1586,58 @@ function photoSearchCard(){
     <div id="ps-out" class="hidden"></div>
   </div>`;
 }
+/* Affiliate money — checked by hand, only programmes with a real public
+   sign-up page. Rates and windows come from each shop's own pages; the
+   "checked" date is shown so nobody thinks a stale figure is live. */
+function affCard(){
+  const progs = [
+    { n:"eBay Partner Network",
+      rate:"Category rates — eBay states up to 4% of the sale price",
+      window:"24 hours after the click",
+      pay:"Paid on the 10th, for the month before last · PayPal or bank",
+      url:"https://partnernetwork.ebay.com/",
+      tip:"Opens eBay's own partner sign-up page in a new tab.",
+      note:"Free, no traffic minimum. You sign in with your eBay account." },
+    { n:"Etsy",
+      rate:"About 4% standard · Creator Collective pays 10% on any Etsy shop",
+      window:"30 days after the click",
+      pay:"Validated 30 days after the sale to cover returns",
+      url:"https://etsy.com/affiliates",
+      tip:"Opens Etsy's affiliate page in a new tab.",
+      note:"Creator Collective asks for 500+ followers on one channel. Sellers can use Share & Save instead." },
+    { n:"Grailed",
+      rate:"4% on new customers · 2% on returning customers",
+      window:"15 days after the click",
+      pay:"Through Impact · about 72 hours to review an application",
+      url:"https://www.grailed.com/drycleanonly/grailed-affiliate-program",
+      tip:"Opens Grailed's own affiliate page in a new tab.",
+      note:"Sellers are allowed to join — even to promote your own wardrobe page." },
+  ];
+  const rows = progs.map(p => `
+    <div class="af-row">
+      <div class="af-b">
+        <b>${escapeHtml(p.n)}</b>
+        <span class="af-rate">${escapeHtml(p.rate)}</span>
+        <span class="af-meta">Lasts ${escapeHtml(p.window)} · ${escapeHtml(p.pay)}</span>
+        <span class="af-note">${escapeHtml(p.note)}</span>
+      </div>
+      <a class="btn btn-soft btn-sm af-go" href="${p.url}" target="_blank" rel="noopener noreferrer sponsored" data-tip="${escapeAttr(p.tip)}">Sign up ↗</a>
+    </div>`).join("");
+  return `
+  <div class="aff">
+    <div class="aff-head">
+      <span class="af-kick">Extra income</span>
+      <h3>Some of these shops pay you for sending them buyers.</h3>
+      <p class="mut">We checked every shop we write drafts for. These three have a real partner programme you can join yourself — free, and you keep the commission on anything sold through your link.</p>
+    </div>
+    ${rows}
+    <div class="af-rest">
+      <b>The rest, honestly:</b>
+      <span>Depop, Poshmark and Mercari don't run a public partner programme at the moment, so there's nothing to sign up for there. Vinted pays <b>vouchers, not cash</b> — up to $5 when a friend lists three items and $10 more when they sell, usable only against future orders.</span>
+      <span class="af-date">Checked 26 September 2026 · terms change, so confirm on each sign-up page.</span>
+    </div>
+  </div>`;
+}
 function photoClear(){ S.photo = null; S.photoResult = null; renderShop($("#screen")); }
 /* Open the existing camera modal, but with the shutter wired to the photo
    search instead of the Snap screen. */
@@ -1690,6 +1766,7 @@ async function renderShop(el){
   if (S.marketCat && !cats.includes(S.marketCat)) S.marketCat = "";
   el.innerHTML = roleSwitchHtml()
   + photoSearchCard()
+  + affCard()
   + `<div class="closet-tools">`
   + `<input class="input" id="market-search" placeholder="Search what is for sale…" value="${escapeAttr(S.marketQ||"")}" oninput="marketQ(this.value)" data-tip="Type words to find an item by name or description." style="margin:0">`
   + `<select class="input" id="market-sort" onchange="marketSort(this.value)" data-tip="Change the order of the items you see." style="margin:0">`
