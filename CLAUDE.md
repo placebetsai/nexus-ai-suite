@@ -231,7 +231,7 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 |---|---|
 | Production `forge-api` / `api.createstuff.ai` | undeployable — third account, no token |
 | `wrangler d1 execute --remote` → error `7403` | no D1 cleanup, **no ALTER TABLE**. Workaround: fresh project per test |
-| Camera capture | embedder auto-denies `getUserMedia` (`NotAllowedError`) — stays **untested** |
+| Camera capture | ~~stays untested~~ **VERIFIED LIVE 2026-09-27** — real Chrome 154 + the machine's real webcam: 1920×1080 frames → shutter → `/api/ai/analyze` 200 → result painted, 0 console errors. The old `NotAllowedError` was the test harness denying permission, not the product: grant `camera` for the origin and it streams |
 | Workers AI daily quota (10,000 neurons) | exhausted until ~20:00 UTC |
 | `quick-tunnel` hostname | random per restart → `HIVE_URL` must be re-set on both workers after any restart |
 | `fashionistas-api` redeploy | works with `CF_API_TOKEN` via `./deploy.sh worker` (verified 2026-09-26, version 5df1dd0b); only D1 SQL (`d1 execute`) is blocked |
@@ -312,7 +312,7 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 **fashionistas**
 1. ~~Shop renders~~ — done. ~~**buyer↔seller messaging end-to-end between two accounts**~~ — **WALKED & VERIFIED LIVE (2026-09-26)** via `tests/walk-messaging.mjs`: Demo seller (`id: 50`) and testbuyer2026 (`id: 66`), bidirectional send and real-time polling verified in live DOM.
 2. ~~**Logged-out `unauthorized` view.**~~ **Re-measured 2026-09-26 → fixed for `closet`.** Opening `My clothes` while signed out now renders `Log in to see your clothes / Sign in to search, sort and manage everything you are selling.` with **3 buttons** (`Log in`, `Create free account`, `Log in as demo seller`) — not the raw 12-char string. `unauthorized` is still *thrown* (line 1344) but every renderer now catches it: `renderAuthPrompt` at lines **1382 / 2348 / 2418 / 2456 / 2502 / 2560 / 2612**, `if (e.message === "unauthorized")` at **2417 / 2501 / 2611**. **`home` and `xl` were not re-measured signed-out this session** — re-measure before calling those done.
-3. Camera capture stays **untestable** here — the embedder auto-denies `getUserMedia` (`NotAllowedError`). Never claim it works.
+3. ~~Camera capture stays **untestable** here — never claim it works.~~ **PROVEN 2026-09-27** in real Chrome 154: `grantPermissions(['camera'], {origin:'https://fashionistas.ai'})` + the machine's real `Integrated_Webcam_FHD` → **1920×1080 live frames** (brightness 38/255, 32 colours — real video, not a black canvas) → shutter → **`POST /api/ai/analyze` 200** → result painted → **0 console errors**. The embedder denial was a harness limitation, never a product bug. Repro: `/tmp/cam-test.mjs`; identification quality with the app's sample: `denim jacket / 80% confident / $20–$40`.
 4. **Shopping cart: open decision.** Revenue is our affiliate links on other marketplaces, so a cart would collect money we never touch. Recommendation was **no cart until there is checkout**. Needs a yes/no.
 
 **createstuff**
