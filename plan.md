@@ -56,3 +56,47 @@
 - [ ] Add error handling
 - [ ] Add analytics
 - [ ] Create help documentation
+
+---
+
+## Competitive gap: what Replit and Base44 have that we do not (researched 27 Sep 2026)
+
+Sources: replit.com + docs.replit.com (Agent 4, Plan Mode, Parallel Agents, Agents & Automations,
+Scheduled Deployments, Integrations, pricing), base44.com/features. Prices: Replit free = 1 live
+published project, one background task at a time, built-in database, "Made with Replit" badge;
+Core $18–20/mo, Pro $90–100/mo. Base44 free = 25 credits, **preview only, no publish**; $16–20/mo.
+Our free tier publishes real apps to real addresses with no credits — that stays the wedge.
+
+### P0 — the ones that decide whether this is a product or a toy
+- [ ] **P1 A→Z Agent cockpit**: show the planner's plan as a card you can read and approve, run the
+      steps with free agents in parallel with live per-agent status + 30 s watchdogs, then a browser
+      self-test gate before Publish. (This is Replit's Plan Mode → Parallel Agents → browser
+      self-test flow, run on free agents instead of paid tokens.)
+- [ ] **Checkpoints / undo**: every build stores a version you can go back to (Replit rollback,
+      Pro-only at 28 days — ours free and unlimited).
+- [ ] **Whole repository both ways**: import every file of a repo (exists) and push every changed
+      file back in one press (today: one file at a time).
+- [ ] **Real backend for user apps**: a database table and a sign-in for the app the user just
+      described, by asking for it in chat (Base44's core infrastructure).
+- [ ] **Secrets / environment UI** for the generated app, not just ours.
+
+### P1 — the visible "they can do that" list
+- [ ] **Discussion mode**: talk to the Agent about an idea without spending a build
+      (Base44 has this explicitly; we currently spend a build on every message).
+- [ ] **Custom domain for a published app** (Replit sells them in-app; Base44 removes branding at
+      paid tiers — we should accept a domain the user already owns).
+- [ ] **Version history list in the builder** with a Restore button.
+- [ ] **Templates gallery**: start from a working app instead of a blank chat.
+- [ ] **Analytics for published apps**: views, referrers, countries (Base44 dashboard).
+- [ ] **SEO audit + one-click fixes** on the published address (Replit SEO Agent).
+- [ ] **Scheduled runs / automations** for user apps (Replit Scheduled Deployments, natural
+      language → cron, error alerts).
+- [ ] **Share a preview link** (password-optional) so someone can look before it goes live.
+
+### P2 — later, do not start these before P0
+- [ ] Mobile output beyond installable PWA; email sending from user apps; payments inside user
+      apps; invite collaborators and roles; monitoring/logs console for a published app;
+      connectors (Slack/GitHub/Notion/Calendly…) as MCP-style add-ons.
+
+**Order of work:** P0 cockpit → P0 checkpoints → P0 repo both ways → P0 backend → P1 discussion mode.
+Nothing in this list may be shown as working before it is proven live end to end.
