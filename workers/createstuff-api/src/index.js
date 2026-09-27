@@ -1285,6 +1285,13 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
     ? `\n\nBUILD SPEC FROM THE PLANNER (derived from the brief — satisfy it, and add nothing it does not call for):\n${manager.spec}`
     : "";
 
+  // The plan is the first thing the cockpit shows: the reader on the other
+  // end gets to see WHAT is about to be built before any code exists, and the
+  // card keeps a live stage line while the writer, tester and repair agents
+  // run. It is only ever additive — when the planner returns nothing, no Plan
+  // entry is written and the old path is untouched.
+  if (hasPlan) await push("Plan", String(manager.spec || "").trim());
+
   // ── STAGE 2/3 · EDITOR ──────────────────────────────────────────────────
   const g = await gen(env, CODE_SYS, `${brief}${specBlock}\n\nBRIEF FROM THE USER:\n${String(plan || "").slice(0, 6000)}`, 8000);
   let files = finalizeFiles(extractFiles(g));
@@ -1430,9 +1437,9 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
     elapsedMs: Date.now() - started,
   };
   if (!ok) {
-    return json({ ok: false, files: [], model: g.model, notes: note, agents, error: missingNote || "The model did not return a usable site. Try again." }, 422);
+    return json({ ok: false, files: [], model: g.model, notes: note, agents, plan: hasPlan ? String(manager.spec || "").trim() : null, error: missingNote || "The model did not return a usable site. Try again." }, 422);
   }
-  return json({ ok: true, files, model: g.model, notes: note, buildId: buildIdOut, checkpointId: `cp-${buildIdOut}`, agents });
+  return json({ ok: true, files, model: g.model, notes: note, buildId: buildIdOut, checkpointId: `cp-${buildIdOut}`, agents, plan: hasPlan ? String(manager.spec || "").trim() : null });
 }
 
 // ── PER-PROJECT APP BACKEND ──────────────────────────────────────────────
@@ -2135,6 +2142,17 @@ export default {
       }
 
       // AI generate / modify / publish
+      // The planner on its own. It reads the sentence and writes the spec —
+      // no code — so the cockpit can put the plan on screen seconds after
+      // send instead of holding it hostage until the whole build returns.
+      if (path === "/api/ai/plan" && method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        const plan = String(b.plan || b.prompt || "").trim();
+        if (!plan) return err("plan required");
+        const m = await planAgent(env, plan);
+        const spec = m && m.spec ? String(m.spec).trim() : null;
+        return json({ ok: !!spec, plan: spec, why: spec ? null : (m && m.why) || "no plan", model: (m && m.model) || null });
+      }
       if (path === "/api/ai/generate" && method === "POST") {
         const b = await request.json().catch(() => ({}));
         const projectId = parseInt(b.projectId, 10);

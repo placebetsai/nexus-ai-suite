@@ -459,3 +459,24 @@ h1,h2,h3{font-weight:700;line-height:1.2;font-family:var(--font-display);letter-
   .cs-tip{transition:none}
   .qa-primary:hover,.quick-action-btn:hover{transform:none}
 }
+
+/* ============ A→Z PLAN COCKPIT ============ */
+#cs-plan-card .msg-content{border:1px solid rgba(124,108,255,.35);border-radius:12px;padding:.75rem .9rem;background:rgba(124,108,255,.05);width:100%;box-sizing:border-box}
+.cs-plan-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.55rem}
+.cs-plan-head strong{font-size:.92rem}
+.cs-plan-badge{font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.14rem .48rem;border-radius:999px;background:rgba(124,108,255,.16);color:#8b7bff;border:1px solid rgba(124,108,255,.34)}
+.cs-plan-rows{list-style:none;margin:0 0 .6rem;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.cs-plan-row{display:grid;grid-template-columns:auto minmax(88px,auto) 1fr;gap:.55rem;align-items:baseline;font-size:.86rem;line-height:1.45}
+.cs-plan-tick{color:#2ecc71;font-weight:700;font-size:.8rem}
+.cs-plan-label{font-weight:700;color:var(--text2);text-transform:uppercase;font-size:.66rem;letter-spacing:.06em;white-space:nowrap}
+.cs-plan-value{color:var(--text);word-break:break-word}
+.cs-plan-stage{font-size:.78rem;color:var(--text2);border-top:1px dashed var(--border);padding-top:.55rem;display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.cs-stage.now{color:#8b7bff;font-weight:700}
+.cs-stage.done{color:#2ecc71;font-weight:600}
+.cs-stage.next{opacity:.5}
+.cs-stage-arrow{opacity:.35;font-size:.72rem}
+@media (max-width:520px){
+  .cs-plan-row{grid-template-columns:auto 1fr;row-gap:.1rem}
+  .cs-plan-label{grid-column:2}
+  .cs-plan-value{grid-column:2}
+}

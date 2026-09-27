@@ -577,6 +577,21 @@ async function csStartBuild(promptText, projectId) {
   };
   const all = csBuilds(); all[id] = build; csSaveBuilds(all);
 
+  // The planner first, on its own. It is a short call that only reads the
+  // sentence, so the plan card lands seconds after send — before the writer
+  // has produced a single line — which is the whole point of showing it.
+  const showPlan = (spec) => {
+    if (!spec) return;
+    const cur = csBuilds()[id];
+    if (!cur || cur.planShown) return;
+    cur.planShown = true;
+    cur.agent_log.push({ agent: 'Plan', message: String(spec) });
+    const pack = csBuilds(); pack[id] = cur; csSaveBuilds(pack);
+  };
+  api('/api/ai/plan', { method: 'POST', body: JSON.stringify({ plan: promptText }) })
+    .then((r) => showPlan(r && r.plan))
+    .catch(() => { /* the planner is additive — the build continues without it */ });
+
   // REAL generation on forge-api
   api('/api/ai/generate', { method: 'POST', body: JSON.stringify({ projectId, plan: promptText }) })
     .then((r) => {
@@ -599,6 +614,10 @@ async function csStartBuild(promptText, projectId) {
         return;
       }
       if (b.generated_code) {
+        // The plan comes back with the code. It is pushed ahead of everything
+        // else so the cockpit shows what is being built before it describes
+        // what was built.
+        if (r.plan) b.agent_log.push({ agent: 'Plan', message: String(r.plan) });
         b.agent_log.push({ agent: 'Planner', message: `${b.model || 'model'} returned ${files.length} file(s): ${files.map((f) => f.path).join(', ')}` });
         b.agent_log.push({ agent: 'Frontend', message: `${bytes} chars of real code, CSS and JS inlined into the preview` });
         b.status = 'completed';
@@ -1676,7 +1695,12 @@ async function startBuild(prompt) {
         if (buildStatus.agent_log && Array.isArray(buildStatus.agent_log)) {
           while (agentLogSeen < buildStatus.agent_log.length) {
             const log = buildStatus.agent_log[agentLogSeen++];
+            // The planner's spec is a card, not a chat line: it is the plan the
+            // rest of the run is measured against. Both the fast planner call
+            // and the build itself can report it, so only the first one paints.
+            if (String(log.agent) === 'Plan') { if (!document.getElementById('cs-plan-card')) csRenderPlanCard(log.message); continue; }
             addAgentMsg(log.agent, log.message, log.code);
+            csPlanStage(log.agent);
           }
         }
 
@@ -1702,6 +1726,7 @@ async function startBuild(prompt) {
             `;
           }
 
+          csPlanStage('Online');
           addAgentMsg('Online', 'All done! Press Put online to get a web address people can visit.');
           showToast('Build complete!');
         } else if (buildStatus.status === 'answered') {
@@ -1713,6 +1738,12 @@ async function startBuild(prompt) {
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>Build failed';
           addAgentMsg('System', 'Build failed: ' + (buildStatus.error || 'unknown error'));
           showToast('Build failed');
+        } else if (buildStatus.status === 'running') {
+          // The generator is one long call, so the only thing honestly known
+          // right now is how long it has been going. Claiming "Frontend agent
+          // working" at a guessed moment would be theatre — show the clock.
+          const secs = Math.max(1, Math.round((Date.now() - (buildStatus.started || Date.now())) / 1000));
+          agentStatusBar.innerHTML = `<span class="status-dot active"></span>Working… ${secs}s — reading the brief, then writing and testing the code in one pass.`;
         }
 
         // Chips must reflect which agent actually wrote a log entry. Numbering
@@ -1793,6 +1824,71 @@ function addAgentMsg(name, msg, code) {
   html += `</div></div>`;
   chat.innerHTML += html;
   chat.scrollTop = chat.scrollHeight;
+}
+
+// ============ A→Z PLAN COCKPIT ============
+// The planner writes its spec before a single line of code exists. Show it the
+// moment it arrives — what is being built, section by section — and keep a live
+// stage line underneath while the writer, tester and repair agents run, so the
+// person watching can see where the run actually is instead of a frozen
+// "Reading what you asked for…".
+const CS_PLAN_LABELS = {
+  WHAT: 'What you are getting',
+  SECTIONS: 'Sections, in order',
+  DOES: 'What you can do in it',
+  STORES: 'What it remembers after a refresh',
+  LOOK: 'Look and feel',
+  NEVER: 'Kept out on purpose',
+};
+const CS_PLAN_STAGES = ['Planner', 'Frontend', 'Test', 'Fix', 'Online'];
+const CS_PLAN_TIP = 'Written from your sentence by the planner before any code exists. This is what the finished build is measured against.';
+
+function csRenderPlanCard(spec) {
+  const chat = document.getElementById('chat-messages');
+  if (!chat) return;
+  const rows = [];
+  String(spec || '').split(/\n+/).forEach((line) => {
+    const m = /^\s*([A-Z][A-Z0-9 ]{2,12})\s*:\s*(.+)$/.exec(line);
+    if (!m) return;
+    const value = m[2].trim();
+    if (!value) return;
+    const key = m[1].trim();
+    rows.push({ key, value, label: CS_PLAN_LABELS[key] || key });
+  });
+  // Not the shape we know? Then it is still information — keep it as a normal
+  // line rather than dropping it, because a hidden plan is not a plan.
+  if (!rows.length) { addAgentMsg('Planner', spec); return; }
+
+  const AGENT_IC = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6z"/><path d="M12 8.4 16 10.6v4.2M12 8.4 8 10.6v4.2M12 8.4v4.2"/></svg>';
+  const li = rows.map((r) => `
+      <li class="cs-plan-row">
+        <span class="cs-plan-tick" aria-hidden="true">✓</span>
+        <span class="cs-plan-label">${escapeHtml(r.label)}</span>
+        <span class="cs-plan-value">${escapeHtml(r.value)}</span>
+      </li>`).join('');
+  chat.innerHTML += `
+    <div class="msg agent" id="cs-plan-card">
+      <div class="msg-avatar">${AGENT_IC}</div>
+      <div class="msg-content">
+        <div class="cs-plan-head" data-tip="${CS_PLAN_TIP}" title="${CS_PLAN_TIP}"><strong>Planner Agent</strong><span class="cs-plan-badge">the plan</span></div>
+        <ol class="cs-plan-rows">${li}</ol>
+        <div class="cs-plan-stage" id="cs-plan-stage" data-tip="Each step lights up as the agent doing it reports in." title="Each step lights up as the agent doing it reports in."></div>
+      </div>
+    </div>`;
+  chat.scrollTop = chat.scrollHeight;
+  csPlanStage('Planner');
+}
+
+function csPlanStage(agent) {
+  const el = document.getElementById('cs-plan-stage');
+  if (!el) return;
+  const idx = CS_PLAN_STAGES.indexOf(agent);
+  if (idx < 0) return;
+  el.innerHTML = CS_PLAN_STAGES.map((s, i) => {
+    const cls = i < idx ? 'done' : i === idx ? 'now' : 'next';
+    const mark = i < idx ? ' ✓' : i === idx ? '…' : '';
+    return `<span class="cs-stage ${cls}">${s}${mark}</span>`;
+  }).join('<span class="cs-stage-arrow">→</span>');
 }
 
 // ============ V2: FILES, ZIP, GITHUB PUSH ============
