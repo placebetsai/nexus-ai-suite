@@ -825,6 +825,27 @@ async function dispatch(request, env) {
       }
 
       // ── AUTH REQUIRED ───────────────────────────────────────
+      // ── MAINTENANCE: clearing test rows out of the market ────────────────────
+      // The D1 CLI is not authorized on this account (Cloudflare answers 7403),
+      // so this worker is the only door to the table. It is guarded by its own
+      // secret — never by a user login, so no shopper or seller can reach it —
+      // and it insists on a dry run first: every purge is reviewed as a list of
+      // real rows before a single one goes.
+      if (path === "/api/mod/listings" && method === "POST") {
+        const tok = request.headers.get("X-Mod-Token") || "";
+        if (!env.MOD_TOKEN || !tok || tok.length !== env.MOD_TOKEN.length || tok !== env.MOD_TOKEN) return err("Not found", 404);
+        const b = await readJson(request);
+        const ids = Array.isArray(b.ids) ? [...new Set(b.ids.map((x) => parseInt(x, 10)).filter((x) => Number.isInteger(x) && x > 0))] : [];
+        if (!ids.length) return err("ids must be a non-empty array of listing ids");
+        if (ids.length > 500) return err("ids is too large — max 500 per call");
+        const marks = ids.map(() => "?").join(",");
+        const rows = await env.DB.prepare(`SELECT id, title, price, status, user_id FROM listings WHERE id IN (${marks})`).bind(...ids).all();
+        const found = rows.results || [];
+        if (b.dryRun === true) return json({ dryRun: true, matched: found.length, missing: ids.filter((i) => !found.some((f) => f.id === i)), rows: found });
+        const r = await env.DB.prepare(`DELETE FROM listings WHERE id IN (${marks})`).bind(...ids).run();
+        return json({ deleted: (r.meta && r.meta.changes) || 0, matched: found.length, missing: ids.filter((i) => !found.some((f) => f.id === i)), rows: found });
+      }
+
       // ── PUBLIC MARKET (the buyer side) ─────────────────────────────────
       // A shopper is not the seller, so these two reads run before the auth
       // gate. They return active listings and the seller's public name only —
