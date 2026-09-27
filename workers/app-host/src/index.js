@@ -187,7 +187,23 @@ async function projectExists(env, projectId) {
   return row ? positiveInteger(row.id) : null;
 }
 
+// hostname -> project id (or null), per isolate. Every request on the fronted
+// zones reaches this Worker, and the fallback below scans the projects table:
+// 18,214 scans on 2026-09-27 read 2.5M rows and helped push the account over
+// D1's free daily read limit, which took the databases offline for every site.
+const HOST_CACHE = new Map();
+const HOST_TTL_MS = 5 * 60 * 1000;
+
 async function resolveHostProject(env, hostname) {
+  const hit = HOST_CACHE.get(hostname);
+  if (hit && Date.now() - hit.at < HOST_TTL_MS) return hit.id;
+  const id = await resolveHostProjectUncached(env, hostname);
+  if (HOST_CACHE.size > 5000) HOST_CACHE.clear();
+  HOST_CACHE.set(hostname, { id, at: Date.now() });
+  return id;
+}
+
+async function resolveHostProjectUncached(env, hostname) {
   await ensureSchema(env);
   const mapped = await env.DB.prepare("SELECT project_id FROM app_hosts WHERE hostname=? LIMIT 1").bind(hostname).first();
   if (mapped && mapped.project_id !== null && mapped.project_id !== undefined) {
@@ -608,6 +624,15 @@ async function dispatch(request, env) {
     if (!target || target.invalid) return err("No project matched hostname", 404);
     const response = await serveProjectFile(env, request, target.projectId, target.filePath, false);
     return response || err("File not found", 404);
+  }
+
+  // www.<zone> is never a project: redirect before touching the database.
+  const wwwApex = canonicalApex(hostname);
+  if (wwwApex) {
+    return new Response(null, {
+      status: 308,
+      headers: { ...CORS, Location: `https://${wwwApex}${url.pathname}${url.search}`, "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" },
+    });
   }
 
   const projectId = await resolveHostProject(env, hostname);
