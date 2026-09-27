@@ -4422,8 +4422,10 @@ function xlSheet(l, picks, copied, kits, allKit){
      : ""
  ) : "";
 
+ CURRENT.xlFill = { l, picks };
  openSheet(`
  <h3 style="margin:0 0 4px">Ready to post \u2014 ${picks.length} shop${picks.length===1?"":"s"}</h3>
+ ${xlFillCardHtml(picks)}
  <p class="mut" style="margin-top:0">${copied?"Kits on the clipboard. ":""}Each marketplace has the same CTAs: Copy kit, Open listing page, Connect / Guide.</p>
  <div class="xl-note"><b>Coach:</b> Paste kits on every marketplace. You post yourself. Optional API create exists for eBay when Connected — never required. We never invent accounts.</div>
  ${ebayNote}
@@ -4432,6 +4434,47 @@ function xlSheet(l, picks, copied, kits, allKit){
  <div class="mut" style="font-size:12px">All kits combined</div>
  <button class="btn btn-soft btn-sm" onclick="xlCopy(this)" data-kit="${escapeHtml(allKit||"").replace(/"/g,"&quot;")}" data-tip="Copies every shop kit at once.">Copy all</button></div>
  <button class="btn btn-primary" style="width:100%" onclick="closeSheet()" data-tip="Closes this panel." title="Closes this panel.">Done</button>`);
+}
+/* ---- Crosslister extension: fills each shop's sell form for the seller ---- */
+const XL_FILL_SHOPS = ["depop","ebay","poshmark","mercari","vinted","grailed"];
+const XL_EXT_ZIP = "fashionistas-crosslister.zip";
+function xlExtInstalled(){ return !!(document.documentElement && document.documentElement.dataset.fashCrosslister); }
+function xlFillCardHtml(picks){
+  const ok = picks.filter(p => XL_FILL_SHOPS.includes(p));
+  if (!ok.length) return "";
+  const names = ok.map(platformName).join(", ");
+  if (xlExtInstalled()) {
+    return `<div class="xl-note" style="border-color:var(--accent)"><b>Fill it for me.</b> Opens ${escapeHtml(names)} with your photo, title, description and price already filled in. You check each one and press Post.
+    <button type="button" class="btn btn-accent" style="width:100%;margin-top:9px" onclick="xlAutofill()" data-tip="Opens each shop's sell page with this listing filled in. You still press Post yourself." title="Opens each shop's sell page with this listing filled in. You still press Post yourself.">Fill it for me on ${ok.length} shop${ok.length===1?"":"s"}</button>
+    <div id="xl-fill-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div></div>`;
+  }
+  return `<div class="xl-note"><b>Skip the copy and paste.</b> Add the free Fashionistas Crosslister to Chrome and we fill ${escapeHtml(names)} in for you. You still press Post yourself.
+  <ol style="margin:8px 0 8px 18px;padding:0;font-size:12.5px;line-height:1.55">
+   <li><a href="${XL_EXT_ZIP}" download data-tip="Downloads the extension as a zip file." title="Downloads the extension as a zip file.">Download the Crosslister</a> and unzip it.</li>
+   <li>Open <b>chrome://extensions</b> in Chrome, Edge or Brave on a computer.</li>
+   <li>Switch on <b>Developer mode</b> (top right), press <b>Load unpacked</b> and pick the unzipped folder.</li>
+   <li>Reload this page. This box turns into a <b>Fill it for me</b> button.</li>
+  </ol><span class="mut" style="font-size:12px">Computer only — phone browsers don't run extensions. Not in the Chrome Web Store yet.</span></div>`;
+}
+function xlAutofill(){
+  const st = CURRENT.xlFill; if (!st) return;
+  const l = st.l || {};
+  const shops = st.picks.filter(p => XL_FILL_SHOPS.includes(p)).map(pid => {
+    const rules = xlKitRules(pid);
+    return { id: pid, title: xlKitTitle(rules, l), description: xlKitDescription(rules, l),
+      price: l.price, brand: (l.brand && !/^unknown$/i.test(l.brand)) ? l.brand : "", size: l.size || l.sizeHint || "",
+      color: l.color || "", condition: l.condition || "" };
+  });
+  const photos = [l.photo_url].concat(Array.isArray(l.photos) ? l.photos : []).filter(u => typeof u === "string" && /^https:\/\//.test(u));
+  const msg = document.getElementById("xl-fill-msg");
+  if (msg) msg.textContent = "Opening " + shops.length + " shop" + (shops.length===1?"":"s") + "…";
+  const onAck = (e) => {
+    if (e.source !== window || !e.data || e.data.source !== "fashionistas-crosslister" || e.data.type !== "FASH_CROSSLIST_ACK") return;
+    window.removeEventListener("message", onAck);
+    if (msg) msg.textContent = e.data.ok ? "Opened in new tabs. Check each one and press Post there." : ("The Crosslister couldn't start: " + (e.data.error || "unknown error"));
+  };
+  window.addEventListener("message", onAck);
+  window.postMessage({ source: "fashionistas", type: "FASH_CROSSLIST", job: { listingId: l.id || null, shops, photos } }, location.origin);
 }
 function xlCopy(btn){ const t=btn&&btn.getAttribute("data-kit")||""; navigator.clipboard&&navigator.clipboard.writeText(t).then(()=>toast("Kit copied")).catch(()=>toast("Copy blocked by browser")); }
 
