@@ -1137,6 +1137,7 @@ textarea.input{font-family:inherit}
    <a href="#land-how" onclick="landNavClose()" data-tip="The three steps: photo, AI drafts, you paste to 6 shops yourself.">How it works</a>
    <a href="#land-ai" onclick="landNavClose()" data-tip="What the AI does for you at every step, A to Z.">The AI</a>
    <a href="#land-shops" onclick="landNavClose()" data-tip="The shops we prepare words for.">Shops</a>
+   <a href="/how-to-crosspost/" onclick="landNavClose()" data-tip="Step-by-step: one photo to six shops.">How to cross-post</a>
    <a href="/fees/" onclick="landNavClose()" data-tip="Compare marketplace fee take-home before you list.">Fees</a>
    <a href="/contact/" onclick="landNavClose()" data-tip="Contact fashionistas.ai support.">Contact</a>
    <a href="/about/" onclick="landNavClose()" data-tip="About the product.">About</a>
@@ -1285,7 +1286,7 @@ textarea.input{font-family:inherit}
  <p class="mut" style="margin:0 0 6px">Try it now with the demo account</p>
  <button class="btn btn-soft btn-sm" onclick="demoLogin()" data-tip="Signs you in with the shared demo account so you can look around first." title="Signs you in with the shared demo account so you can look around first.">Log in as demo seller</button>
  </div>
- <p class="legal-line">No credit card · No subscription · Your data stays yours<br><a href="/contact/" style="color:inherit">Contact</a> · <a href="/privacy/" style="color:inherit">Privacy</a> · <a href="/about/" style="color:inherit">About</a> · <a href="/fees/" style="color:inherit">Fees</a></p>
+ <p class="legal-line">No credit card · No subscription · Your data stays yours<br><a href="/contact/" style="color:inherit">Contact</a> · <a href="/privacy/" style="color:inherit">Privacy</a> · <a href="/about/" style="color:inherit">About</a> · <a href="/fees/" style="color:inherit">Fees</a> · <a href="/how-to-crosspost/" style="color:inherit">How to cross-post</a></p>
  </div>
  </div>
  </section>
@@ -4454,7 +4455,8 @@ function xlFillCardHtml(picks){
      <li>Open the shop's sell page, then click the <b>Fashionistas Fill</b> bookmark.</li>
     </ol>
     <button type="button" class="btn btn-soft" style="width:100%" onclick="xlCopyForBookmark(this)" data-tip="Copies this listing, photo included, for the Fashionistas Fill bookmark." title="Copies this listing, photo included, for the Fashionistas Fill bookmark.">Copy for Fashionistas Fill</button>
-    <div id="xl-bm-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div></div>`;
+    <div id="xl-bm-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div>
+    <a href="/how-to-crosspost/" target="_blank" rel="noopener" style="font-size:12px" data-tip="The full step-by-step guide." title="The full step-by-step guide.">Full guide: how to cross-post</a></div>`;
   if (xlExtInstalled()) {
     return `<div class="xl-note" style="border-color:var(--accent)"><b>Fill it for me.</b> Opens ${escapeHtml(names)} with your photo, title, description and price already filled in. You check each one and press Post.
     <button type="button" class="btn btn-accent" style="width:100%;margin-top:9px" onclick="xlAutofill()" data-tip="Opens each shop's sell page with this listing filled in. You still press Post yourself." title="Opens each shop's sell page with this listing filled in. You still press Post yourself.">Fill it for me on ${ok.length} shop${ok.length===1?"":"s"}</button>
@@ -5099,7 +5101,7 @@ async function renderMore(el){
  </div>
  <p class="mut" style="margin:8px 0 0">Both are plain files that open in Excel or Google Sheets.</p>
  </div>
- <footer>fashionistas.ai · everything saved to your account<br><a href="/contact/" style="color:inherit">Contact</a> · <a href="/privacy/" style="color:inherit">Privacy</a> · <a href="/about/" style="color:inherit">About</a> · <a href="/fees/" style="color:inherit">Fees</a><br>Powering the independent resale economy.</footer>`;
+ <footer>fashionistas.ai · everything saved to your account<br><a href="/contact/" style="color:inherit">Contact</a> · <a href="/privacy/" style="color:inherit">Privacy</a> · <a href="/about/" style="color:inherit">About</a> · <a href="/fees/" style="color:inherit">Fees</a> · <a href="/how-to-crosspost/" style="color:inherit">How to cross-post</a><br>Powering the independent resale economy.</footer>`;
 }
 async function exportSafe(e, p){
  try { const r = await fetch(API+"/api/"+p, { headers:{ Authorization:"Bearer "+TOKEN } }); const t = await r.text(); const b = new Blob([t],{type:"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=p.replace("/","_"); a.click(); } catch(err){ toast("Download failed"); }
