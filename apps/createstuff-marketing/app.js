@@ -192,6 +192,99 @@ async function csGhConnectSubmit(raw) {
   return { ok: true, login: check.login };
 }
 
+// ---- pair with the local GitHub CLI: nothing is typed, nothing is pasted ----
+// Chrome, Edge and Brave forbid a public https page from *reading*
+// http://127.0.0.1 with fetch — Private Network Access kills the request
+// before it leaves the browser. A normal page navigation to 127.0.0.1 is still
+// allowed in every browser, and a URL fragment is never transmitted to any
+// server, so the hand-off is:
+//   page  ->  navigate to the helper on this machine  ->  helper answers  ->
+//   bounce back to createstuff.ai/#gh-pair-result/<token|login>  ->  page takes it.
+// The token travels your keyring -> this machine -> your browser. It never
+// appears on screen, and our servers never see it. The page scrubs it out of
+// the address bar and history the moment it lands.
+const GH_PAIR_PORT = 53123;
+const GH_PAIR_HOST = 'http://127.0.0.1';
+
+// Sends the browser to the helper running on this machine. The helper replies
+// by redirecting back to #gh-pair-result/..., which csGhPairFromHash catches.
+function csGhPairGo(raw, port) {
+  const code = String(raw || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{4}-?[A-Z0-9]{4}$/.test(code)) return false;
+  const p = parseInt(port, 10) || GH_PAIR_PORT;
+  location.assign(`${GH_PAIR_HOST}:${p}/?code=${encodeURIComponent(code)}`);
+  return true;
+}
+
+// The helper bounced back with token|login|code in the fragment.
+// Scrub it from the address bar and history first, then validate before
+// anything is stored. Nothing is trusted until GitHub confirms it.
+function csGhPairResultFromHash() {
+  const m = /^#gh-pair-result\/(.+)$/.exec(location.hash || '');
+  if (!m) return false;
+  const raw = decodeURIComponent(m[1]);
+  try { history.replaceState(null, '', location.pathname + location.search + '#projects'); } catch { location.hash = 'projects'; }
+  csGhPairFinish(raw);
+  return true;
+}
+
+async function csGhPairFinish(raw) {
+  const token = String(raw || '').split('|')[0].trim();
+  if (!token || !/^gh[pousr]_/.test(token)) {
+    showToast('That pair code was not accepted by the terminal. Run the command again.');
+    return;
+  }
+  showToast('Checking with GitHub…');
+  const check = await csGhCheck(token);
+  if (!check.ok) { showToast(check.error || 'GitHub did not accept that login. Try again.'); return; }
+  localStorage.setItem(GH_PAT_KEY, token);
+  csGhSeen = true;
+  if (!isLoggedIn()) {
+    sessionStorage.setItem('cs_gh_pending_pat', token);
+    showToast('GitHub is ready — sign in to finish connecting.');
+    return;
+  }
+  csGhPairDone(check.login);
+}
+
+function csGhPairDone(login) {
+  showToast('GitHub connected as ' + (login || 'your account'));
+  try { loadProjects(); } catch { /* no projects card on screen */ }
+  // Land on the GitHub page with the repositories already filling in, so the
+  // result is visible proof rather than a toast that disappears.
+  try {
+    if (typeof renderPage === 'function') renderPage('github');
+    if (typeof connectGitHubFlow === 'function') connectGitHubFlow();
+  } catch { /* builder not available in this view */ }
+}
+
+// A login grabbed before sign-in waits in this tab until there is a session.
+function csGhPendingPair() {
+  const t = sessionStorage.getItem('cs_gh_pending_pat');
+  if (!t) return;
+  sessionStorage.removeItem('cs_gh_pending_pat');
+  (async () => {
+    const check = await csGhCheck(t);
+    if (!check.ok) { showToast(check.error || 'The saved GitHub login is no longer valid.'); return; }
+    localStorage.setItem(GH_PAT_KEY, t);
+    csGhSeen = true;
+    csGhPairDone(check.login);
+  })();
+}
+
+// The CLI opens createstuff.ai/#gh-pair/<CODE>/<PORT>. Runs before the router
+// can mistake it for a page name. The result hop is scrubbed back to #projects
+// inside csGhPairResultFromHash, so we return false there and let the router
+// carry on rendering the real page.
+function csGhPairFromHash() {
+  if (csGhPairResultFromHash()) return false;
+  const m = /^#gh-pair\/([^/]+)(?:\/(\d+))?$/.exec(location.hash || '');
+  if (!m) return false;
+  showToast('Handshake with your terminal…');
+  csGhPairGo(m[1], m[2]);
+  return true;
+}
+
 const GH_TIP = {
   close: 'Closes this box. Nothing is saved and nothing is sent.',
   token: 'Type or paste the whole GitHub token here. It stays hidden while you type so nobody looking over your shoulder can read it.',
@@ -202,6 +295,10 @@ const GH_TIP = {
   cont: 'Carries on with what you were doing, using the GitHub token already saved in this browser.',
   disconnect: 'Deletes the saved GitHub token from this browser. You can connect again whenever you like.',
   formWhere: 'Connecting GitHub lets this app save your work into a project of yours on GitHub.',
+  code: 'The eight characters your terminal printed after "Pair code". It is good for two minutes, works once, and only unlocks the login your own computer already holds.',
+  codeLabel: 'Type the pair code shown in the terminal window.',
+  pair: 'Asks the terminal on this computer for its GitHub login, checks it with GitHub, then keeps it in this browser. Nothing is typed and nothing is pasted.',
+  manual: 'Opens the older way, for computers that do not have the GitHub CLI: make a token on github.com and paste it here.',
 };
 
 function csGhShell() {
@@ -223,12 +320,23 @@ function csGhShell() {
 #cs-gh-actions button{flex:1 1 130px;min-height:42px}
 #cs-gh-note{font-size:.76rem;line-height:1.55;color:var(--text3);margin-top:.85rem}
 #cs-gh-mask{font-family:var(--font-mono);font-weight:700;color:var(--text)}
+.cs-gh-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.55rem}
+.cs-gh-actions button{flex:1 1 130px;min-height:42px}
+.cs-gh-cmd{display:flex;gap:.4rem;align-items:stretch;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.45rem .5rem;margin:.4rem 0 .3rem}
+.cs-gh-cmd code{flex:1;font-family:var(--font-mono);font-size:.74rem;line-height:1.55;word-break:break-all;color:var(--text);align-self:center}
+.cs-gh-cmd button{flex:0 0 auto;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:0 .65rem;font-size:.78rem;cursor:pointer}
+.cs-gh-cmd button:hover{border-color:var(--violet,#7c6cff)}
+.cs-gh-sep{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+.cs-gh-sec>b{display:block;margin-bottom:.15rem}
+#cs-gh-manual summary{cursor:pointer;font-size:.86rem;font-weight:600;color:var(--text2);padding:.2rem 0}
+#cs-gh-manual summary:hover{color:var(--text)}
+#cs-gh-code{text-transform:uppercase;letter-spacing:.08em;font-size:1.02rem}
 @media (max-width:420px){
   #cs-gh-dialog{padding:.6rem;align-items:stretch}
   #cs-gh-card{padding:.9rem;max-width:none}
   #cs-gh-card ol{padding-left:1.05rem}
-  #cs-gh-actions{flex-direction:column}
-  #cs-gh-actions button{flex:1 1 auto;width:100%}
+  #cs-gh-actions,.cs-gh-actions{flex-direction:column}
+  #cs-gh-actions button,.cs-gh-actions button{flex:1 1 auto;width:100%}
 }
 </style>
 <div id="cs-gh-dialog" role="dialog" aria-modal="true" aria-labelledby="cs-gh-title">
@@ -244,23 +352,41 @@ function csGhShell() {
 
 function csGhFormHtml() {
   return `
-  <p data-tip="${GH_TIP.formWhere}" title="${GH_TIP.formWhere}">Connecting GitHub lets this app save your work into a project of yours on GitHub: it can start a new repository, or update the files in one you already have. GitHub asks for a <b>personal access token</b> — a long, one-off password you make yourself — so it can tell the request comes from you and not from a stranger.</p>
-  <ol>
-    <li>Open <a href="https://${GH_TOKEN_PAGE}" target="_blank" rel="noopener" data-tip="${GH_TIP.open}" title="${GH_TIP.open}">${GH_TOKEN_PAGE}</a> in a new tab, and sign in if it asks.</li>
-    <li>Press <b>Generate new token</b>, then <b>Generate new token (classic)</b>.</li>
-    <li>Write a short note so you recognise it later, and choose how long it should last.</li>
-    <li>Tick the scope named <b>repo</b>. That is the only one this app needs: it allows making repositories and saving files into them.</li>
-    <li>Press <b>Generate token</b> at the bottom of that page. GitHub shows one long line starting with <b>ghp_</b>.</li>
-    <li>Copy that whole line, paste it below, then press <b>Connect</b>.</li>
-  </ol>
-  <label id="cs-gh-label" for="cs-gh-token" data-tip="${GH_TIP.label}" title="${GH_TIP.label}">Paste your GitHub token</label>
-  <input id="cs-gh-token" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_..." data-tip="${GH_TIP.token}" title="${GH_TIP.token}">
-  <div id="cs-gh-error" role="alert"></div>
-  <div id="cs-gh-actions">
-    <button type="button" id="cs-gh-connect" class="btn-primary" data-tip="${GH_TIP.connect}" title="${GH_TIP.connect}">Connect</button>
-    <button type="button" id="cs-gh-cancel" class="btn-secondary" data-tip="${GH_TIP.cancel}" title="${GH_TIP.cancel}">Cancel</button>
+  <p data-tip="${GH_TIP.formWhere}" title="${GH_TIP.formWhere}">Connecting GitHub lets this app save your work into a project of yours on GitHub: it can start a new repository, or update the files in one you already have.</p>
+
+  <div class="cs-gh-sec">
+    <b style="font-size:.9rem">Connect with the GitHub CLI — no token to make, no token to paste</b>
+    <p>Run this once in a terminal on this computer. It picks up the GitHub account this machine is already signed in with, then opens this page and connects it for you.</p>
+    <div class="cs-gh-cmd"><code id="cs-gh-cmd">curl -sSL https://createstuff.ai/gh-pair.js | node - login</code><button type="button" id="cs-gh-copy">Copy</button></div>
+    <p>If this page did not open by itself, type the pair code the terminal is showing:</p>
+    <label id="cs-gh-label" for="cs-gh-code" data-tip="${GH_TIP.codeLabel}" title="${GH_TIP.codeLabel}">Pair code from your terminal</label>
+    <input id="cs-gh-code" type="text" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX" maxlength="9" data-tip="${GH_TIP.code}" title="${GH_TIP.code}">
+    <div class="cs-gh-actions">
+      <button type="button" id="cs-gh-pair" class="btn-primary" data-tip="${GH_TIP.pair}" title="${GH_TIP.pair}">Pair</button>
+    </div>
   </div>
-  <p id="cs-gh-note">Your token is kept in this browser only. It is sent to GitHub and to nowhere else, and you can delete it at any time with Disconnect.</p>`;
+
+  <hr class="cs-gh-sep">
+
+  <details id="cs-gh-manual">
+    <summary data-tip="${GH_TIP.manual}" title="${GH_TIP.manual}">Or make a token by hand</summary>
+    <ol>
+      <li>Open <a href="https://${GH_TOKEN_PAGE}" target="_blank" rel="noopener" data-tip="${GH_TIP.open}" title="${GH_TIP.open}">${GH_TOKEN_PAGE}</a> in a new tab, and sign in if it asks.</li>
+      <li>Press <b>Generate new token</b>, then <b>Generate new token (classic)</b>.</li>
+      <li>Write a short note so you recognise it later, and choose how long it should last.</li>
+      <li>Tick the scope named <b>repo</b>. That is the only one this app needs: it allows making repositories and saving files into them.</li>
+      <li>Press <b>Generate token</b> at the bottom of that page. GitHub shows one long line starting with <b>ghp_</b>.</li>
+      <li>Copy that whole line, paste it below, then press <b>Connect</b>.</li>
+    </ol>
+    <label for="cs-gh-token" data-tip="${GH_TIP.label}" title="${GH_TIP.label}">Paste your GitHub token</label>
+    <input id="cs-gh-token" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_..." data-tip="${GH_TIP.token}" title="${GH_TIP.token}">
+    <div class="cs-gh-actions">
+      <button type="button" id="cs-gh-connect" class="btn-secondary" data-tip="${GH_TIP.connect}" title="${GH_TIP.connect}">Connect with that token</button>
+    </div>
+  </details>
+
+  <div id="cs-gh-error" role="alert"></div>
+  <p id="cs-gh-note">The pair route keeps your token in this browser only — it travels from your keyring to your browser over localhost and touches none of our servers. You can delete it at any time with Disconnect.</p>`;
 }
 
 function csGhConnectedHtml() {
@@ -316,6 +442,36 @@ function csGhDialog() {
       const input = document.getElementById('cs-gh-token');
       const connect = document.getElementById('cs-gh-connect');
       const cancel = document.getElementById('cs-gh-cancel');
+      const codeInput = document.getElementById('cs-gh-code');
+      const pairBtn = document.getElementById('cs-gh-pair');
+      const copyBtn = document.getElementById('cs-gh-copy');
+      if (copyBtn) {
+        copyBtn.onclick = async () => {
+          const cmd = (document.getElementById('cs-gh-cmd') || {}).textContent || '';
+          try { await navigator.clipboard.writeText(cmd); } catch { /* clipboard blocked — the command is visible to select */ }
+          const was = copyBtn.textContent;
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => { if (copyBtn.isConnected) copyBtn.textContent = was; }, 1600);
+        };
+      }
+      const doPair = () => {
+        if (!pairBtn || pairBtn.disabled) return;
+        showError('');
+        if (!csGhPairGo(codeInput ? codeInput.value : '', GH_PAIR_PORT)) {
+          showError('Type the pair code your terminal is showing — eight letters and numbers, like 6XKF-CZJY.');
+          if (codeInput) codeInput.focus();
+          return;
+        }
+        // We are navigating away; the helper bounces back with the result.
+        pairBtn.disabled = true;
+        if (cancel) cancel.disabled = true;
+        pairBtn.textContent = 'Waiting for your terminal…';
+      };
+      if (pairBtn) pairBtn.onclick = doPair;
+      if (codeInput) {
+        codeInput.onkeydown = (e) => { if (e.key === 'Enter') doPair(); };
+        codeInput.focus();
+      }
       const submit = async () => {
         if (!connect || connect.disabled) return;
         showError('');
@@ -341,7 +497,6 @@ function csGhDialog() {
       if (cancel) cancel.onclick = () => finish(null);
       if (input) {
         input.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
-        input.focus();
       }
     }
 
@@ -597,24 +752,35 @@ async function csDownloadZip(projectId) {
     if (!r.ok) throw new Error(`API error: ${r.status}`);
     return r.json();
   };
-  // publish first so every file exists in R2
-  try {
-    await fetch(`${API_BASE}/api/ai/publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ projectId }),
-    });
-  } catch { /* continue: files may already be published */ }
-  const listing = await j(`/api/projects/${projectId}/files`);
-  const paths = ((listing && listing.files) || []).map((f) => f.path);
-  if (!paths.length) throw new Error('API error: 404 empty project');
-  const files = [];
-  for (const p of paths) {
-    const r = await fetch(`${API_BASE}/published/${projectId}/${p}`, { headers: { 'Authorization': `Bearer ${token}` } });
-    if (r.ok) files.push({ path: p, content: await r.text() });
+  // Pull what is already in storage FIRST. Publishing on every download sent a
+  // POST the server often answered 409 ("nothing to publish yet" / missing
+  // assets) — a red error in the console for a button that worked perfectly —
+  // and it fired even when every single file was already there.
+  const pull = async () => {
+    const listing = await j(`/api/projects/${projectId}/files`);
+    const paths = ((listing && listing.files) || []).map((f) => f.path);
+    const files = [];
+    for (const p of paths) {
+      const r = await fetch(`${API_BASE}/published/${projectId}/${p}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (r.ok) files.push({ path: p, content: await r.text() });
+    }
+    return { paths, files };
+  };
+  let out = await pull();
+  if (!out.paths.length) throw new Error('API error: 404 empty project');
+  // Publish only when a file really is missing from storage, then pull again.
+  if (out.files.length < out.paths.length) {
+    try {
+      await fetch(`${API_BASE}/api/ai/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ projectId }),
+      });
+    } catch { /* network only — keep whatever we already hold */ }
+    out = await pull();
   }
-  if (!files.length) throw new Error('API error: 404 no content');
-  return { blob: csBuildZip(files), filename: `project-${projectId}.zip` };
+  if (!out.files.length) throw new Error('API error: 404 no content');
+  return { blob: csBuildZip(out.files), filename: `project-${projectId}.zip` };
 }
 
 async function api(path, options = {}) {
@@ -821,10 +987,13 @@ function showApp() {
     const displayName = user.display_name || user.name || user.username || 'there';
     if (welcome) welcome.textContent = `Welcome back, ${displayName}`;
   }
+  // A pair code that arrived before sign-in is spent the moment there is a session.
+  csGhPendingPair();
 }
 
 function setupRouter() {
-  window.onhashchange = function() { renderPage(location.hash.slice(1) || 'dashboard') };
+  window.onhashchange = function() { if (csGhPairFromHash()) return; renderPage(location.hash.slice(1) || 'dashboard') };
+  if (csGhPairFromHash()) return;
   renderPage(location.hash.slice(1) || 'dashboard');
 }
 
@@ -865,6 +1034,10 @@ function setupLogout() { document.getElementById('logout-btn').onclick = logout 
 
 // ============ DASHBOARD ============
 async function loadDashboard() {
+  // renderPage() runs before init() has decided which screen to show, so a
+  // signed-out first visit called /api/projects with no token — a 401 for a
+  // page the visitor cannot even see. Nothing to count until there is a session.
+  if (!isLoggedIn() || !getToken()) return;
   try {
     projects = csProjectList(await api('/api/projects'));
     // Real numbers only: projects come from the API, the rest are counted from
@@ -938,6 +1111,9 @@ function renderHiveStatus() {
 
 // ============ PROJECTS ============
 async function loadProjects() {
+  // Signed-out first visit: there is no session yet, so do not fire a request
+  // that can only come back 401 and put a red error in the console.
+  if (!isLoggedIn() || !getToken()) { projects = []; renderProjects(); return; }
   try {
     projects = csProjectList(await api('/api/projects'));
     renderProjects();
@@ -1316,35 +1492,34 @@ async function loadDeployPage() {
 
 window.deployLatestBuild = async function(projectId) {
   try {
-    showToast('Finding your latest app...');
-    // Find builds by creating a lightweight lookup: we track builds via project status
-    // For simplicity, use project's last known build via builds API - need build id.
-    // We'll store last build id on project creation path; fallback: scan via builds not listed.
-    // Instead: call a deploy endpoint that finds most recent completed build for project.
-    const buildId = await findLatestBuildId(projectId);
-    if (!buildId) { showToast('Nothing finished yet — build this app first'); return; }
-    const result = await api(`/api/builds/${buildId}/deploy`, { method: 'POST', body: JSON.stringify({}) });
-    showToast('It is online! Opening your web address...');
-    window.open(result.url, '_blank');
+    showToast('Putting it online…');
+    // Which build is "the latest one" is the SERVER's answer, not this
+    // browser's. The old code asked only `currentBuild` / sessionStorage, so a
+    // returning user in a fresh tab was told "Nothing finished yet — build this
+    // app first" about an app that was already built and sitting in their
+    // account — a dead end on the one page whose job is putting things online.
+    // It also fired a popup and never opened the "Your app is live" panel.
+    const r = await api('/api/ai/publish', { method: 'POST', body: JSON.stringify({ projectId }) });
+    const url = (r && r.publishUrl) || '';
+    // Read the address back before claiming anything: a publish nobody can open
+    // is not a publish. (`api()` JSON-parses, so this is a raw fetch.)
+    let live = false;
+    if (url) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        const txt = await res.text();
+        live = res.ok && txt.length > 60;
+      } catch { live = false; }
+    }
+    showToast(live ? 'It is online' : 'Published — the address is not answering yet');
     loadDeployPage();
+    showLivePanel(url, { projectId, live, reason: 'publish' }).catch(() => {});
   } catch (err) {
-    showToast('Putting it online failed — try again');
+    // The API's own reason ("Nothing to publish yet — build the site first.",
+    // "…is missing styles.css, so the page would open broken") beats guessing.
+    showToast(err && err.message ? err.message : 'Putting it online failed — try again');
   }
 };
-
-async function findLatestBuildId(projectId) {
-  // Builds aren't listable; track currentBuild if same project
-  if (currentBuild && currentBuild.project_id === projectId && currentBuild.status === 'completed') {
-    return currentBuild.id;
-  }
-  // Fallback: try to get from projects grid build_count - we need an endpoint.
-  // Use stored mapping from this session:
-  try {
-    const stored = JSON.parse(sessionStorage.getItem('cs_build_map') || '{}');
-    if (stored[projectId]) return stored[projectId];
-  } catch {}
-  return null;
-}
 
 function loadSettings() {
   const user = getUser();
@@ -1787,28 +1962,55 @@ window.pushToGitHub = async function() {
 // locally. A green step means the browser just received a 2xx from a server,
 // and the numbers printed under it were read out of that same response.
 const LZ_HOST = 'https://app-host.fashionistas1979.workers.dev';
+// C3: these descriptions used to run to ~580 characters in one long vertical
+// column (plus a 397-character colour legend at the bottom) — a wall nobody
+// reads. Same seven steps, plain words, about 60% less of them, and each step
+// now collapses so only the step you are actually on is spelled out.
 const LZ_STEPS = [
   { key: 'account',  letter: 'A', title: 'Your account',
-    desc: 'Sign in, so everything you make belongs to you and stays with you.' },
-  { key: 'brief',    letter: 'B', title: 'One sentence about your app',
-    desc: 'One plain sentence describing what you want. These exact words are what the AI is told to build.' },
-  { key: 'project',  letter: 'C', title: 'A home for your app',
-    desc: 'This creates a place to keep your files and picks it. Your web address points at it later.' },
-  { key: 'generate', letter: 'G', title: 'Build it',
-    desc: 'The AI writes the HTML, CSS and JavaScript and saves the files for you.' },
+    desc: 'Signed in and owned by you.' },
+  { key: 'brief',    letter: 'B', title: 'App idea',
+    desc: 'One sentence about what to build.' },
+  { key: 'project',  letter: 'C', title: 'App workspace',
+    desc: 'Where your files live.' },
+  { key: 'generate', letter: 'G', title: 'Code engine',
+    desc: 'The Agent writes your code.' },
   { key: 'publish',  letter: 'P', title: 'Put it online',
-    desc: 'The files are copied so anyone with the link can open them.' },
-  { key: 'domain',   letter: 'D', title: 'Your web address',
-    desc: 'Attach a name such as my-app.example.com. We set up the pointing for you instead of leaving it as homework.' },
+    desc: 'Your files go live on the web.' },
+  { key: 'domain',   letter: 'D', title: 'Web address',
+    desc: 'Attached to a name you choose.' },
   { key: 'live',     letter: 'Z', title: 'Check it is live',
-    desc: 'Open the real address and print exactly what came back.' },
+    desc: 'We open it and report what came back.' },
 ];
 
-const lz = { brief: '', projectId: null, hostname: '', liveUrl: '', states: {}, projects: [], busy: false, defer: 0 };
+const lz = { brief: '', projectId: null, hostname: '', liveUrl: '', states: {}, projects: [], busy: false, defer: 0, open: {} };
 
 function lzState(key) {
   if (!lz.states[key]) lz.states[key] = { status: 'idle', badge: 'Not started', detail: '' };
   return lz.states[key];
+}
+
+// Which steps are expanded. The user's own click always wins; until they
+// click, only the step that needs attention is open — the first one that is
+// not finished, plus anything running or asking for help. That is what keeps
+// the seven-step list from being a wall of text on arrival.
+function lzOpenFor(key) {
+  if (lz.open[key] != null) return lz.open[key];
+  const st = lzState(key);
+  if (st.status === 'working' || st.status === 'blocked') return true;
+  // The brief is the only step with anything to fill in, so it stays open
+  // until the user closes it themselves. Leaving it to the "first unfinished
+  // step" rule below meant a background check finishing (or failing) moved the
+  // single open slot to another step — closing the box in the middle of a
+  // sentence and swallowing every keystroke after it.
+  if (key === 'brief') return true;
+  const next = LZ_STEPS.find(s => s.key !== 'brief' && lzState(s.key).status !== 'done');
+  return !!next && next.key === key;
+}
+
+function lzToggle(key) {
+  lz.open[key] = !lzOpenFor(key);
+  lzRender();
 }
 function lzSet(key, patch, defer) {
   Object.assign(lzState(key), patch);
@@ -1853,7 +2055,7 @@ function lzProjectControls() {
     : 'We create a new app for you and pick it straight away. You do not have to choose anything.';
   return `<select id="lz-project" class="lz-sel" data-tip="${selTip}" title="${selTip}"${lz.busy ? ' disabled' : ''}>${opts}</select>
 <button class="btn-primary" data-lz-act="project" data-tip="${escapeHtml(projTip)}" title="${escapeHtml(projTip)}"${lz.busy ? ' disabled' : ''}>${lz.projects.length ? 'Use this one' : 'Make a new app'}</button>
-<p class="lz-hint">${lz.projects.length ? 'Pick one you already made, or make a new one.' : 'We make one for you and pick it.'}</p>`;
+<p class="lz-hint">${lz.projects.length ? 'Pick one you have, or make a new one.' : 'We make one for you and pick it.'}</p>`;
 }
 
 function lzControls(key) {
@@ -1878,7 +2080,7 @@ function lzControls(key) {
 <textarea id="lz-brief" class="lz-input lz-input-lg" rows="4"${hold ? ' disabled' : ''} data-tip="${TIP}" title="${TIP}" placeholder="A gym workout tracker with sets, reps and a 1RM calculator">${escapeHtml(lz.brief)}</textarea>
 <div class="lz-examples">${examples.map(e => `<button type="button" class="lz-ex" data-lz-ex="${escapeHtml(e)}" data-tip="Puts this example into the box above so you can edit it. Nothing is sent until you press the button." title="Puts this example into the box above so you can edit it. Nothing is sent until you press the button.">${escapeHtml(e)}</button>`).join('')}</div>
 <button class="btn-primary lz-submit" data-lz-act="brief"${hold ? ' disabled' : ''} data-tip="Saves your sentence, makes a place to keep the files, then starts the build. You do not have to do anything else." title="Saves your sentence, makes a place to keep the files, then starts the build. You do not have to do anything else.">Save my sentence and build it</button>
-<p class="lz-hint">One sentence is enough. Write it the way you would say it out loud.</p>`;
+<p class="lz-hint">One sentence is enough — say it the way you would out loud.</p>`;
     }
     case 'project':  return lzProjectControls();
     case 'generate': return btn('generate', st.status === 'working' ? 'Building…' : (st.status === 'done' ? 'Build it again' : 'Build it'), undefined, 'Hands your sentence to the AI and waits while it writes the HTML, CSS and JavaScript. Usually 1-3 minutes. Leave this tab open.');
@@ -1890,13 +2092,63 @@ function lzControls(key) {
   return '';
 }
 
+// ---- never repaint in the middle of a key press or a mouse press ------------
+// Rebuilding the <ol> while a key is down (or between mousedown/mouseup) puts a
+// fresh node under the user's finger: the click or Enter they already started
+// lands on an element that no longer exists and silently does nothing. The
+// paint waits for the press to end, then runs one tick later so the click that
+// finished the press reaches its own button first. A 400ms backstop means a
+// paint is never lost if an keyup/mouseup never arrives (window blur, etc).
+let lzInteracting = false;
+let lzPaintPending = false;
+let lzPaintTimer = null;
+let lzWiredInput = false;
+function lzPaintWhenIdle() {
+  lzPaintPending = false;
+  if (lzPaintTimer != null) { clearTimeout(lzPaintTimer); lzPaintTimer = null; }
+  setTimeout(() => lzRender(), 0);
+}
+function lzWireInputGuards() {
+  if (lzWiredInput) return;
+  lzWiredInput = true;
+  const down = () => { lzInteracting = true; };
+  const up = () => {
+    if (!lzInteracting) return;
+    lzInteracting = false;
+    if (lzPaintPending) lzPaintWhenIdle();
+  };
+  window.addEventListener('keydown', down, true);
+  window.addEventListener('mousedown', down, true);
+  window.addEventListener('keyup', up, true);
+  window.addEventListener('mouseup', up, true);
+  window.addEventListener('pointercancel', up, true);
+  window.addEventListener('blur', up, true);
+}
+
 function lzRender() {
   const ol = document.getElementById('lz-steps');
   if (!ol) return;
+  lzWireInputGuards();
+  if (lzInteracting) {
+    lzPaintPending = true;
+    if (lzPaintTimer == null) {
+      lzPaintTimer = setTimeout(() => {
+        lzPaintTimer = null;
+        lzInteracting = false;
+        if (lzPaintPending) lzPaintWhenIdle();
+      }, 400);
+    }
+    return;
+  }
   // keep the caret where the user left it: a background step completing must
   // never yank focus out of the brief they are typing.
   const ae = document.activeElement;
   const focusId = ae && ae.id ? ae.id : null;
+  // The step titles are <button>s with no id, so the id-based restore below
+  // could not see them: focus fell back to <body> and the next key press (the
+  // Enter that opens a step) went nowhere.
+  const focusHead = (ae && ae.classList && ae.classList.contains('lz-head') && ae.closest('.lz-step'))
+    ? ae.closest('.lz-step').dataset.step : null;
   const selStart = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
 
   ol.innerHTML = LZ_STEPS.map((s) => {
@@ -1916,27 +2168,66 @@ function lzRender() {
       ? 'Something needs your attention. The reason is printed below the title.'
       : 'Nothing has been checked for this step yet.';
     const evTip = 'The raw answer the site gave — status code, how long it took, how many bytes. Nothing here is written by hand.';
-    return `<li class="lz-step ${cls}" data-step="${s.key}">
-      <div class="lz-letter" data-tip="${escapeHtml(stepTip)}" title="${escapeHtml(stepTip)}">${s.letter}</div>
+    const open = lzOpenFor(s.key);
+    const headTip = `${stepTip} Click to open or close this step.`;
+    const hideTip = `${open ? 'Close' : 'Open'} step ${s.letter}: ${s.title}.`;
+    const tog = (cls, id, label, tip, inner) =>
+      `<button type="button" class="${cls}" id="lz-${id}-${s.key}" data-lz-toggle="${s.key}"`
+      + ` aria-expanded="${open}" aria-controls="lz-panel-${s.key}"${label ? ` aria-label="${escapeHtml(label)}"` : ''}`
+      + ` data-tip="${escapeHtml(tip)}" title="${escapeHtml(tip)}">${inner}</button>`;
+    return `<li class="lz-step ${cls} ${open ? 'is-open' : 'is-closed'}" data-step="${s.key}">
+      ${tog('lz-letter', 'letter', hideTip, headTip, s.letter)}
       <div class="lz-body">
-        <h3 class="lz-title" data-tip="${escapeHtml(stepTip)}" title="${escapeHtml(stepTip)}">${escapeHtml(s.title)}<span class="lz-badge ${badgeCls}" data-tip="${escapeHtml(badgeTip)}" title="${escapeHtml(badgeTip)}">${escapeHtml(st.badge)}</span></h3>
+        <h3 class="lz-title">
+          ${tog('lz-head', 'head', hideTip, headTip, escapeHtml(s.title))}
+          <span class="lz-badge ${badgeCls}" data-tip="${escapeHtml(badgeTip)}" title="${escapeHtml(badgeTip)}">${escapeHtml(st.badge)}</span>
+          ${tog('lz-caret', 'caret', hideTip, hideTip, `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`)}
+        </h3>
+        <div class="lz-panel" id="lz-panel-${s.key}">
         <p class="lz-desc" data-tip="${escapeHtml(s.desc)}" title="${escapeHtml(s.desc)}">${escapeHtml(s.desc)}</p>
-        <pre class="lz-evidence" id="lz-ev-${s.key}" data-tip="${evTip}" title="${evTip}">${escapeHtml(st.detail)}</pre>
+        ${st.detail ? `
+        <details class="lz-details"${st.status === 'blocked' || st.status === 'working' ? ' open' : ''}>
+          <summary class="lz-summary" data-tip="Click to view full server evidence and logs" title="Click to view full server evidence and logs">Server evidence (${st.badge})</summary>
+          <pre class="lz-evidence" id="lz-ev-${s.key}" data-tip="${evTip}" title="${evTip}">${escapeHtml(st.detail)}</pre>
+        </details>` : `<pre class="lz-evidence" id="lz-ev-${s.key}" style="display:none"></pre>`}
+        </div>
       </div>
       <div class="lz-actions">${lzControls(s.key)}</div>
     </li>`;
   }).join('');
 
+  // Accordion: opening or closing a step re-renders so that its controls
+  // (which live inside the collapsed panel) get their handlers re-bound.
+  ol.querySelectorAll('[data-lz-toggle]').forEach((b) => {
+    b.onclick = function () { lzToggle(this.dataset.lzToggle); };
+  });
+
   lzPaintCount();
 
   const brief = document.getElementById('lz-brief');
   if (brief) {
+    // Type into the box WITHOUT rebuilding it. The old version called lzSet →
+    // lzRender, which replaced the whole <ol> (and this textarea) on every
+    // keystroke: the node under the caret was destroyed mid-sentence, focus was
+    // re-pointed at a fresh node, and anything typed during that gap went to a
+    // detached element — real people lost words. The badge and the counter are
+    // patched in place instead; a full re-render still happens whenever a step
+    // actually completes.
     brief.oninput = function () {
       lz.brief = this.value;
       const ok = lz.brief.trim().length >= 12;
-      lzSet('brief', ok
-        ? { status: 'ready', badge: 'Ready', detail: `Brief held for the model (${lz.brief.trim().length} chars).\n"${lz.brief.trim().slice(0, 160)}${lz.brief.trim().length > 160 ? '…' : ''}"` }
-        : { status: 'idle', badge: 'Not started', detail: '' }, true);
+      const st = lzState('brief');
+      st.status = ok ? 'ready' : 'idle';
+      st.badge = ok ? 'Ready' : 'Not started';
+      st.detail = ok
+        ? `Brief held for the model (${lz.brief.trim().length} chars).\n"${lz.brief.trim().slice(0, 160)}${lz.brief.trim().length > 160 ? '…' : ''}"`
+        : '';
+      const li = this.closest('.lz-step');
+      if (li) {
+        li.classList.toggle('is-ready', ok);
+        const badge = li.querySelector('.lz-badge');
+        if (badge) { badge.textContent = st.badge; badge.className = `lz-badge ${ok ? 'skip' : ''}`; }
+      }
       lzPaintCount();
     };
   }
@@ -1970,6 +2261,9 @@ function lzRender() {
         try { again.setSelectionRange(selStart, selStart); } catch { /* not a text field */ }
       }
     }
+  } else if (focusHead) {
+    const head = ol.querySelector(`.lz-step[data-step="${focusHead}"] .lz-head`);
+    if (head && head !== document.activeElement) head.focus();
   }
 }
 
@@ -1981,6 +2275,13 @@ function lzPaintCount() {
 }
 
 async function lzCheckAccount(defer) {
+  // A signed-out visitor has no token to ask with. Asking anyway put two red
+  // 401s in the console on every first visit, before they had done anything at
+  // all. Say what is true instead of firing a request we know must fail.
+  if (!getToken()) {
+    lzSet('account', { status: 'blocked', badge: 'Not signed in', detail: 'You are signed out — sign in and this step checks itself.' }, defer);
+    return;
+  }
   const r = await lzCall(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${getToken()}` } }, 15000);
   const u = r.body && r.body.user;
   lzSet('account', (r.status === 200 && u)
@@ -1989,6 +2290,12 @@ async function lzCheckAccount(defer) {
 }
 
 async function lzLoadProjects(defer) {
+  // Same reason as lzCheckAccount: no token, no request, no 401.
+  if (!getToken()) {
+    lz.projects = [];
+    lzSet('project', { status: 'idle', badge: 'Not started', detail: '' }, defer);
+    return;
+  }
   const r = await lzCall(`${API_BASE}/api/projects`, { headers: { Authorization: `Bearer ${getToken()}` } }, 15000);
   const list = (r.body && (r.body.projects || r.body)) || [];
   lz.projects = Array.isArray(list) ? list : [];
