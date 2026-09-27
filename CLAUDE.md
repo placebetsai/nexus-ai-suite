@@ -248,6 +248,16 @@ Test projects: **157** (broken set → publish 409), **158** (3 files → publis
 > "just run it" advice could not have worked. Rebuilt with fallback chains + Wikipedia +
 > Grokipedia and given the homepage a real rail. Full evidence in
 > `Placebetsai-src/FIXES-2026-09-26.md` §5 and HANDOFF §10.
+>
+> **CreateStuff: GitHub + build pipeline (2026-09-27):** see `HANDOFF-2026-09-27.md`. The
+> "it can't open a repository" report was three real defects — the relay was dead, the GitHub
+> page called a `GET /api/github/repos` route that **never existed**, and imports died on GitHub's
+> shared-IP rate limit (60/h for everyone) behind a vague "Too many tries". All three fixed and
+> proven live: build **87** → 3 files / 20,987 chars in **46 s** → published site rendering;
+> `octocat/Spoon-Knife` import → project **174**, 3 files **byte-identical** to GitHub raw.
+> Token-dependent paths (list/create/push) are labelled **untested** — no GitHub token here.
+> **Deploy trap:** `createstuff.ai` and `app.createstuff.ai` are two separate Pages projects
+> from one source dir — deploy both or half the fleet is stale.
 
 ### DONE and verified on the live sites — 2026-09-26
 

@@ -1937,14 +1937,38 @@ export default {
       // GITHUB IMPORT — pull a repo and create a project with its files
       if (path === "/api/github/import" && method === "POST") {
         if (!(await rateLimit(env, request, "gh", 6, 300))) return err("Too many imports — wait 5 minutes", 429);
-        const { url } = await request.json().catch(() => ({}));
+        const body = await request.json().catch(() => ({}));
+        const { url } = body;
         if (!url) return err("url required");
         const m = String(url).match(/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/.*)?$/);
         if (!m) return err("Not a GitHub repository URL (expected github.com/owner/repo)");
         const owner = m[1], repo = m[2];
 
+        // PATH 1 — the browser read the repository itself and hands us the
+        // files. GitHub counts that call against the person's own IP (and their
+        // own token when GitHub is connected), not against this worker's shared
+        // egress range: 60 unauthenticated calls an hour for EVERY user at once
+        // is what turned ordinary imports into "rate limit reached". This path
+        // needs no call to GitHub from here at all.
+        let files = [], meta = null, defaultBranch = "main";
+        if (Array.isArray(body.files)) {
+          meta = (body.meta && typeof body.meta === "object") ? body.meta : {};
+          defaultBranch = String(meta.default_branch || body.branch || "main").slice(0, 100);
+          files = body.files
+            .filter((f) => f && typeof f.path === "string" && f.path.length > 0 && f.path.length <= 300 && f.path.indexOf("\0") === -1 && typeof f.content === "string")
+            .slice(0, 20)
+            .map((f) => ({ path: f.path, content: f.content.slice(0, 300000) }));
+          if (!files.length) return err("No readable files came across from that repository", 422);
+        } else {
+        // PATH 2 — no files supplied: read them here (kept for callers that
+        // cannot read GitHub themselves).
         const ghHeaders = { Accept: "application/vnd.github+json", "User-Agent": "createstuff" };
-        if (env.GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+        // The caller's own token travels with the request when GitHub is
+        // connected on their side: authenticated calls get 5,000/hour instead
+        // of the 60/hour shared limit of this worker's egress range.
+        const callerTok = request.headers.get("X-GitHub-Token");
+        if (callerTok) ghHeaders.Authorization = `Bearer ${callerTok}`;
+        else if (env.GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
 
         // A repo that does not exist is a CLIENT condition (404); a URL GitHub
         // refuses is a bad request (400); 502 is reserved for GitHub itself
@@ -1959,8 +1983,9 @@ export default {
         };
         const metaR = await ghGet(`https://api.github.com/repos/${owner}/${repo}`);
         if (!metaR.ok) throw ghStatusError(metaR.status);
-        const meta = await metaR.json().catch(() => null);
+        meta = await metaR.json().catch(() => null);
         if (!meta || typeof meta !== "object") throw new HttpError("GitHub returned an unreadable response", 502);
+        defaultBranch = String(meta.default_branch || "main");
 
         const treeR = await ghGet(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(meta.default_branch)}?recursive=1`);
         let tree = [];
@@ -1973,7 +1998,6 @@ export default {
           .filter((f) => /(^|\/)(src|app|pages|components|lib|public)?\/?[^/]*\.(js|jsx|ts|tsx|html|css|json|md|py|rb|go|rs|vue|svelte)$/i.test(f.path) || /(^|\/)(package\.json|README\.md|index\.html)$/i.test(f.path))
           .slice(0, 20);
 
-        const files = [];
         for (const f of codeFiles) {
           try {
             const c = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${f.path}?ref=${encodeURIComponent(meta.default_branch)}`, { headers: ghHeaders });
@@ -1984,13 +2008,15 @@ export default {
           } catch { /* skip unreadable file */ }
         }
         if (!files.length) return err("Could not read any code files from that repository", 422);
+        }
 
         const now = new Date().toISOString();
-        const name = meta.name || repo;
-        const desc = `Imported from github.com/${owner}/${repo} — ${meta.description || name}`;
+        const name = (meta && meta.name) || repo;
+        const desc = `Imported from github.com/${owner}/${repo} — ${(meta && meta.description) || name}`;
+        const repoUrl = (meta && typeof meta.html_url === "string" && meta.html_url) || `https://github.com/${owner}/${repo}`;
         const r = await env.DB.prepare(
           "INSERT INTO projects (user_id, name, description, repo_url, status, tech_stack, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
-        ).bind(user.sub, name, desc, meta.html_url, "imported", "github", now, now).run();
+        ).bind(user.sub, name, desc, repoUrl, "imported", "github", now, now).run();
         const projectId = r.meta.last_row_id;
 
         await saveFiles(env, projectId, files, null);
@@ -2004,7 +2030,7 @@ export default {
         // CREATE TABLE IF NOT EXISTS is a no-op and INSERTs must match reality.
         await env.DB.prepare(
           "INSERT INTO github_links (user_id, project_id, repo_full_name, repo_url, branch, created_at) VALUES (?,?,?,?,?,?)"
-        ).bind(user.sub, projectId, `${owner}/${repo}`, meta.html_url, meta.default_branch, now).run();
+        ).bind(user.sub, projectId, `${owner}/${repo}`, repoUrl, defaultBranch, now).run();
 
         return json({ project: { id: projectId, name, description: desc, status: "imported", tech_stack: "github" }, repo: `${owner}/${repo}`, imported: files.length, files: files.map((f) => ({ path: f.path, size: f.content.length })) }, 201);
       }

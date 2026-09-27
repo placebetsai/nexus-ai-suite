@@ -541,6 +541,30 @@ async function csShim(path, options = {}) {
     return { ok: true, value: { url, ok: true } };
   }
 
+  // GitHub READ — forge-api has no /api/github/repos, so the page pressed
+  // "Show my repositories", got a 404 and printed "Could not reach GitHub".
+  // The list comes from the same place create/push do: the user's own token
+  // against api.github.com. The first time, the connect dialog opens, GitHub
+  // checks the token before anything is stored, and only then do we list.
+  if (path === '/api/github/repos' && method === 'GET') {
+    // Opening the page must not throw a modal over the import box underneath
+    // (that one works with no token at all). The dialog is opened on purpose by
+    // the card's button — connectGitHubFlow() below.
+    if (!csGhConnected()) {
+      return {
+        ok: true,
+        value: {
+          connected: false,
+          repos: [],
+          message: 'GitHub is not connected yet. Press "Show my repositories" and paste the token GitHub gives you (it starts with ghp_), or paste a project link in the box below to bring a public project in.',
+        },
+      };
+    }
+    csGhSeen = true; // already checked when it was saved — do not re-ask for a read
+    const repos = await csGh('/user/repos?per_page=30&sort=updated');
+    return { ok: true, value: { connected: true, repos: Array.isArray(repos) ? repos : [] } };
+  }
+
   // GitHub WRITE (forge-api is read-only) -> user's own PAT against api.github.com
   if (path === '/api/github/create-repo' && method === 'POST') {
     const r = await csGh('/user/repos', { method: 'POST', body: JSON.stringify({ name: body.name, description: body.description || '', private: false }) });
@@ -612,68 +636,180 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+let authMode = 'login';
+
+function paintAuth() {
+  const submitBtn = document.getElementById('login-submit');
+  const nameGroup = document.getElementById('login-name-group');
+  const toggle = document.getElementById('auth-toggle');
+  const pass = document.getElementById('login-pass');
+  const errBox = document.getElementById('login-error');
+  const registering = authMode === 'register';
+  if (submitBtn) submitBtn.textContent = registering ? 'Create Account' : 'Sign In';
+  if (nameGroup) nameGroup.style.display = registering ? 'block' : 'none';
+  if (toggle) toggle.textContent = registering ? 'Back to sign in' : 'Create one free';
+  if (pass) pass.setAttribute('autocomplete', registering ? 'new-password' : 'current-password');
+  if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+}
+
+function setupAuth() {
+  const toggle = document.getElementById('auth-toggle');
+  if (toggle) {
+    toggle.onclick = (e) => {
+      e.preventDefault();
+      authMode = authMode === 'login' ? 'register' : 'login';
+      paintAuth();
+    };
+  }
+  paintAuth();
+
+  const form = document.getElementById('login-form');
+  if (form) {
+    form.onsubmit = async function(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-user').value.trim();
+      const p = document.getElementById('login-pass').value;
+      const nameEl = document.getElementById('login-name');
+      const submitBtn = document.getElementById('login-submit');
+      const errBox = document.getElementById('login-error');
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const data = authMode === 'register'
+          ? await api('/api/auth/register', {
+              method: 'POST',
+              body: JSON.stringify({
+                email,
+                name: (nameEl && nameEl.value.trim()) || email.split('@')[0],
+                password: p,
+              }),
+            })
+          : await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: p }) });
+        if (!data || !data.token) throw new Error('No session token returned');
+        setAuth(data.token, data.user);
+        showApp();
+        renderPage('dashboard');
+        loadDashboard();
+      } catch (err) {
+        if (errBox) { errBox.textContent = err.message || 'Sign in failed'; errBox.style.display = 'block'; }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    };
+  }
+}
+
+function setupFilesControls() {
+  const zip = document.getElementById('download-zip');
+  if (zip) zip.onclick = downloadProjectZip;
+  const saveBtn = document.getElementById('save-file-btn');
+  if (saveBtn) saveBtn.onclick = () => {
+    const path = prompt('File path:', 'styles.css');
+    if (path) {
+      document.getElementById('editor-path').value = path;
+      document.getElementById('editor-content').value = '';
+      document.getElementById('editor-content').focus();
+    }
+  };
+  const es = document.getElementById('editor-save');
+  if (es) es.onclick = saveCurrentFile;
+}
+
+function setupDeployControls() {
+  const dcb = document.getElementById('domain-connect-btn');
+  if (dcb) dcb.onclick = function () {
+    const v = (document.getElementById('custom-domain').value || '').trim();
+    if (!v) { showToast('Type an address first'); return; }
+    window.csLaunchConnect(v);
+  };
+}
+
+function setupSettingsControls() {
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const stored = localStorage.getItem('cs_theme');
+    themeToggle.checked = stored ? stored === 'dark' : prefersDark;
+    document.documentElement.classList.toggle('dark', themeToggle.checked);
+    themeToggle.onchange = function() {
+      const isDark = this.checked;
+      document.documentElement.classList.toggle('dark', isDark);
+      localStorage.setItem('cs_theme', isDark ? 'dark' : 'light');
+    };
+  }
+
+  const aiKeyInput = document.getElementById('settings-ai-key') || document.querySelector('#page-settings input[placeholder="sk-..."]');
+  const ghKeyInput = document.getElementById('settings-gh-key') || document.querySelector('#page-settings input[placeholder="ghp_..."]');
+  const saveKeysBtn = document.getElementById('settings-save-keys') || document.querySelector('#page-settings .card:last-of-type button.btn-primary');
+  if (aiKeyInput) aiKeyInput.value = localStorage.getItem('cs_ai_key') || '';
+  if (ghKeyInput) ghKeyInput.value = localStorage.getItem('cs_gh_pat') || '';
+  if (saveKeysBtn) {
+    saveKeysBtn.onclick = function() {
+      const aiKey = aiKeyInput ? aiKeyInput.value.trim() : '';
+      const ghKey = ghKeyInput ? ghKeyInput.value.trim() : '';
+      if (aiKey) localStorage.setItem('cs_ai_key', aiKey); else localStorage.removeItem('cs_ai_key');
+      if (ghKey) localStorage.setItem('cs_gh_pat', ghKey); else localStorage.removeItem('cs_gh_pat');
+      showToast('Keys saved');
+    };
+  }
+
+  const saveProfileBtn = document.getElementById('settings-save-profile') || document.querySelector('#page-settings .card:first-of-type button.btn-primary');
+  if (saveProfileBtn) {
+    saveProfileBtn.onclick = async function() {
+      const nameInput = document.getElementById('settings-name') || document.querySelector('#page-settings .card:first-of-type input[type="text"]');
+      const emailInput = document.getElementById('settings-email') || document.querySelector('#page-settings .card:first-of-type input[type="email"]');
+      const name = nameInput ? nameInput.value.trim() : '';
+      const email = emailInput ? emailInput.value.trim() : '';
+      if (!name || !email) { showToast('Fill in both fields'); return; }
+      try {
+        await api('/api/auth/me', {
+          method: 'PUT',
+          body: JSON.stringify({ display_name: name, email }),
+        });
+        const u = getUser() || {};
+        u.display_name = name;
+        u.email = email;
+        localStorage.setItem(USER_KEY, JSON.stringify(u));
+        const welcome = document.querySelector('#page-dashboard .page-header h1');
+        if (welcome) welcome.textContent = `Welcome back, ${name}`;
+        showToast('Saved');
+      } catch (e) {
+        showToast('Save failed');
+      }
+    };
+  }
+}
+
+function setupLaunchControls() {
+  const run = document.getElementById('lz-run');
+  const re = document.getElementById('lz-recheck');
+  if (run) run.onclick = function () { if (!lz.busy) { this.textContent = 'Running…'; lzRunAll(); } };
+  if (re) re.onclick = function () { if (!lz.busy) lzAuditAll(); };
+}
+
 function init() {
-  if (!isLoggedIn()) { showLogin(); return; }
-  showApp();
+  setupAuth();
   setupRouter();
   setupSidebar();
   setupMobile();
   setupLogout();
+  setupBuilder();
+  setupFilesControls();
+  setupDeployControls();
+  setupSettingsControls();
+  setupLaunchControls();
+  if (typeof lpWire === 'function') lpWire();
+
+  if (isLoggedIn()) {
+    showApp();
+  } else {
+    showLogin();
+  }
 }
 
 function showLogin() {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
-  // forge-api's login expects {email,password} (NOT {username,...}) and
-  // register expects {email,name,password}. Offer both flows.
-  let authMode = 'login';
-  const errBox = document.getElementById('login-error');
-  const submitBtn = document.getElementById('login-submit');
-  const nameGroup = document.getElementById('login-name-group');
-  const toggle = document.getElementById('auth-toggle');
-
-  function paintAuth() {
-    const registering = authMode === 'register';
-    if (submitBtn) submitBtn.textContent = registering ? 'Create Account' : 'Sign In';
-    if (nameGroup) nameGroup.style.display = registering ? 'block' : 'none';
-    if (toggle) toggle.textContent = registering ? 'Back to sign in' : 'Create one free';
-    const pass = document.getElementById('login-pass');
-    if (pass) pass.setAttribute('autocomplete', registering ? 'new-password' : 'current-password');
-    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
-  }
-  if (toggle) toggle.onclick = (e) => { e.preventDefault(); authMode = authMode === 'login' ? 'register' : 'login'; paintAuth(); };
   paintAuth();
-
-  document.getElementById('login-form').onsubmit = async function(e) {
-    e.preventDefault();
-    const email = document.getElementById('login-user').value.trim();
-    const p = document.getElementById('login-pass').value;
-    const nameEl = document.getElementById('login-name');
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-      const data = authMode === 'register'
-        ? await api('/api/auth/register', {
-            method: 'POST',
-            body: JSON.stringify({
-              email,
-              name: (nameEl && nameEl.value.trim()) || email.split('@')[0],
-              password: p,
-            }),
-          })
-        : await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password: p }) });
-      if (!data || !data.token) throw new Error('No session token returned');
-      setAuth(data.token, data.user);
-      showApp();
-      setupRouter();
-      setupSidebar();
-      setupMobile();
-      setupLogout();
-    } catch (err) {
-      if (errBox) { errBox.textContent = err.message || 'Sign in failed'; errBox.style.display = 'block'; }
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-    }
-  };
 }
 
 function showApp() {
@@ -922,8 +1058,10 @@ async function loadGitHubRepos() {
     if (data.connected === false) {
       document.getElementById('gh-connect').style.display = 'block';
       document.getElementById('gh-repos').style.display = 'block';
+      // The card explains WHY nothing is connected; the list says where the
+      // projects will show up, so the same sentence is not printed twice.
       if (status) status.textContent = data.message || 'GitHub is not connected yet.';
-      list.innerHTML = `<div class="empty-state"><p>${escapeHtml(data.message || 'GitHub not connected.')}</p></div>`;
+      list.innerHTML = '<div class="empty-state"><p>Your repositories will appear here once GitHub is connected.</p></div>';
     } else {
       document.getElementById('gh-connect').style.display = 'none';
       document.getElementById('gh-repos').style.display = 'block';
@@ -946,9 +1084,25 @@ async function loadGitHubRepos() {
     }
     ensureImportSection();
   } catch (err) {
-    list.innerHTML = '<div class="empty-state"><p>Could not reach GitHub. Check the connection and try again.</p></div>';
-    showToast('GitHub is unreachable right now');
+    // Say what actually happened (expired token, no network, GitHub said no)
+    // instead of the generic "unreachable" line that hid the real reason.
+    const why = (err && err.message)
+      ? err.message
+      : 'Could not reach GitHub. Check the connection and try again.';
+    list.innerHTML = `<div class="empty-state"><p>${escapeHtml(why)}</p></div>`;
+    showToast(why);
   }
+}
+
+// The card's button. Ask for the token first — but only when someone presses
+// the button: arriving at the page just shows the state and leaves the import
+// box below reachable, because importing a public project needs no token.
+async function connectGitHubFlow() {
+  if (!csGhConnected()) {
+    const pat = await csGhDialog();
+    if (!pat) { await loadGitHubRepos(); return; }   // cancelled: honest not-connected state
+  }
+  await loadGitHubRepos();
 }
 
 function ensureImportSection() {
@@ -971,6 +1125,94 @@ function ensureImportSection() {
   const input = document.getElementById('import-repo-url');
   if (btn) btn.onclick = handleImportClick;
   if (input) input.onkeydown = (e) => { if (e.key === 'Enter') handleImportClick(); };
+}
+
+// Read a repository the way the browser sees it. GitHub counts these calls
+// against the person's own address — and their own token when GitHub is
+// connected — instead of against one shared server address whose 60
+// unauthenticated calls an hour run out for everybody at the same moment.
+// Returns { meta, files } or throws a sentence someone can act on.
+async function csGhImportRepo(rawUrl) {
+  const m = String(rawUrl).match(/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/.*)?$/);
+  if (!m) throw new Error('That does not look like a GitHub project link.');
+  const owner = m[1], repo = m[2];
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    ...(csGhConnected() ? { Authorization: `Bearer ${csGhPat()}` } : {}),
+  };
+  const get = async (u) => {
+    const r = await fetch(u, { headers });
+    if (!r.ok) throw new Error(csGhMessage(r.status, await r.text()));
+    return r.json();
+  };
+  const meta = await get(`https://api.github.com/repos/${owner}/${repo}`);
+  const branch = meta.default_branch || 'main';
+  let tree = [];
+  try { tree = (await get(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`)).tree || []; } catch { tree = []; }
+
+  const SKIP = /\.(png|jpe?g|gif|webp|svg|ico|mp4|mov|zip|bin|pdf|woff2?|ttf|eot)$/i;
+  // Text-shaped files: the usual code extensions, any README (including the
+  // extensionless kind), and files with no extension at all (Makefile, LICENSE
+  // style names) — a repository made only of those used to import as nothing.
+  const looksText = (p) => {
+    const base = p.split('/').pop();
+    if (/\.(js|jsx|ts|tsx|html|css|json|md|py|rb|go|rs|vue|svelte|yml|yaml|toml|xml|txt)$/i.test(base)) return true;
+    if (/^readme(\..*)?$/i.test(base)) return true;
+    return base.indexOf('.') === -1;
+  };
+  const codeFiles = tree.filter((f) => f.type === 'blob' && !SKIP.test(f.path) && f.size < 200000)
+    .filter((f) => looksText(f.path))
+    .slice(0, 20);
+
+  const files = [];
+  for (const f of codeFiles) {
+    try {
+      const c = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${f.path}?ref=${encodeURIComponent(branch)}`, { headers });
+      if (!c.ok) continue;
+      const j = await c.json();
+      if (j.encoding !== 'base64' || !j.content) continue;
+      const bytes = Uint8Array.from(atob(j.content.replace(/\n/g, '')), (ch) => ch.charCodeAt(0));
+      files.push({ path: f.path, content: new TextDecoder('utf-8').decode(bytes) });
+    } catch { /* skip unreadable file */ }
+  }
+  if (!files.length) throw new Error('Could not read any code files from that repository.');
+  return { meta, files };
+}
+
+// Bring a repository in. The files are read here first; only if that fails
+// (no network to GitHub, say) do we ask the server to read them instead, and
+// a failed upload is never retried, so one link can never make two projects.
+async function csGhImportRun(url) {
+  let read = null, readErr = null;
+  try { read = await csGhImportRepo(url); } catch (e) { readErr = e; }
+  if (read) {
+    return api('/api/github/import', {
+      method: 'POST',
+      body: JSON.stringify({
+        url,
+        meta: {
+          name: read.meta.name, description: read.meta.description,
+          html_url: read.meta.html_url, default_branch: read.meta.default_branch,
+        },
+        files: read.files,
+      }),
+    });
+  }
+  try {
+    return await api('/api/github/import', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+      ...(csGhConnected() ? { headers: { 'X-GitHub-Token': csGhPat() } } : {}),
+    });
+  } catch (e) {
+    // The browser's reason is what actually happened first. Only when it is a
+    // bare network failure ("Failed to fetch") is the server's answer more
+    // useful than it, and a failed upload is never retried: one link, one
+    // project, one clear sentence.
+    const generic = /failed to fetch|networkerror|load failed/i.test(String((readErr && readErr.message) || ''));
+    throw (readErr && !generic) ? readErr : e;
+  }
 }
 
 let importInProgress = false;
@@ -996,10 +1238,7 @@ async function handleImportClick() {
   if (resultDiv) { resultDiv.style.display = 'none'; resultDiv.innerHTML = ''; }
 
   try {
-    const resp = await api('/api/github/import', {
-      method: 'POST',
-      body: JSON.stringify({ url }),
-    });
+    const resp = await csGhImportRun(url);
     const { project, repo, imported, files } = resp || {};
     if (!project || !imported) throw new Error('Unexpected response from server');
 
@@ -1022,7 +1261,7 @@ async function handleImportClick() {
     let msg = err?.message || 'We could not bring that in';
     if (status === 400) msg = 'That link does not look like a GitHub project link.';
     else if (status === 401) msg = 'Please sign in again.';
-    else if (status === 429) msg = 'Too many tries — wait a moment and try again.';
+    else if (status === 429) msg = err?.message || 'Too many tries — wait a moment and try again.';
     else if (status === 502) msg = 'We could not find that project on GitHub.';
     if (resultDiv) {
       resultDiv.style.display = 'block';
@@ -2172,12 +2411,12 @@ function lpWire() {
   if (!open || !copy || !close) return;
   lp.wired = true;
 
-  open.addEventListener('click', () => {
+  open.onclick = () => {
     if (lp.live && lp.url) window.open(lp.url, '_blank', 'noopener');
     else lpPublish();
-  });
+  };
 
-  copy.addEventListener('click', async () => {
+  copy.onclick = async () => {
     const url = lp.url;
     if (!url) return;
     const t = lpEl('live-panel-copy-text');
@@ -2202,12 +2441,12 @@ function lpWire() {
       setTimeout(() => { if (t.isConnected) t.textContent = 'Copy the link' }, 2000);
     }
     showToast(ok ? 'Link copied' : 'This browser would not copy it');
-  });
+  };
 
-  close.addEventListener('click', () => {
+  close.onclick = () => {
     lpSetOff(true);
     lpShow(false);
-  });
+  };
 }
 
 // opts: { projectId, live (known HTTP result), forceReady (this build is
@@ -2241,6 +2480,7 @@ async function lpAfterBuild(pid) {
 // is an IIFE, so bare function declarations are unreachable from them. These three
 // were referenced from index.html/app.js templates and threw ReferenceError.
 window.loadGitHubRepos = loadGitHubRepos;
+window.connectGitHubFlow = connectGitHubFlow;
 window.renderPage = renderPage;
 window.showToast = showToast;
 // The GitHub connect box is built inside this IIFE but lives in the page, so
@@ -2256,5 +2496,9 @@ window.csGhFlow = {
   connectedBox: csGhConnectedHtml,
 };
 
-document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 })();
