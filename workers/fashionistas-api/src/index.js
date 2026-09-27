@@ -114,6 +114,8 @@ const parsePlatforms = (raw) => {
 // feed must never carry the seller's email address, so the email column is
 // not selected anywhere in the market queries.
 const sellerOf = (row) => ({
+  // Messages are addressed by user id (/api/dm/:id), so the buyer page needs it.
+  id: row.seller_id == null ? null : Number(row.seller_id),
   username: row.seller_username || "unknown",
   display_name: row.seller_display_name || row.seller_username || "unknown seller",
 });
@@ -148,7 +150,7 @@ async function marketSelect(env) {
     "SELECT l.id, l.title, l.price, l.condition, l.size, l.category, l.photo_url, l.status, l.platforms, " +
     extra.join(", ") + ", " +
     (timeCol ? timeCol + " AS listed_at" : "NULL AS listed_at") +
-    ", u.username AS seller_username, u.display_name AS seller_display_name " +
+    ", u.id AS seller_id, u.username AS seller_username, u.display_name AS seller_display_name " +
     "FROM listings l LEFT JOIN users u ON u.id = l.user_id"
   );
 }
@@ -1052,6 +1054,24 @@ async function dispatch(request, env) {
         const { image } = await readJson(request);
         if (!image) return err("Missing image (base64)");
         if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 100) return err("image must be base64-encoded image bytes");
+        // Llama 4 Scout first: the 3.2-11b model called a denim jacket a "t-shirt,
+        // $5-10" three times out of three (2026-09-27). 3.2-11b stays as fallback.
+        const VISION_PROMPT = "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (string or 'Unknown'), color, condition (Poor/Fair/Good/Excellent), category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint. Be specific and honest.";
+        try {
+          const r4 = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
+            messages: [{ role: "user", content: [
+              { type: "text", text: VISION_PROMPT },
+              { type: "image_url", image_url: { url: "data:image/jpeg;base64," + image } },
+            ] }],
+            max_tokens: 256,
+          });
+          const t4 = typeof r4?.response === "string" ? r4.response : JSON.stringify(r4?.response ?? r4);
+          const p4 = aiJson(t4, null);
+          if (p4 && p4.type) return json({ source: "ai", ...p4, note: "" });
+          console.error("analyze scout: unparseable", String(t4).slice(0, 200));
+        } catch (e) {
+          console.error("analyze scout:", (e && e.message) || e);
+        }
         try {
           const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
             prompt: "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (string or 'Unknown'), color, condition (Poor/Fair/Good/Excellent), category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint. Be specific and honest.",

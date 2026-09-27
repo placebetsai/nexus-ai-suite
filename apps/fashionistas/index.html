@@ -194,6 +194,9 @@ label{font-size:12.5px;font-weight:700;color:var(--mut);text-transform:uppercase
 .gitem:hover .meta{transform:translateY(-3px)}
 .gitem .t{font-weight:800;font-size:14px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
 .gitem .p{font-weight:700;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+/* No photo: the meta sits on the light placeholder, so white text vanished. */
+.gitem:has(.ph) .meta{color:var(--ink)}
+.gitem:has(.ph) .t,.gitem:has(.ph) .p{text-shadow:none}
 /* photo-less listing tiles fall back to the artwork shipped in ./assets */
 .ph{position:relative;height:170px;background:linear-gradient(135deg,var(--soft),var(--soft-2));display:flex;align-items:center;justify-content:center;overflow:hidden}
 .ph-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
@@ -2506,12 +2509,15 @@ async function openMarketItemNow(id){
   + (m.photo_url ? `<img class="detail-img" src="${escapeAttr(m.photo_url)}" onerror="this.remove()"><div style="height:10px"></div>` : "")
   + `<h3 style="margin:4px 0 2px">${escapeHtml(m.title||"Untitled")}</h3>`
   + `<h2 style="margin:4px 0">${money(m.price)}</h2>`
-  + `<div style="margin:8px 0"><span class="pill">${escapeHtml(m.condition||"")}</span><span class="pill">${escapeHtml(m.size||"")}</span>${canonCat(m.category) ? `<span class="pill">${escapeHtml(canonCat(m.category))}</span>` : ""}<span class="pill">${escapeHtml(m.status||"for sale")}</span></div>`
+  + `<div style="margin:8px 0"><span class="pill">${escapeHtml(m.condition||"")}</span><span class="pill">${escapeHtml(m.size||"")}</span>${canonCat(m.category) ? `<span class="pill">${escapeHtml(canonCat(m.category))}</span>` : ""}</div>`
   + (m.description ? `<div class="mut">${escapeHtml(m.description)}</div>` : "")
   + `<p class="mut">Sold by <b>${escapeHtml(seller)}</b>${sellerU?` (@${escapeHtml(sellerU)})`:""}</p>`
-  + (plats.length ? `<div style="margin:6px 0"><span class="mut">Also listed on: </span>` + plats.map(p=>`<span class="pill">${escapeHtml(p)}</span>`).join("") + `</div>` : "")
+  /* "Also listed on" was dropped: platforms only records shops the seller prepared
+     a draft for, not where the item is actually live, so it misled buyers. */
   + `<button class="btn btn-accent" onclick="buySheet(${Number(m.id)})" data-tip="Start checkout for this item. No money moves yet.">Buy this item</button>`
-  + `<button class="btn btn-soft btn-sm" onclick="threadScreen('${sellerU||seller}')" data-tip="Open a message thread with this seller." title="Open a message thread with this seller.">Message seller</button>`
+  + (m.seller && m.seller.id && !(typeof USER !== "undefined" && USER && Number(USER.id) === Number(m.seller.id))
+      ? `<button class="btn btn-soft btn-sm" onclick="threadScreen(${Number(m.seller.id)})" data-tip="Open a message thread with this seller." title="Open a message thread with this seller.">Message seller</button>`
+      : "")
   + `</div>`;
   refreshTips();
 }
