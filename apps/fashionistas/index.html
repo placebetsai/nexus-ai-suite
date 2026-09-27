@@ -2445,7 +2445,9 @@ function marketRefresh(){
     refreshTips();
     return;
   }
-  grid.innerHTML = rows.map((m,i)=>marketCard(m,i)).join("");
+  // Items with a photo first (stable within each group, so the chosen sort still holds).
+  const shown = rows.filter(m => m.photo_url).concat(rows.filter(m => !m.photo_url));
+  grid.innerHTML = shown.map((m,i)=>marketCard(m,i)).join("");
   refreshTips();
 }
 /* " in Women's Clothing › Tops & Shirts", or "" at the top of the catalogue. */
@@ -4443,18 +4445,82 @@ function xlFillCardHtml(picks){
   const ok = picks.filter(p => XL_FILL_SHOPS.includes(p));
   if (!ok.length) return "";
   const names = ok.map(platformName).join(", ");
+  setTimeout(xlBookmarkLoad, 0);
+  const bookmark = `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+    <b>${xlExtInstalled() ? "Or, on another computer — no install:" : "No install: the Fashionistas Fill bookmark"}</b>
+    <ol style="margin:6px 0 8px 18px;padding:0;font-size:12.5px;line-height:1.55">
+     <li>Once: drag <a id="xl-bm" class="btn btn-soft btn-sm" href="#" onclick="event.preventDefault();toast('Drag this button to your bookmarks bar — don\\'t click it here.')" data-tip="Drag this to your bookmarks bar. Press Ctrl+Shift+B (⌘⇧B on Mac) if the bar is hidden." title="Drag this to your bookmarks bar.">Fashionistas Fill</a> to your bookmarks bar.</li>
+     <li>Press <b>Copy for Fashionistas Fill</b> below.</li>
+     <li>Open the shop's sell page, then click the <b>Fashionistas Fill</b> bookmark.</li>
+    </ol>
+    <button type="button" class="btn btn-soft" style="width:100%" onclick="xlCopyForBookmark(this)" data-tip="Copies this listing, photo included, for the Fashionistas Fill bookmark." title="Copies this listing, photo included, for the Fashionistas Fill bookmark.">Copy for Fashionistas Fill</button>
+    <div id="xl-bm-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div></div>`;
   if (xlExtInstalled()) {
     return `<div class="xl-note" style="border-color:var(--accent)"><b>Fill it for me.</b> Opens ${escapeHtml(names)} with your photo, title, description and price already filled in. You check each one and press Post.
     <button type="button" class="btn btn-accent" style="width:100%;margin-top:9px" onclick="xlAutofill()" data-tip="Opens each shop's sell page with this listing filled in. You still press Post yourself." title="Opens each shop's sell page with this listing filled in. You still press Post yourself.">Fill it for me on ${ok.length} shop${ok.length===1?"":"s"}</button>
-    <div id="xl-fill-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div></div>`;
+    <div id="xl-fill-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div>${bookmark}</div>`;
   }
-  return `<div class="xl-note"><b>Skip the copy and paste.</b> Add the free Fashionistas Crosslister to Chrome and we fill ${escapeHtml(names)} in for you. You still press Post yourself.
+  return `<div class="xl-note"><b>Skip the copy and paste.</b> We fill ${escapeHtml(names)} in for you — you still press Post yourself. Works in Chrome, Edge, Safari, Firefox and Brave on a computer.
+  ${bookmark}
+  <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Faster: the Crosslister extension (opens every shop at once)</summary>
   <ol style="margin:8px 0 8px 18px;padding:0;font-size:12.5px;line-height:1.55">
    <li><a href="${XL_EXT_ZIP}" download data-tip="Downloads the extension as a zip file." title="Downloads the extension as a zip file.">Download the Crosslister</a> and unzip it.</li>
-   <li>Open <b>chrome://extensions</b> in Chrome, Edge or Brave on a computer.</li>
+   <li>Open <b>chrome://extensions</b> in Chrome, Edge or Brave.</li>
    <li>Switch on <b>Developer mode</b> (top right), press <b>Load unpacked</b> and pick the unzipped folder.</li>
    <li>Reload this page. This box turns into a <b>Fill it for me</b> button.</li>
-  </ol><span class="mut" style="font-size:12px">Computer only — phone browsers don't run extensions. Not in the Chrome Web Store yet.</span></div>`;
+  </ol><a href="crosslister-privacy" target="_blank" rel="noopener" style="font-size:12px" data-tip="What the Crosslister stores and sends: only your listing, nothing else." title="What the Crosslister stores and sends.">Privacy: what it stores</a></details></div>`;
+}
+let XL_BM_HREF = null;
+function xlBookmarkLoad(){
+  const a = document.getElementById("xl-bm"); if (!a) return;
+  const set = () => { a.setAttribute("href", XL_BM_HREF); };
+  if (XL_BM_HREF) return set();
+  fetch("fashionistas-fill-bookmarklet.txt").then(r => r.ok ? r.text() : Promise.reject(new Error("bookmark " + r.status)))
+    .then(t => { if (/^javascript:/.test(t)) { XL_BM_HREF = t; set(); } })
+    .catch(e => console.warn("[xl] bookmark", e));
+}
+/* The listing for the bookmark, as JSON with the photo shrunk to a data URL, so
+   the bookmark never has to reach our servers from the shop's page. */
+async function xlFillPayload(){
+  const st = CURRENT.xlFill || {}; const l = st.l || {};
+  const shops = {};
+  (st.picks || []).filter(p => XL_FILL_SHOPS.includes(p)).forEach(pid => {
+    const rules = xlKitRules(pid);
+    shops[pid] = { title: xlKitTitle(rules, l), description: xlKitDescription(rules, l), price: l.price,
+      brand: (l.brand && !/^unknown$/i.test(l.brand)) ? l.brand : "", size: l.size || l.sizeHint || "", color: l.color || "", condition: l.condition || "" };
+  });
+  const photos = [];
+  if (l.photo_url) {
+    try {
+      // no-store: the <img> on this page cached the photo without CORS headers,
+      // and reusing that copy for a fetch is blocked.
+      const res = await fetch(l.photo_url, { mode: "cors", cache: "no-store" });
+      if (!res.ok) throw new Error("photo " + res.status);
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      photos.push({ type: "image/jpeg", data: c.toDataURL("image/jpeg", 0.85) });
+    } catch (e) { console.warn("[xl] photo for bookmark", e); }
+  }
+  return JSON.stringify({ fashionistas: 1, listingId: l.id || null, shops, photos });
+}
+async function xlCopyForBookmark(btn){
+  const msg = document.getElementById("xl-bm-msg");
+  const done = (ok) => { if (msg) msg.textContent = ok ? "Copied. Now open the shop's sell page and click your Fashionistas Fill bookmark." : "Your browser blocked copying. Try again, or use Copy kit below."; };
+  try {
+    // ClipboardItem with a promise keeps the click's permission while the photo is prepared.
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": xlFillPayload().then(t => new Blob([t], { type: "text/plain" })) })]);
+    } else {
+      await navigator.clipboard.writeText(await xlFillPayload());
+    }
+    done(true);
+  } catch (e) {
+    console.warn("[xl] copy for bookmark", e);
+    try { await navigator.clipboard.writeText(await xlFillPayload()); done(true); } catch (e2) { console.warn("[xl] copy fallback", e2); done(false); }
+  }
 }
 function xlAutofill(){
   const st = CURRENT.xlFill; if (!st) return;

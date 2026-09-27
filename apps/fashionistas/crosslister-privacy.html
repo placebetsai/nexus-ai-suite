@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crosslister Privacy</title>
+<style>
+:root{--bg:#fbf8f4;--ink:#12121a;--mut:#5f5f69;--line:#e7e1d8;--accent:#ff4e3a}
+@media (prefers-color-scheme:dark){:root{--bg:#141218;--ink:#f1efec;--mut:#b3afbd;--line:#2c2833}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 16px 60px}
+h1{font-size:28px;margin:0 0 6px}h2{font-size:18px;margin:26px 0 6px}p,li{color:var(--mut)}
+a{color:var(--accent)}
+</style></head><body><main>
+<h1>Fashionistas Crosslister — privacy</h1>
+<p>Last updated 27 September 2026. Applies to the Fashionistas Crosslister browser extension and the Fashionistas Fill bookmark.</p>
+<h2>What it does</h2>
+<p>When you press <b>Fill it for me</b> in Fashionistas, the extension opens the sell page of the shops you picked (Depop, eBay, Poshmark, Mercari, Vinted, Grailed) and types your listing's title, description, price, brand, size, colour and photo into that page's form. You review it and press the shop's own Post button. The extension never posts, buys, messages or changes anything else.</p>
+<h2>What it stores</h2>
+<ul>
+<li>The listing you asked it to fill (text and photo), in your browser's extension storage only, until you press <b>I've posted it</b>, press <b>Clear waiting</b>, or 6 hours pass.</li>
+<li>Nothing else. No browsing history, no page contents, no passwords, no cookies.</li>
+</ul>
+<h2>What it sends</h2>
+<ul>
+<li>It downloads your listing photo from the Fashionistas API (fashionistas-api.fashionistas1979.workers.dev) so it can attach it to the shop's form.</li>
+<li>It sends nothing to Fashionistas or anyone else. It has no analytics and no tracking.</li>
+<li>The shops receive only what you choose to post, when you press their Post button.</li>
+</ul>
+<h2>Permissions, and why</h2>
+<ul>
+<li><b>storage / unlimitedStorage</b> — to hold the listing and its photo until the shop's form is ready.</li>
+<li><b>tabs</b> — to open each shop's sell page in a new tab.</li>
+<li><b>Access to fashionistas.ai</b> — to receive the "fill these shops" request from your Fashionistas page.</li>
+<li><b>Access to depop.com, ebay.com, poshmark.com, mercari.com, vinted.com, grailed.com</b> — to find and fill the sell form on those sites. It only acts when you have queued a listing for that shop.</li>
+<li><b>Access to the Fashionistas API</b> — to download your listing photo.</li>
+</ul>
+<h2>The bookmark</h2>
+<p>The Fashionistas Fill bookmark reads the listing you copied from Fashionistas off your clipboard when you click it, fills the form on the page you are on, and keeps nothing afterwards.</p>
+<h2>Contact</h2>
+<p>Questions: use Contact inside <a href="https://fashionistas.ai/">fashionistas.ai</a>.</p>
+</main></body></html>

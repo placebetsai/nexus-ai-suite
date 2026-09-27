@@ -13,6 +13,15 @@ export const MOCKS = {
     <label for="sz">Size</label><input id="sz" name="size">
     <label for="pr">Item price</label><input id="pr" name="price" inputmode="decimal">
     <button type="submit">Post listing</button>`),
+  // Poshmark: a logged-out seller lands on login first; logging in swaps in the
+  // sell form without a page load.
+  "https://poshmark.com/login?pmrd%5Burl%5D=%2Fcreate-listing": `<!doctype html><html><body>
+<div id="app" style="max-width:560px;margin:30px auto;font-family:sans-serif">
+ <input placeholder="Username or Email"><input type="password" placeholder="Password"><button id="li">Log in</button></div>
+<script>window.__submitted=false;
+document.getElementById("li").onclick=async()=>{ const r=await fetch("https://poshmark.com/create-listing"); const h=await r.text();
+  history.pushState({}, "", "/create-listing"); const d=new DOMParser().parseFromString(h,"text/html"); document.getElementById("app").innerHTML=d.querySelector("form").outerHTML; };
+</script></body></html>`,
   // Poshmark: Original Price must NOT be filled, Listing Price must.
   "https://poshmark.com/create-listing": wrap(`
     <input type="file" accept="image/jpeg,image/png" multiple hidden>
@@ -42,14 +51,29 @@ function App(){
 }
 ReactDOM.createRoot(document.getElementById("root")).render(e(App));
 </script></body></html>`,
-  // eBay: description lives in an iframe rich-text editor.
-  "https://www.ebay.com/sl/sell": wrap(`
+  // eBay: step 1 "Tell us what you're selling" (prelist), then the full form
+  // on the same page (SPA), with the description in an iframe editor.
+  "https://www.ebay.com/sl/prelist/suggest": `<!doctype html><html><body>
+<div id="app" style="max-width:560px;margin:30px auto;font-family:sans-serif">
+  <h1>Start your listing</h1>
+  <input id="kw" aria-label="Tell us what you're selling" placeholder="Enter brand, model, or other details">
+  <input type="search" placeholder="Search for anything">
+  <button id="go" type="button">Continue</button>
+</div>
+<script>
+window.__submitted=false; window.__prelist="";
+document.getElementById("go").onclick=()=>{
+  window.__prelist=document.getElementById("kw").value;
+  history.pushState({}, "", "/lstng?draftId=1");
+  document.getElementById("app").innerHTML=\`
     <input type="file" accept="image/*" multiple style="opacity:0;position:absolute">
     <label for="t">Item title</label><input id="t" name="title" maxlength="80">
     <div><span class="label">Item description</span><iframe id="rte" src="https://www.ebay.com/rte-frame" style="width:100%;height:120px"></iframe></div>
     <label for="p">Item price</label><input id="p" name="price" aria-label="Item price">
     <label for="c">Color</label><input id="c" name="color">
-    <button type="submit">List it</button>`),
+    <button type="submit" onclick="window.__submitted=true">List it</button>\`;
+};
+</script></body></html>`,
   "https://www.ebay.com/rte-frame": `<!doctype html><html><body contenteditable="true"></body></html>`,
   "https://www.vinted.com/items/new": wrap(`
     <input type="file" accept="image/*" multiple hidden>

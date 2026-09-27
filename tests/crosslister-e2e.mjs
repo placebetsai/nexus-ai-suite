@@ -13,7 +13,7 @@ const EXT = path.join(ROOT, "extensions/crosslister");
 const APP = path.join(ROOT, "apps/fashionistas");
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "xl-"));
 const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "chromium", headless: true, viewport: { width: 1280, height: 900 },
+  channel: "chromium", headless: true, viewport: { width: 1280, height: 800 },
   args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
 });
 let pass = 0, fail = 0;
@@ -63,7 +63,9 @@ const byHost = {};
 // Tabs opened by the extension itself bypass Playwright's routing, so the
 // first load hits the real shop. Re-open each one through Playwright (the
 // queued job is still waiting in the extension) so it gets the mock form.
-const SELL = Object.keys(MOCKS).filter((u) => !u.includes("rte-frame"));
+const SELL = ["https://www.depop.com/products/create/", "https://www.ebay.com/sl/prelist/suggest",
+  "https://poshmark.com/login?pmrd%5Burl%5D=%2Fcreate-listing", "https://www.mercari.com/sell/",
+  "https://www.vinted.com/items/new", "https://www.grailed.com/sell/new"];
 for (const p of opened) {
   const host = new URL(p.url()).hostname.replace(/^www\./, "");
   const u = SELL.find((m) => new URL(m).hostname.replace(/^www\./, "") === host);
@@ -85,6 +87,19 @@ async function vals(p) {
 }
 const get = (v, key) => (v.all.find(([k]) => String(k).toLowerCase().includes(key.toLowerCase())) || [])[1] || "";
 
+// Poshmark starts logged out: the panel must ask for login and fill nothing yet.
+const pm = byHost["poshmark.com"];
+const pmPanel = () => pm.evaluate(() => { const h = [...document.documentElement.children].find((c) => c.shadowRoot); return h ? h.shadowRoot.textContent : ""; });
+ok(/Log in to Poshmark/.test(await pmPanel()), "Poshmark login page: panel says log in first");
+await pm.getByRole("button", { name: "Log in" }).click();
+await pm.waitForTimeout(3500);
+// eBay step 1: title goes into "Tell us what you're selling", then Continue.
+const eb = byHost["www.ebay.com"];
+const kw = await eb.evaluate(() => document.getElementById("kw").value);
+ok(kw.length > 5, "eBay step 1 'Tell us what you're selling' filled: " + kw.slice(0, 40));
+ok((await eb.evaluate(() => document.querySelector("input[type=search]").value)) === "", "eBay search box untouched");
+await eb.getByRole("button", { name: "Continue" }).click();
+await eb.waitForTimeout(4000);
 // Depop
 let v = await vals(byHost["www.depop.com"]);
 ok(get(v, "description").length > 20, "Depop description filled");

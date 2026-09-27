@@ -3,7 +3,8 @@
 
 const SHOP_URLS = {
   depop: "https://www.depop.com/products/create/",
-  ebay: "https://www.ebay.com/sl/sell",
+  // /sl/sell is a marketing page; the listing flow starts at "Tell us what you're selling".
+  ebay: "https://www.ebay.com/sl/prelist/suggest",
   poshmark: "https://poshmark.com/create-listing",
   mercari: "https://www.mercari.com/sell/",
   vinted: "https://www.vinted.com/items/new",

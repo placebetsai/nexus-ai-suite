@@ -26,18 +26,32 @@
     if (!tryIt()) setTimeout(tryIt, 2500);
   }
 
+  const isAuthPage = () =>
+    /\/(login|log-in|signin|sign-in|sign_in|signup|sign-up|sign_up|register|join)\b/i.test(location.pathname) ||
+    [...document.querySelectorAll("input[type=password]")].some((i) => i.offsetParent);
+
+  // Shops are single-page apps: login -> sell form, or eBay's "what are you
+  // selling" -> full form, often happen without a page load. Watch the URL and
+  // the form for up to 10 minutes and fill each new form exactly once, so we
+  // never overwrite what the seller has already typed.
   function start(job) {
     const panel = makePanel(job);
-    let tries = 0;
-    const attempt = () => {
-      tries++;
-      const found = FashFill.findFields();
-      // Wait until the form has at least a title or price field (SPAs render late).
-      if (!(found.title || found.price) && tries < 30) return setTimeout(attempt, 700);
-      const report = FashFill.fillAll(job.fields, job.photos);
-      panel.show(report);
+    const filledUrls = new Set();
+    const t0 = Date.now();
+    const tick = () => {
+      if (Date.now() - t0 > 10 * 60 * 1000) return;
+      if (isAuthPage()) { panel.login(); return setTimeout(tick, 1000); }
+      const key = location.pathname;
+      if (!filledUrls.has(key)) {
+        const found = FashFill.findFields();
+        if (found.title || found.price || found.description) {
+          filledUrls.add(key);
+          panel.show(FashFill.fillAll(job.fields, job.photos));
+        } else panel.waiting();
+      }
+      setTimeout(tick, 1000);
     };
-    attempt();
+    tick();
   }
 
   function makePanel(job) {
@@ -96,9 +110,18 @@
         $("rows").appendChild(row);
       }
     }
+    const names = { "depop.com": "Depop", "ebay.com": "eBay", "poshmark.com": "Poshmark", "mercari.com": "Mercari", "vinted.com": "Vinted", "grailed.com": "Grailed" };
+    const shopName = names[host] || "this shop";
+    function login() {
+      $("sub").textContent = `Log in to ${shopName} (or sign up — it's free). Your listing fills in by itself when the sell form opens.`;
+      $("rows").innerHTML = "";
+    }
+    function waiting() {
+      if (!$("rows").children.length) $("sub").textContent = `Waiting for ${shopName}'s sell form… If you're not on it yet, open Sell on ${shopName}.`;
+    }
     $("again").onclick = () => show(FashFill.fillAll(job.fields, job.photos));
     $("done").onclick = () => chrome.runtime.sendMessage({ type: "done", host }, () => hostEl.remove());
     $("hide").onclick = () => hostEl.remove();
-    return { show };
+    return { show, login, waiting };
   }
 })();

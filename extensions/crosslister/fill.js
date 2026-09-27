@@ -4,7 +4,7 @@
 // Exposed as globalThis.FashFill so filler.js and the tests can use it.
 (() => {
   const RULES = {
-    title: { want: /\btitle\b|what are you selling|item name|listing name|name your (item|listing)/i, avoid: /search|sub-?title|page title|seo/i, kinds: ["input", "textarea", "rich"] },
+    title: { want: /\btitle\b|what are you selling|what you('| a)re selling|tell us what|item name|listing name|name your (item|listing)|enter (brand|keywords)/i, avoid: /search|sub-?title|page title|seo/i, kinds: ["input", "textarea", "rich"] },
     description: { want: /descri|tell (buyers|us)|details about|about (this|the) item|item details/i, avoid: /search|short/i, kinds: ["textarea", "rich", "input"] },
     price: { want: /price|how much|amount|listing price|\$/i, avoid: /original|retail|ship|postage|compare|min(imum)?|floor|offer|discount|search|filter|budget|max/i, kinds: ["input"] },
     brand: { want: /\bbrand\b|designer|label\b|manufacturer/i, avoid: /search|filter/i, kinds: ["input"] },
