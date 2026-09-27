@@ -39,6 +39,26 @@
 // Setting SESSION_SECRET in wrangler.toml [vars] or the dashboard removes both.
 // Left unset on purpose here so a missing var cannot silently downgrade to a
 // guessable constant.
+// Where a published site's address is handed back to the user.
+//
+// `${url.origin}/published/<id>/...` works but reads like infrastructure:
+//   https://createstuff-api.fashionistas1979.workers.dev/published/179/index.html
+// — 76 characters, an account name in the middle, and it is the one string the
+// user pastes to other people. The bytes still come from this worker at
+// /published/:id/:path (every old link keeps working); the branded host is a
+// separate Pages project, createstuff-sites, which proxies those same bytes.
+// It has to be a SEPARATE origin: a published site is user-generated HTML and
+// must never run on an origin that can read the builder's cs_token.
+//
+// sites.createstuff.ai is already attached to that project and is the intended
+// host. It needs one CNAME in the createstuff.ai zone
+//   sites  CNAME  createstuff-sites.pages.dev  (proxied)
+// and no token on this machine can write DNS there — all three in .secrets/cf.env
+// return 403 / error 10000. Until that record exists we ship the pages.dev host,
+// because a link that resolves beats a pretty one that does not. Flip this one
+// constant when the record lands; both hosts serve the same files forever.
+const PUBLISH_HOST = "https://createstuff-sites.pages.dev";
+
 const enc = new TextEncoder();
 let SECRET = null;
 async function getSecret(env) {
@@ -2198,7 +2218,8 @@ export default {
           return err("The project's index.html is missing or too small to be a real page. Build the site first.", 409);
         }
         const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
-        const publishUrl = `${url.origin}/published/${projectId}/${idx ? idx.path : files[0].path}`;
+        const startFile = (idx ? idx.path : files[0].path).replace(/^\/+/, "");
+        const publishUrl = `${PUBLISH_HOST}/${projectId}/${startFile}`;
         await env.DB.prepare(
           "INSERT INTO deployments (project_id, url, status, created_at) VALUES (?,?,?,?)"
         ).bind(projectId, publishUrl, "live", new Date().toISOString()).run();
