@@ -289,13 +289,44 @@ function haversineKm(a1, o1, a2, o2) {
 // (including null, empty or a non-string) reads as null: the client files
 // those under "All" instead of inventing a free-text chip that could
 // duplicate a real one. Self-contained so it can run on read and on write.
+/* The catalogue is a two-level tree — "Dept" or "Dept/Sub" — exactly as the app
+   draws it (TAX in apps/fashionistas/index.html: keep these two in sync).
+
+   This used to allow ONLY the seven pre-tree flat words and return null for
+   everything else, which quietly broke the hierarchy in three places at once:
+   a seller who filed a bag under "Bags & Luggage/Handbags" had the category
+   nulled on INSERT (item lands in no department at all), the same null fired
+   on PUT (the edit never sticks), and because reads run rows through this same
+   function a stored tree path would be blanked on the way OUT too. Four of the
+   eight departments could therefore never hold a listing, while the UI happily
+   showed them as "0 items".
+
+   Flat words still round-trip unchanged so old rows and the client's legacy
+   mapping keep working; anything that is neither a known flat word nor a real
+   place in the tree still becomes null, so junk never reaches D1. */
+const TAX_TREE = {
+  "Women's Clothing": ["Tops & Shirts", "Bottoms", "Dresses", "Outerwear", "Activewear", "Lingerie & Sleepwear", "Swimwear"],
+  "Men's Clothing": ["Tops & Shirts", "Bottoms", "Outerwear", "Suits & Formal", "Activewear", "Underwear & Sleepwear"],
+  "Kids & Baby": ["Girls' Clothing", "Boys' Clothing", "Baby & Toddler", "Kids' Shoes", "School Uniform"],
+  "Shoes": ["Women's Shoes", "Men's Shoes", "Kids' Shoes", "Athletic Shoes", "Boots", "Sandals & Flip Flops"],
+  "Bags & Luggage": ["Handbags", "Backpacks", "Totes & Shoppers", "Crossbody Bags", "Luggage & Suitcases"],
+  "Accessories": ["Jewellery", "Watches", "Hats & Caps", "Belts", "Scarves & Wraps", "Sunglasses", "Wallets & Cardholders"],
+  "Vintage & Designer": ["Vintage", "Designer", "Streetwear", "Band Merch"],
+  "Sports & outdoor": ["Activewear", "Camping & Hiking", "Cycling", "Yoga & Pilates", "Water Sports"]
+};
 function canonCategory(v) {
   if (typeof v !== "string") return null;
   const s = v.trim();
   if (!s) return null;
   const known = ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Athletic"];
   for (const k of known) if (s.toLowerCase() === k.toLowerCase()) return k;
-  return null;
+  const parts = s.split("/");
+  if (parts.length > 2) return null;
+  const dept = Object.keys(TAX_TREE).find(d => d.toLowerCase() === parts[0].toLowerCase());
+  if (!dept) return null;
+  if (parts.length === 1) return dept;
+  const sub = (TAX_TREE[dept] || []).find(x => x.toLowerCase() === parts[1].toLowerCase());
+  return sub ? dept + "/" + sub : null;
 }
 
 // Listings grew columns after the table was first created. The deploy token

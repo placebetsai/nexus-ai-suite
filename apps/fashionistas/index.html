@@ -403,6 +403,13 @@ nav.tabbar a.on{color:var(--accent)}
 .dm-msg span{font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
 .dm-msg i{font-size:10.5px;opacity:.65;font-style:normal;text-align:right}
 .dm-compose{display:flex;gap:8px;margin-top:10px}
+/* The floating tour button (#hc-fab, right:14px, 48px wide) parks exactly over
+   the right-hand end of the composer. The composer is the last thing in the
+   column, so it cannot be scrolled clear of it: on a phone the Send button's
+   centre point tested as `#hc-fab`, meaning a real tap on Send opened the tour
+   instead of sending the message. Reserve the button's column up to the width
+   where the centred 1060px wrap moves clear of it (~1160px). */
+@media (max-width:1160px){.dm-compose{padding-right:54px}}
 .dm-compose .input{flex:1}
 @media (prefers-reduced-motion:reduce){.dm-msg{transition:none}}
 
@@ -722,13 +729,20 @@ nav.tabbar a.on{color:var(--accent)}
 .xl-connect-note{font-size:13.5px;line-height:1.55;margin:0 0 12px;color:var(--mut)}
 .xl-connect-note b{color:var(--ink)}
 .xl-connect-grid{display:flex;flex-direction:column;gap:0}
-.xl-connect-row{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--line)}
+/* The row used to be a nowrap flex line whose last child (the action buttons)
+   was flex:none, so its max-content width — 334px of buttons plus a status tag
+   — could not shrink. On a 390px phone that pushed the page's minimum width to
+   ~540px and mobile Chrome widened the whole layout viewport to 556px: the
+   Multilist screen came up zoomed-out and horizontally scrollable. Wrapping the
+   row lets the actions drop onto their own line, and letting the actions shrink
+   keeps them inside the card instead of hanging over its edge. */
+.xl-connect-row{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .xl-connect-row:last-child{border-bottom:0}
 .xl-connect-name{flex:1;min-width:0}
 .xl-connect-name b{display:block;font-size:14.5px}
 .xl-connect-name span{font-size:12px;color:var(--mut);line-height:1.4}
 .xl-connect-status{flex:none}
-.xl-connect-actions{display:flex;gap:7px;flex-wrap:wrap;flex:none}
+.xl-connect-actions{display:flex;gap:7px;flex-wrap:wrap;flex:0 1 auto;min-width:0}
 .tag.needs{background:var(--soft);color:var(--mut)}
 .tag.connected{background:var(--good-soft);color:var(--good)}
 .tag.soon{background:rgba(124,92,255,.12);color:var(--accent2)}
@@ -1280,7 +1294,7 @@ textarea.input{font-family:inherit}
    <a href="/contact/" style="color:var(--mut)">Contact</a>
    <a href="/about/" style="color:var(--mut)">About</a>
    <a href="/privacy/" style="color:var(--mut)">Privacy</a>
-   <a href="/cdn-cgi/l/email-protection#3e585f4d56575150574d4a5f4d0f0709077e59535f5752105d5153" style="color:var(--mut)"><span class="__cf_email__" data-cfemail="e58384968d8c8a8b8c96918496d4dcd2dca58288848c89cb868a88">[email&#160;protected]</span></a>
+   <a href="mailto:fashionistas1979@gmail.com" style="color:var(--mut)">fashionistas1979@gmail.com</a>
   </nav>
   <p style="margin:0">fashionistas.ai · AI listing drafts you post yourself · Boca Raton, FL</p>
  </footer>
@@ -1408,7 +1422,7 @@ textarea.input{font-family:inherit}
 </div>
 
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script>
 const API = "https://fashionistas-api.fashionistas1979.workers.dev";
 let TOKEN = localStorage.getItem("fash_token") || "";
 let USER = JSON.parse(localStorage.getItem("fash_user") || "null");
@@ -1558,11 +1572,38 @@ function navDrawer(open){
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") navDrawer(false); });
 const TITLES = { home:["Home","Your listings, your sales and what to do next."], shop:["Shop","See what is for sale from other sellers."], closet:["My clothes","Everything you're selling. Search it, sort it, fix anything that's not ready."], snap:["Take a photo","Snap one item — we'll name it, size it and suggest a price."], sell:["Selling tools","Work out what you'll keep, what postage costs and what to charge."], xl:["Multilist","One item, every shop — fees and copy worked out for each."], map:["Near you","Pop-up shops and sellers close to you, on a map."], more:["More","Your sales, profit, shopping trips, replies and downloads."] };
-async function go(v){
-  document.querySelectorAll("nav.tabbar a, #topnav a, #drawer-links a").forEach(a => a.classList.toggle("on", a.dataset.v === v));
-  navDrawer(false);
-  const [t, sub] = TITLES[v] || ["",""];
-  kineticTitle(t); $("#view-sub").textContent = sub;
+/* ── one screen at a time ────────────────────────────────────────────────
+   Every screen render is async — each one fetches before it paints — so two
+   requests landing close together used to race and the SLOWEST won: tap Home
+   then Shop quickly and Home could repaint on top of the Shop you had just
+   asked for, and the login flow's go("home") could land after a Shop that was
+   already in flight (seen as a Shop tab that never showed its grid). The tab
+   highlight and the title still update instantly; only the paints are
+   serialised, in the order they were requested, so the last screen the user
+   asked for is the one that sticks. */
+let VIEW_QUEUE = Promise.resolve();
+let VIEW_IN_TASK = false;
+function enqueuePaint(task){
+  // A paint that asks for another paint from its own synchronous body must not
+  // queue behind itself (it would wait forever), so the flag is raised only for
+  // as long as task() runs synchronously — it drops at task()'s first await.
+  // That distinction is the bug being fixed: holding the flag across the awaits
+  // made an OUTSIDE click arriving mid-flight look "nested" and run immediately,
+  // so the older, slower paint still landed last and overwrote the screen the
+  // user had actually asked for (tap Shop while Home was still loading and
+  // Home repainted on top of it). Nothing in here awaits a queued paint, so
+  // there is no path that could queue behind itself across an await.
+  if (VIEW_IN_TASK) return Promise.resolve().then(task);
+  const p = VIEW_QUEUE.catch(() => null).then(() => {
+    let ret;
+    VIEW_IN_TASK = true;
+    try { ret = task(); } finally { VIEW_IN_TASK = false; }
+    return ret;
+  });
+  VIEW_QUEUE = p.catch(() => null);
+  return p;
+}
+function paintView(v){
   const el = $("#screen");
   el.classList.remove("view-in"); void el.offsetWidth; el.classList.add("view-in");
   if (v === "home") return renderHome(el);
@@ -1573,6 +1614,13 @@ async function go(v){
   if (v === "xl") return renderXL(el);
   if (v === "map") return renderMap(el);
   if (v === "more") return renderMore(el);
+}
+function go(v){
+  document.querySelectorAll("nav.tabbar a, #topnav a, #drawer-links a").forEach(a => a.classList.toggle("on", a.dataset.v === v));
+  navDrawer(false);
+  const [t, sub] = TITLES[v] || ["",""];
+  kineticTitle(t); $("#view-sub").textContent = sub;
+  return enqueuePaint(() => paintView(v));
 }
 
 /* ================= ROLE SWITCH + SHOP (buyer marketplace) ================= */
@@ -1589,9 +1637,12 @@ function roleSwitchHtml(){
 function refreshTips(){ try{ if (window.syncTips) window.syncTips(document); }catch(e){} }
 S.market = S.market || []; S.marketCount = S.marketCount || 0;
 S.marketQ = S.marketQ || ""; S.marketCat = S.marketCat || ""; S.marketSort = S.marketSort || "new";
-/* Public Shop feed hygiene (client-side): hide QA/test/bulk + no-photo junk,
-   and normalize platform pills to the six draft targets. API still returns
-   the full set — clean at display time until the worker filters. */
+/* Public Shop feed hygiene (client-side): hide QA/test/bulk junk words (the
+   staging rows themselves have been deleted from the database, so this only
+   catches whatever turns up next) and normalize platform pills to the six
+   draft targets. Listings WITHOUT a photo are deliberately NOT hidden —
+   marketCard() draws a category mark for them — because hiding them made the
+   header count disagree with the cards a shopper could actually see. */
 const SHOP_SIX = ["depop","ebay","poshmark","mercari","vinted","grailed"];
 const SHOP_SIX_LABEL = { depop:"Depop", ebay:"eBay", poshmark:"Poshmark", mercari:"Mercari", vinted:"Vinted", grailed:"Grailed" };
 function shopPlatformCanon(p){
@@ -1619,7 +1670,10 @@ function shopNormalizePlatforms(list){
 }
 function shopIsJunkListing(m){
   if (!m) return true;
-  if (!m.photo_url) return true;
+  // No photo is NOT junk: marketCard() draws a category mark for those, and
+  // filtering them here hid real listings — a header counting 11 items over a
+  // grid of 2 reads like a bug. The staging backlog that needed hiding has
+  // since been deleted from the database, so only real junk words are left.
   const t = String(m.title || "").toLowerCase();
   if (!t.trim()) return true;
   // QA / test / bulk / verify patterns from staging feed
@@ -2278,7 +2332,7 @@ async function renderShop(el){
     el.innerHTML = roleSwitchHtml()
     + `<div class="empty"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>`
     + `<p>${escapeHtml(failMsg)}</p>`
-    + `<button class="btn btn-soft" onclick="renderShop($('#screen'))" data-tip="Try loading what is for sale again.">Try again</button></div>`;
+    + `<button class="btn btn-soft" onclick="go('shop')" data-tip="Try loading what is for sale again.">Try again</button></div>`;
     refreshTips();
     return;
   }
@@ -2371,7 +2425,10 @@ function marketRefresh(){
     const pub = shopPublicRows(S.market||[]).length;
     const hidden = Math.max(0, raw - pub);
     const base = rows.length ? (rows.length + (rows.length===1?" item":" items") + qbit + where) : "";
-    const note = hidden ? ((base ? base + " · " : "") + "Hiding " + hidden + " QA/test/no-photo listings") : base;
+    /* Plain words: "QA/test/no-photo" is developer shorthand a shopper never
+       asked for. After the database purge nothing is hidden in practice, but
+       keep the line honest for whatever turns up next. */
+    const note = hidden ? ((base ? base + " · " : "") + "Hiding " + hidden + " " + (hidden === 1 ? "listing" : "listings")) : base;
     cc.textContent = note;
   }
   if (!rows.length){
@@ -2418,7 +2475,11 @@ function marketCard(m, i){
   + (plats.length ? `<div style="margin-top:5px">` + plats.map(p=>`<span class="pill">${escapeHtml(p)}</span>`).join("") + `</div>` : "")
   + `</div></div>`;
 }
-async function openMarketItem(id){
+/* Writers that paint #screen directly (called from buttons rather than go())
+   run through the same queue, so a slow one can't overwrite a screen the user
+   has since asked for. */
+function openMarketItem(id){ return enqueuePaint(() => openMarketItemNow(id)); }
+async function openMarketItemNow(id){
   kineticTitle("This item"); $("#view-sub").textContent = "Details from the seller — check it before you buy.";
   const el = $("#screen");
   el.innerHTML = showLoader();
@@ -3831,7 +3892,7 @@ async function analyzeImage(b64, previewUrl){
  CURRENT.ai = { ...d, _preview: previewUrl, _b64: b64 };
  w.innerHTML = aiResult(d, previewUrl);
  } catch(e){
- w.innerHTML = `<div class="card"><div class="empty" style="padding:12px"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7.5' width='16' height='12' rx='3.5'/><path d='M12 4v3.5M9 13v1.6M15 13v1.6'/><path d='M9.5 19.5v1.5M14.5 19.5v1.5'/></svg>We couldn't read that photo: <br><span class="mut">${escapeHtml(e.message)}</span><br><br><button class="btn btn-soft btn-sm" onclick="renderSnap($('#screen'))" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">Try again</button></div></div>`;
+ w.innerHTML = `<div class="card"><div class="empty" style="padding:12px"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7.5' width='16' height='12' rx='3.5'/><path d='M12 4v3.5M9 13v1.6M15 13v1.6'/><path d='M9.5 19.5v1.5M14.5 19.5v1.5'/></svg>We couldn't read that photo: <br><span class="mut">${escapeHtml(e.message)}</span><br><br><button class="btn btn-soft btn-sm" onclick="go('snap')" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">Try again</button></div></div>`;
  }
 }
 function aiResult(d, previewUrl){
@@ -3847,7 +3908,7 @@ function aiResult(d, previewUrl){
  </div>
  <p class="mut" style="margin:10px 0">Suggesting a resale range of <b>${money(d.priceMin)} – ${money(d.priceMax)}</b> in <b>${escapeHtml(d.category)}</b>. ${d.sizeHint ? "Likely size: "+escapeHtml(d.sizeHint)+". " : ""}${d.note?escapeHtml(d.note):""}</p>
  <button class="btn btn-accent" onclick="toListingForm()" data-tip="Opens the full listing form with every detail you can fill in." title="Opens the full listing form with every detail you can fill in.">Fill in the listing →</button>
- <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px" onclick="renderSnap($('#screen'))" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">⟲ Take a photo of a different item</button>
+ <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px" onclick="go('snap')" data-tip="Starts a fresh photo of an item." title="Starts a fresh photo of an item.">⟲ Take a photo of a different item</button>
  </div>`;
 }
 function condFull(c){ return c ? c[0].toUpperCase()+c.slice(1) : ""; }
@@ -4647,7 +4708,8 @@ async function suggestPrice(){
 function dmRender(el, nodes){
   el.innerHTML = `<div id="dm-list">${nodes}</div>`;
 }
-async function messagesScreen(){
+function messagesScreen(){ return enqueuePaint(messagesScreenNow); }
+async function messagesScreenNow(){
   clearInterval(CURRENT.dmTimer);
   kineticTitle("Messages"); $("#view-sub").textContent = "Talk to other accounts right inside the app.";
   const el = $("#screen"); el.innerHTML = showLoader();
@@ -4686,7 +4748,8 @@ async function messagesScreen(){
       </div>` : ""}`);
   } catch(e){ dmRender(el, `<div class="empty">${escapeHtml(e.message)}</div>`); }
 }
-async function threadScreen(id){
+function threadScreen(id){ return enqueuePaint(() => threadScreenNow(id)); }
+async function threadScreenNow(id){
   clearInterval(CURRENT.dmTimer);
   const who = (S.dmContacts||[]).find(x => x.id === id);
   CURRENT.dmPeer = id;
