@@ -210,6 +210,34 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       (`tests/e2e/env-vars.mjs`, **0 JavaScript errors**, every ≥400 accounted for as the
       test's own probing).
 
+- [x] **Every public site was publishing a personal Gmail address.** (Raised 2026-09-28:
+      *"GET THE FUCKING EMAIL ADDRESS OUTTA THERE"*.) **DONE 2026-09-28** — fashionistas
+      `27fab1b`, placebets `e7eed5e`.
+      **fashionistas.ai** printed it in the contact lede (*"we read every note at …"*), in
+      6 footers, in **3 meta descriptions** (so Google and social previews carried it), in
+      privacy's *"Email us to request account deletion"* and on the about page. Cloudflare's
+      Email Obfuscation kept it out of the source but **decoded it back onto the screen** —
+      that is why it was plainly visible. **placebets.ai** carried it in the **Organization
+      JSON-LD on every page** (structured data handed straight to Google) plus rendered text
+      on `/about`, `/privacy`, `/terms`.
+      Removed from every rendered surface and from source. **Real Chrome 6/6** for
+      fashionistas (`/ /contact /about /privacy /fees /how-to-crosspost`): 0 visible, 0 in
+      source once the form's `action` is excluded, **0 `mailto:` links anywhere**, 0 JS
+      errors. **Real Chrome 5/5** for placebets: 0 occurrences rendered *and* in source,
+      JSON-LD still parses as **valid JSON** with `email=info@placebets.ai`, and the new
+      *contact form* link on `/about` was **clicked through** to `/contact` with the form
+      visible. **Delivery proved, not assumed:** one labelled test submission per site
+      POSTed to `formsubmit.co` and redirected to its success page (`?sent=1` /
+      `/contact/thanks`) with 0 ≥400 responses. The FormSubmit `action` attributes are
+      **kept deliberately** — they are an attribute, never rendered, and they are the only
+      thing that actually delivers the message. **Sweep of all 9 live URLs afterwards:**
+      the only remaining personal address anywhere is that one attribute; every other site
+      already publishes a branded address (`admin@createstuff.ai`, `info@placebets.ai`,
+      `support@marketpicks.ai`).
+      **Unproven and stated as such:** that mail to `info@placebets.ai` reaches an inbox —
+      MX + SPF are live (`route1/2/3.mx.cloudflare.net`) but no token here can read that
+      zone's routing rules.
+
 ### P1 — the visible "they can do that" list
 - [x] **Discussion mode**: talk to the Agent about an idea without spending a build
       (Base44 has this explicitly; we were spending a build on every message).
