@@ -50,14 +50,15 @@
 // It has to be a SEPARATE origin: a published site is user-generated HTML and
 // must never run on an origin that can read the builder's cs_token.
 //
-// sites.createstuff.ai is already attached to that project and is the intended
-// host. It needs one CNAME in the createstuff.ai zone
-//   sites  CNAME  createstuff-sites.pages.dev  (proxied)
-// and no token on this machine can write DNS there — all three in .secrets/cf.env
-// return 403 / error 10000. Until that record exists we ship the pages.dev host,
-// because a link that resolves beats a pretty one that does not. Flip this one
-// constant when the record lands; both hosts serve the same files forever.
-const PUBLISH_HOST = "https://createstuff-sites.pages.dev";
+// sites.createstuff.ai is attached to that project and is the host we publish.
+// The one CNAME it needed landed in the createstuff.ai zone on 2026-09-27
+//   sites  CNAME  createstuff-sites.pages.dev  (proxied)   id d1de453269b1685ca98f174e8eee0316
+// written with the user-issued DNS token `raspy-credit-99f5` (see .secrets/cf.env
+// -> CF_DNS_TOKEN_CREATESTUFF); the three older tokens in that file still have no
+// Zone.DNS:Edit and keep returning error 10000, so that one is the only writer.
+// The Pages custom domain went active the same night. Both hosts serve the same
+// files forever: the old pages.dev links keep working, this is the pretty one.
+const PUBLISH_HOST = "https://sites.createstuff.ai";
 
 const enc = new TextEncoder();
 let SECRET = null;

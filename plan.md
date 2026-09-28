@@ -8,6 +8,26 @@
 > - CreateStuff app → account `2765cb2786006552f33cc3dfe0b680a1`, `CS_API_TOKEN` (dark-cell-ecf9)
 > - All other Nexus apps → account `7eb89b01e9c3bec41ee24db8ecbe77f8`, `CF_API_TOKEN` (yellow-math-1874)
 > - Both VERIFIED live 2026-09-23. See handoff.md → Credentials & Config.
+>
+> **🔑 DNS WRITER for `createstuff.ai` — issued by the user 2026-09-27, DO NOT LOSE.** Token **name `raspy-credit-99f5`**, id prefix `cfat_qL7N…84da4`, account `2765cb2786006552f33cc3dfe0b680a1`, scope **Zone.DNS:Edit on `createstuff.ai` (zone `ca23f072cf08ee77d34c88ce36598265`)**. Raw value lives in **two** places, never in this public repo: `.secrets/cf.env` → `CF_DNS_TOKEN_CREATESTUFF` (gitignored), and the private repo `placebetsai/joffe-federation-memory` → `memory/reference_cf_dns_createstuff_token.md`. It is the **only** credential found on this machine that can write DNS to that zone: the three older tokens in `.secrets/cf.env` (`CF_API_TOKEN`, `CF_DNS_TOKEN`, `CS_API_TOKEN`) and all 15 GitHub Actions secrets across 13 other repos return `error 10000` / `403` on it. **Never suggest rotating or revoking it**; if it returns 401/403, tell the user immediately so a replacement can be issued.
+> - Load it: `set -a; source .secrets/cf.env; set +a; curl -H "Authorization: Bearer $CF_DNS_TOKEN_CREATESTUFF" "https://api.cloudflare.com/client/v4/zones/$CREATESTUFF_ZONE_ID/dns_records"`
+
+### DONE 2026-09-27 — `sites.createstuff.ai` custom publish host (was blocked for weeks)
+- [x] **CNAME created** in the `createstuff.ai` zone: `sites → createstuff-sites.pages.dev`, proxied,
+      record id `d1de453269b1685ca98f174e8eee0316`, written with token `raspy-credit-99f5`.
+- [x] **Pages custom domain went `active`** (`validation http` → `active/active`); the host answers
+      **HTTP 200**.
+- [x] **`PUBLISH_HOST` flipped** in `workers/createstuff-api/src/index.js` to
+      `https://sites.createstuff.ai`, worker redeployed (`wrangler exit 0`, version
+      `df3960ea`, `/api/health` 200).
+- [x] **Live proof, end to end:** `POST /api/ai/publish` now returns
+      `https://sites.createstuff.ai/179/index.html` (was `…pages.dev`); that URL serves **200,
+      3039 bytes, `<title>Steady — Savings Goal Tracker</title>`**, byte-identical to the old host
+      (`cmp` → identical), `x-served-by: edge`. **Real Chrome render 7/7** — HTTP 200, h1 rendered,
+      652 chars of content, **7 subresources, 0 console errors, 0 failed requests**.
+- [x] **Gates:** `sites-proxy/worker.test.mjs` **7/7**, `versions.test.mjs` **8/8**,
+      `cs-inline.test.mjs` **6/6**, `npx acorn --ecma2022 --module` on the changed file **OK**.
+- [x] Old `createstuff-sites.pages.dev` links still serve the same bytes — nothing broke.
 
 ### Phase 0: Audit (DONE 2026-09-23 — see AUDIT-REPORT.md)
 - [x] Verify all 5 apps live (3 healthy, MarketPicks URL wrong, CreateStuff worker dead)

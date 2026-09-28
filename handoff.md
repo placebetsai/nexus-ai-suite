@@ -238,6 +238,25 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-27 — `sites.createstuff.ai` (the branded publish host) is LIVE.** The one
+  thing that had blocked it for weeks was a single missing DNS record plus the absence of any
+  credential here that could write it. Fixed: user issued token **`raspy-credit-99f5`**
+  (`cfat_qL7N…84da4`, account `2765cb2786006552f33cc3dfe0b680a1`, **Zone.DNS:Edit on
+  `createstuff.ai` / zone `ca23f072cf08ee77d34c88ce36598265`**) → CNAME
+  `sites → createstuff-sites.pages.dev` (proxied, id `d1de453269b1685ca98f174e8eee0316`) → Pages
+  custom domain `active` → `PUBLISH_HOST` flipped in `workers/createstuff-api/src/index.js` →
+  worker redeployed (`wrangler exit 0`, `/api/health` 200). **Proof:** publish returns
+  `https://sites.createstuff.ai/179/index.html`, serves **200 / 3039 bytes / `<title>Steady —
+  Savings Goal Tracker</title>`**, byte-identical to the old host, `x-served-by: edge`; real Chrome
+  **7/7** (0 console errors, 0 failed requests, 7 subresources); gates `sites-proxy` 7/7,
+  `versions` 8/8, `cs-inline` 6/6, acorn OK. **The raw token is NOT in this repo (it is public)** —
+  it lives in `.secrets/cf.env` → `CF_DNS_TOKEN_CREATESTUFF` (gitignored) and in the PRIVATE repo
+  `placebetsai/joffe-federation-memory` → `memory/reference_cf_dns_createstuff_token.md`.
+  **It is the only DNS-writing credential on this machine**; the three older `.secrets/cf.env`
+  tokens and all 15 GitHub Actions secrets across 13 other repos return `error 10000`/`403` on that
+  zone. **Do not rotate or revoke it**; if it starts returning 401/403, tell the user at once so a
+  replacement can be issued. Old `createstuff-sites.pages.dev` links keep serving the same bytes.
+
 - ✅ **RESOLVED** — the `createstuff.ai` routes `/api/builds`, `/api/templates`, `/api/github/create-repo`, `/api/github/push`, `/api/projects/:id/download.zip` still **do not exist on forge-api**; they are now served by a **client-side shim in `app.js`** (`csShim()`), each backed by a real call: real `generate`/`publish`, a real in-browser ZIP (CRC32 verified by `unzip -t`), and real `api.github.com` writes using the user's own PAT. See §3.7.
 - ✅ **RESOLVED** — `deploy.sh` worker branch (`cd` into the dir before `wrangler deploy`); `bash -n` passes.
 - ✅ **RESOLVED** — stale `placebetsai/fashionistas-ai` + `placebetsai/createstuff-ai` pushed.
