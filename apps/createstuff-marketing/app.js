@@ -555,16 +555,36 @@ function csInline(files) {
   if (!doc) return '';
   const css = files.filter(f => /\.css$/i.test(f.path)).map(f => f.content).join('\n');
   const js = files.filter(f => /\.js$/i.test(f.path)).map(f => f.content).join('\n');
-  if (css && !/<style[\s>]/i.test(doc)) {
+  // Put the app's own styles in the document unless they are already there.
+  // The test is the text itself rather than "does a <style> tag exist": a page
+  // with one small inline style and everything else linked would otherwise be
+  // left with no styles at all once the local links are dropped below.
+  if (css && !doc.includes(css)) {
     if (/<\/head>/i.test(doc)) doc = doc.replace(/<\/head>/i, `<style>\n${css}\n</style></head>`);
     else doc = `<style>\n${css}\n</style>` + doc;
   }
-  if (js) {
+  if (js && !doc.includes(js)) {
     const safe = js.replace(/<\/script/gi, '<\\/script');
-    if (/<script[^>]+src=/i.test(doc)) doc = doc.replace(/<script[^>]+src=[^>]*>\s*<\/script>/i, `<script>\n${safe}\n</script>`);
+    if (/<script[^>]+src=[^>]*>\s*<\/script>/i.test(doc)) doc = doc.replace(/<script[^>]+src=[^>]*>\s*<\/script>/i, `<script>\n${safe}\n</script>`);
     else if (/<\/body>/i.test(doc)) doc = doc.replace(/<\/body>/i, `<script>\n${safe}\n</script></body>`);
     else doc += `<script>\n${safe}\n</script>`;
   }
+  // A preview is one document shown in a frame, so a relative href does not
+  // point at this app — it points at whoever is serving the frame, which is
+  // the builder itself. Once the file's contents are inlined above, that link
+  // can only lay somebody else's CSS over the app's own, so it comes out.
+  // Absolute URLs (fonts, CDNs) are left exactly as they were.
+  doc = doc.replace(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi, (tag) => {
+    const m = tag.match(/href=["']([^"']+)["']/i);
+    const href = m ? m[1].trim() : '';
+    // Absolute URLs (fonts, CDNs) are the page's own business and stay.
+    if (!href || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) return tag;
+    // Anything local resolves against whoever serves this frame — the builder —
+    // so it can only lay the wrong stylesheet over the app's own, which is
+    // already inlined above. A file the build does not contain would 404 on the
+    // published site anyway, so dropping it here tells the same story.
+    return '';
+  });
   return doc;
 }
 
@@ -600,6 +620,11 @@ async function csStartBuild(promptText, projectId) {
       if (!b) return;
       b.files = files;
       b.model = r && r.model;
+      // The id of the row the SERVER keeps for this run. Version history and
+      // going back to a version are server-side (they must be — history that
+      // lives in one browser is history you lose in every other one), and
+      // without this link the panel could only ever show this tab's builds.
+      if (r && r.buildId) b.server_build_id = r.buildId;
       b.generated_code = csInline(files);
       const bytes = files.reduce((n, f) => n + String(f.content || '').length, 0);
       // The classifier answered instead of building. That is an answer, not a
@@ -640,6 +665,17 @@ async function csStartBuild(promptText, projectId) {
 }
 
 // ---- dispatcher: returns {ok:true,value} if handled, {ok:false} if it's a real API path ----
+// The server's row id for a build the builder knows by its local id (b_…).
+// Returns null when there is no link — that is the honest answer for records
+// saved before the ids were stored, and callers use it to decide between
+// "go to the server" and "show what this browser has".
+function csServerBuildId(id) {
+  const s = String(id);
+  if (/^\d+$/.test(s)) return s;                    // already a server id
+  const b = csBuilds()[s];
+  return b && b.server_build_id ? String(b.server_build_id) : null;
+}
+
 async function csShim(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   let body = null;
@@ -674,12 +710,18 @@ async function csShim(path, options = {}) {
     return { ok: true, value: b };
   }
 
-  // GET /api/builds/:id/versions -> REAL history for this project.
-  // forge-api has no /versions route (its checkpoints are not listable), so this
-  // returns builds we actually ran: real prompt, real code length, real timestamp,
-  // and the real checkpoint id the server handed back on publish.
+  // GET /api/builds/:id/versions -> the SERVER's history for this project.
+  // This used to be answered from localStorage, which meant history existed
+  // only in the browser that ran the builds: open the app somewhere else and
+  // the panel printed "Could not load earlier versions." The server keeps
+  // every build for the project (the generate call inserts one per run), so
+  // the list now comes from there and is the same on every device.
   const vm = path.match(/^\/api\/builds\/([^/]+)\/versions$/);
   if (method === 'GET' && vm) {
+    const sid = csServerBuildId(vm[1]);
+    if (sid) return { ok: true, value: await apiDirect(`/api/builds/${sid}/versions`) };
+    // No link to a server row (a record saved before this existed): show what
+    // this browser has rather than a dead end, but without a way back.
     const b = csBuilds()[vm[1]];
     if (!b) throw new Error('API error: 404');
     const hist = Object.values(csBuilds())
@@ -695,8 +737,22 @@ async function csShim(path, options = {}) {
         created_at: new Date(x.started || Date.now()).toISOString(),
         checkpoint_id: x.checkpoint_id || null,
         status: x.status,
+        current: i === hist.length - 1,
       })),
     };
+  }
+
+  // POST /api/builds/:id/restore -> put an earlier version back as the current
+  // one. The server validates it (it must still open), stores it as a NEW
+  // build and rewrites the project's files, so nothing is destroyed by going
+  // back and the step back can itself be stepped back from.
+  const rm = path.match(/^\/api\/builds\/([^/]+)\/restore$/);
+  if (method === 'POST' && rm) {
+    const sid = csServerBuildId(rm[1]);
+    if (!sid) {
+      throw new Error('That version was saved before version history existed, so there is nothing to put back. Build it again to get a copy you can return to.');
+    }
+    return { ok: true, value: await apiDirect(`/api/builds/${sid}/restore`, { method: 'POST', body: JSON.stringify({}) }) };
   }
 
   // POST /api/builds/:id/deploy -> REAL forge-api publish
@@ -805,6 +861,14 @@ async function csDownloadZip(projectId) {
 async function api(path, options = {}) {
   const shimmed = await csShim(path, options);      // dead routes -> real backends
   if (shimmed.ok) return shimmed.value;
+  return apiDirect(path, options);
+}
+
+// The real request with no shim in front of it. The shim itself has to reach
+// the server — version history and "go back to one" both live there — and
+// calling back through api() from inside csShim would re-enter the shim, which
+// for /versions is an infinite loop because that path is what it shims.
+async function apiDirect(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
@@ -1649,6 +1713,74 @@ function setupBuilder() {
       }
     };
   });
+
+  // Open the builder onto the last app's finished preview. Put online and
+  // Version history hang off this panel, and it used to be painted only in the
+  // seconds after a build finished — leave the page and your own versions were
+  // unreachable, which made the feature decorative for anyone who was not
+  // standing there when the build ended.
+  csShowLastBuild();
+}
+
+// The finished-build panel: the preview itself, the two things you can do with
+// it, and the version list underneath. Pulled out of the build poller so that
+// going back to an earlier version repaints exactly this panel instead of
+// leaving a stale preview on screen while the files underneath it have changed.
+function csPreviewPanel(build) {
+  if (!build || !build.generated_code) return '';
+  const id = String(build.id);
+  return `
+    <iframe id="live-preview" sandbox="allow-scripts" style="width:100%;height:100%;min-height:400px;border:none;border-radius:8px;background:#fff" srcdoc="${escapeHtml(build.generated_code)}"></iframe>
+    <div style="display:flex;gap:.5rem;padding:.5rem;background:var(--bg2);border-top:1px solid var(--border)">
+      <button onclick="deployBuild('${id}')" class="btn-primary" style="flex:1;padding:.5rem" data-tip="Puts this app on a web address other people can visit." title="Puts this app on a web address other people can visit."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg> Put online</button>
+      <button onclick="loadVersions('${id}')" style="flex:1;padding:.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer" data-tip="Earlier versions of this app, so you can go back to one." title="Earlier versions of this app, so you can go back to one."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7.5A2.5 2.5 0 0 0 5 5.5v13A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V8z"/><path d="M14 3v5h5"/></svg> Version history</button>
+    </div>
+    <div id="versions-panel" style="display:none;padding:.75rem;background:var(--bg2);border-top:1px solid var(--border);max-height:150px;overflow:auto"></div>
+  `;
+}
+
+// The most recent finished build, put on screen when the builder opens — the
+// entry point for Put online and Version history. Uses apiDirect for the build
+// itself: the shim answers that route from THIS browser's localStorage, so a
+// build that ran in any other browser would look like it never existed, which
+// is the very defect being fixed here. Best effort — no build yet means no
+// panel, and this must never surface an error to someone who just opened the page.
+let csPreviewSeq = 0;
+async function csShowLastBuild() {
+  const frame = document.getElementById('preview-frame');
+  if (!frame) return;
+  // init() calls setupBuilder() before a session exists, and asking the server
+  // for somebody's apps while signed out is a 401 — a failed request on every
+  // first visit, for a page nobody can see yet.
+  if (!isLoggedIn() || !getToken()) return;
+  const seq = ++csPreviewSeq;
+  try {
+    const list = await api('/api/projects');            // newest first
+    if (seq !== csPreviewSeq || currentPage !== 'builder') return;
+    const ps = (list && list.projects) || [];
+    for (const p of ps.slice(0, 6)) {
+      const bs = await api(`/api/builds?projectId=${p.id}`);
+      if (seq !== csPreviewSeq || currentPage !== 'builder') return;
+      const last = (bs.builds || []).find(b => b.status === 'completed');
+      if (!last) continue;
+      const b = await apiDirect(`/api/builds/${last.id}`);
+      if (!b) continue;
+      // Inline this build's own files for the preview. The stored preview is
+      // the bare index.html, whose <link href="styles.css"> resolves against
+      // whoever is serving the preview — which is this builder — so the app
+      // would come up wearing the builder's stylesheet instead of its own.
+      const html = (b.files && b.files.length) ? csInline(b.files) : b.generated_code;
+      if (!html) continue;
+      // setupBuilder() runs from init() and again when the page is shown, so
+      // this can arrive twice; the second paint would swap the whole frame —
+      // and any version list open in it — out from under the visitor.
+      if (seq !== csPreviewSeq || currentPage !== 'builder') return;
+      if (frame.querySelector('#live-preview') && frame.dataset.csBuild === String(b.id)) return;
+      frame.dataset.csBuild = String(b.id);
+      frame.innerHTML = csPreviewPanel({ id: b.id, generated_code: html });
+      return;
+    }
+  } catch { /* nothing built yet — the empty preview stands */ }
 }
 
 async function startBuild(prompt) {
@@ -1716,14 +1848,12 @@ async function startBuild(prompt) {
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>All done!';
 
           if (buildStatus.generated_code) {
-            previewFrame.innerHTML = `
-              <iframe id="live-preview" sandbox="allow-scripts" style="width:100%;height:100%;min-height:400px;border:none;border-radius:8px;background:#fff" srcdoc="${escapeHtml(buildStatus.generated_code)}"></iframe>
-              <div style="display:flex;gap:.5rem;padding:.5rem;background:var(--bg2);border-top:1px solid var(--border)">
-                <button onclick="deployBuild('${buildStatus.id}')" class="btn-primary" style="flex:1;padding:.5rem" data-tip="Puts this app on a web address other people can visit." title="Puts this app on a web address other people can visit."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg> Put online</button>
-                <button onclick="loadVersions('${buildStatus.id}')" style="flex:1;padding:.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer" data-tip="Earlier versions of this app, so you can go back to one." title="Earlier versions of this app, so you can go back to one."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7.5A2.5 2.5 0 0 0 5 5.5v13A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V8z"/><path d="M14 3v5h5"/></svg> Version history</button>
-              </div>
-              <div id="versions-panel" style="display:none;padding:.75rem;background:var(--bg2);border-top:1px solid var(--border);max-height:150px;overflow:auto"></div>
-            `;
+            // A builder-open fetch may still be in flight from when this page
+            // was opened; it must not paint the older app over the one that
+            // just finished. Same rule as everywhere else: one owner of the frame.
+            csPreviewSeq++;
+            previewFrame.dataset.csBuild = String(buildStatus.id);
+            previewFrame.innerHTML = csPreviewPanel(buildStatus);
           }
 
           csPlanStage('Online');
@@ -1801,17 +1931,57 @@ window.loadVersions = async function(buildId) {
   try {
     const versions = await api(`/api/builds/${buildId}/versions`);
     if (!versions.length) {
-      panel.innerHTML = '<p style="font-size:.8rem;color:var(--text2)">This is the first version — earlier ones will show up here.</p>';
+      panel.innerHTML = '<p style="font-size:.8rem;color:var(--text2)">This is the first version — later ones will show up here as you rebuild.</p>';
       return;
     }
+    // Newest first: the version you are on sits at the top and going back is
+    // always one row further down. Only versions the server can actually put
+    // back get the button — a row with no server copy must not promise one.
     panel.innerHTML = versions.map(v => `
-      <div style="display:flex;justify-content:space-between;font-size:.8rem;padding:.35rem 0;border-bottom:1px solid var(--border)">
-        <span>v${v.version} · ${escapeHtml(v.note || '')}</span>
-        <span style="color:var(--text3)">${v.code_len} chars · ${new Date(v.created_at).toLocaleString()}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;font-size:.8rem;padding:.4rem 0;border-bottom:1px solid var(--border)">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          <b style="color:var(--text2)">v${v.version}</b>${v.current ? ' · you are here' : ''} · ${escapeHtml(v.note || '')}
+        </span>
+        <span style="color:var(--text3);display:flex;gap:.6rem;align-items:center;flex-shrink:0">
+          <span>${Number(v.code_len || 0).toLocaleString()} chars · ${new Date(v.created_at).toLocaleString()}</span>
+          ${v.current || !Number(v.id) ? '' : `<button onclick="restoreVersion(${Number(v.id)})" style="padding:.15rem .5rem;border:1px solid var(--border);border-radius:5px;background:var(--bg3);color:var(--text);cursor:pointer;font-size:.78rem;white-space:nowrap" data-tip="Puts this version back as the current one. Nothing you have now is thrown away." title="Puts this version back as the current one. Nothing you have now is thrown away.">Go back to this</button>`}
+        </span>
       </div>
     `).join('');
   } catch (err) {
-    panel.innerHTML = '<p style="font-size:.8rem;color:var(--red)">Could not load earlier versions.</p>';
+    panel.innerHTML = `<p style="font-size:.8rem;color:var(--red)">Could not load earlier versions — ${escapeHtml(err && err.message ? err.message : 'try again')}</p>`;
+  }
+};
+
+// Put an earlier version back as the current one, then repaint the preview with
+// what the server says that version actually contains — never with a cached copy
+// from this tab, or the screen would show one thing and the next publish would
+// ship another.
+window.restoreVersion = async function(buildId) {
+  try {
+    const r = await api(`/api/builds/${buildId}/restore`, { method: 'POST', body: JSON.stringify({}) });
+    showToast(`Back to that version — ${r.files} file${r.files === 1 ? '' : 's'}`);
+    const frame = document.getElementById('preview-frame');
+    if (frame) {
+      // Invalidate any builder-open fetch still in flight: it must not repaint
+      // the frame with the version you have just left.
+      csPreviewSeq++;
+      frame.dataset.csBuild = String(r.buildId);
+      // Repaint from what the server just stored, inlined the same way a fresh
+      // build is inlined — the bare stored preview would put the builder's own
+      // stylesheet on screen instead of the version you went back to.
+      let html = r.previewHtml || '';
+      try {
+        const b = await apiDirect(`/api/builds/${r.buildId}`);
+        if (b && b.files && b.files.length) html = csInline(b.files) || html;
+      } catch { /* the stored preview still shows the version, one frame behind */ }
+      frame.innerHTML = csPreviewPanel({ id: r.buildId, generated_code: html });
+      loadVersions(r.buildId);
+    }
+  } catch (err) {
+    // The server's own reason ("…is missing styles.css, so it would open
+    // broken") beats anything this screen could guess.
+    showToast(err && err.message ? err.message : 'Could not go back to that version');
   }
 };
 

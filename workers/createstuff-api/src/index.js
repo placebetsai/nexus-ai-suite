@@ -416,6 +416,31 @@ function finalizeFiles(files) {
 
 // A build is only real if it produced a substantial index.html. Anything else
 // is reported as a failure rather than shipped as a success.
+// Turns the rows the version query returns (oldest first) into exactly what the
+// builder's panel renders: listed newest-first, numbered oldest-first, with the
+// version you are on flagged so it cannot be "gone back to". Exported so this
+// numbering is testable without a Worker runtime — an off-by-one here would
+// put the wrong row behind "Go back to this".
+export function versionsPayload(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const latestId = list.length ? list[list.length - 1].id : null;
+  return list.slice().reverse().map((b, i) => {
+    let codeLen = 0;
+    try {
+      codeLen = (JSON.parse(b.generated_code) || [])
+        .reduce((n, f) => n + String((f && f.content) || "").length, 0);
+    } catch { codeLen = String(b.generated_code || "").length; }
+    return {
+      id: b.id,
+      version: list.length - i, // ascending number even though we list descending
+      current: b.id === latestId,
+      note: String(b.prompt || "").replace(/\s+/g, " ").trim().slice(0, 90),
+      code_len: codeLen,
+      created_at: b.completed_at || b.started_at,
+    };
+  });
+}
+
 function siteOk(files) {
   const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
   return !!idx && idx.content.length >= 400 && /<html[\s>]/i.test(idx.content);
@@ -2304,6 +2329,86 @@ export default {
           agent_log: log, generated_code: row.preview_html || "", files,
           started_at: row.started_at, completed_at: row.completed_at,
         });
+      }
+
+      // ── VERSION HISTORY / GO BACK ────────────────────────────────────────
+      // A build keeps the exact bytes it produced, so a project's versions ARE
+      // its completed builds — this needs no extra table and cannot drift from
+      // what was actually shipped. The "Version history" button has been in the
+      // builder from the start ("Earlier versions of this app, so you can go
+      // back to one") and pointed at a route this Worker never had: every press
+      // answered 404 and the panel printed "Could not load earlier versions."
+      // The button, the list and the way back all exist now.
+      const versionsOf = path.match(/^\/api\/builds\/(\d+)\/versions$/);
+      if (versionsOf && method === "GET") {
+        const row = await env.DB.prepare("SELECT id, project_id FROM builds WHERE id=?").bind(+versionsOf[1]).first();
+        if (!row) return err("Not found", 404);
+        const owner = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+          .bind(row.project_id, user.sub).first();
+        if (!owner) return err("Not found", 404);
+        const r = await env.DB.prepare(
+          "SELECT id, prompt, generated_code, completed_at, started_at FROM builds " +
+          "WHERE project_id=? AND generated_code<>'' AND status='completed' ORDER BY id ASC LIMIT 100"
+        ).bind(row.project_id).all();
+        return json(versionsPayload(r.results || []));
+      }
+
+      const restoreOne = path.match(/^\/api\/builds\/(\d+)\/restore$/);
+      if (restoreOne && method === "POST") {
+        const src = await env.DB.prepare(
+          "SELECT id, project_id, prompt, generated_code, preview_html FROM builds WHERE id=?"
+        ).bind(+restoreOne[1]).first();
+        if (!src) return err("Not found", 404);
+        const owner = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+          .bind(src.project_id, user.sub).first();
+        if (!owner) return err("Not found", 404);
+
+        let files = [];
+        try {
+          const parsed = JSON.parse(src.generated_code || "[]");
+          // Older builds stored a bare HTML string here, not a file array —
+          // that is not a restorable set, and .filter on a string would 500.
+          if (Array.isArray(parsed)) files = parsed;
+        } catch { files = []; }
+        files = files.filter((f) => f && f.path && typeof f.content === "string");
+        if (!files.length) return err("That version has no files to go back to.", 409);
+        // Going back must not put a broken set in front of the visitor — the
+        // same two gates a fresh publish has to pass.
+        const missingNow = missingAssets(files);
+        if (missingNow.length) {
+          return err(`That version is missing ${missingNow.join(", ")}, so it would open broken.`, 409);
+        }
+        if (!siteOk(files)) {
+          return err("That version has no usable index.html, so it would open blank.", 409);
+        }
+
+        // Append-only undo: the version you left is still stored, and this
+        // restore becomes the newest build. Nothing is ever destroyed by going
+        // back, so "back" can itself be undone.
+        const now = new Date().toISOString();
+        const ins = await env.DB.prepare(
+          "INSERT INTO builds (project_id, status, prompt, generated_code, preview_html, agent_log, started_at, completed_at) VALUES (?,?,?,?,?,?,?,?)"
+        ).bind(
+          src.project_id, "completed", String(src.prompt || "").slice(0, 4000),
+          src.generated_code, src.preview_html,
+          JSON.stringify([{ agent: "Restore", message: `Went back to the version from build ${src.id}`, at: now }]),
+          now, now
+        ).run();
+        const newId = ins.meta.last_row_id;
+        // project_files is what /api/ai/publish reads, so the restored bytes
+        // have to land there or the next publish would ship the old version.
+        await saveFiles(env, src.project_id, files, newId);
+        await cacheDrop(env, buildsListKey(src.project_id));
+        // The project's own timestamp moves with it. The app list is ordered by
+        // updated_at, so leaving it behind would keep the app you just went
+        // back on looking older than ones nobody has touched — and the cached
+        // list would keep saying so.
+        await env.DB.prepare("UPDATE projects SET updated_at=? WHERE id=?")
+          .bind(now, src.project_id).run();
+        await cacheDrop(env, projectsListKey(user.sub));
+        // previewHtml goes back with the answer so the screen can repaint from
+        // what the server just stored, not from anything cached in the tab.
+        return json({ ok: true, restoredFrom: src.id, buildId: newId, files: files.length, previewHtml: src.preview_html || "" });
       }
 
       // build history (app.js shims most of this, but the route is harmless)
