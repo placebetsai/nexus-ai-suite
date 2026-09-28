@@ -384,6 +384,20 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   .mode-btn:focus-visible{outline:2px solid var(--accent,#4f8cff);outline-offset:2px}
   .mode-btn.active{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600}
   .mode-hint{font-size:.68rem;color:var(--text3);margin-left:.1rem}
+  .env-lead{font-size:.78rem;color:var(--text3);margin:.35rem 0 .7rem}
+  .env-lead code{font-family:var(--font-mono);background:var(--bg);padding:.05rem .3rem;border-radius:4px;color:var(--text)}
+  .env-add{display:flex;gap:.5rem;align-items:center;margin-bottom:.7rem}
+  .env-add input{flex:1 1 auto;min-width:0;height:36px;font-family:var(--font-mono);font-size:.8rem}
+  .env-add input#env-key{flex:0 1 210px}
+  .env-list{display:flex;flex-direction:column;gap:.35rem;max-height:220px;overflow:auto}
+  .env-list .env-empty{font-size:.78rem;color:var(--text3);padding:.4rem 0}
+  .env-row{display:flex;align-items:center;gap:.5rem;padding:.4rem .55rem;background:var(--bg);border:1px solid var(--border);border-radius:8px}
+  .env-row .env-k{font-family:var(--font-mono);font-size:.78rem;font-weight:600;flex:0 1 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .env-row .env-v{font-family:var(--font-mono);font-size:.78rem;color:var(--text3);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .env-row .env-v.masked{letter-spacing:.14em}
+  .env-icon{flex:0 0 auto;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text3);cursor:pointer;font-size:.8rem;line-height:1;transition:color .15s ease,border-color .15s ease}
+  .env-icon:hover{color:var(--text);border-color:var(--text3)}
+  .env-warn{font-size:.72rem;line-height:1.5;color:var(--text3);border-left:2px solid var(--border);padding-left:.6rem;margin:.8rem 0 0}
   #chat-input{flex:1 1 auto;min-width:0;max-width:100%;height:40px;box-sizing:border-box}
   #voice-btn{flex:0 0 auto;width:40px;height:40px;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center}
   #send-btn{flex:0 0 auto;width:40px;height:40px;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center;padding:0;font-size:1.1rem;line-height:1}
@@ -987,6 +1001,17 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
           <button id="editor-save" class="btn-primary btn-full" data-tip="Writes what's in the box back into the file." title="Writes what's in the box back into the file.">Save file</button>
         </div>
       </div>
+      <div class="card" id="env-card" style="margin-top:1rem">
+        <h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M15 7h3a5 5 0 0 1 0 10h-3m-6 0H6A5 5 0 0 1 6 7h3"/><circle cx="8.5" cy="12" r="1.2"/><circle cx="15.5" cy="12" r="1.2"/></svg>Environment variables</h3>
+        <p class="env-lead">Settings your app reads from <code>window.__ENV</code> — a web address, a brand name, a key. They belong to the app chosen above.</p>
+        <div class="env-add">
+          <input type="text" id="env-key" placeholder="NAME" autocomplete="off" spellcheck="false" data-tip="The name your code uses, like MAPS_KEY. Letters, digits and underscores only." title="The name your code uses, like MAPS_KEY. Letters, digits and underscores only.">
+          <input type="password" id="env-value" placeholder="value" autocomplete="off" data-tip="What the name stands for. Shown as dots until you press the eye." title="What the name stands for. Shown as dots until you press the eye.">
+          <button id="env-add" class="btn-small" data-tip="Saves this one variable for the app selected above." title="Saves this one variable for the app selected above.">Add</button>
+        </div>
+        <div id="env-list" class="env-list" data-tip="Every variable saved for this app. Press the eye to show a value, the bin to remove it." title="Every variable saved for this app. Press the eye to show a value, the bin to remove it."></div>
+        <p class="env-warn" data-tip="Why this matters." title="Why this matters.">A published app is a public page, so anyone can read these by opening their browser's developer tools. Use them for a base address, a brand name or a key that only works from your own domain — never a password, and never anything that spends money.</p>
+      </div>
     </div>
 
     <!-- DEPLOY -->
@@ -1203,6 +1228,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }catch(e){}
 })();
 </script>
-<script src="/app.js?v=623b36cf09ee"></script>
+<script src="/app.js?v=f1bf6e96b369"></script>
 </body>
 </html>

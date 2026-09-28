@@ -98,7 +98,17 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       file back in one press (today: one file at a time).
 - [ ] **Real backend for user apps**: a database table and a sign-in for the app the user just
       described, by asking for it in chat (Base44's core infrastructure).
-- [ ] **Secrets / environment UI** for the generated app, not just ours.
+- [x] **Secrets / environment UI** for the generated app, not just ours.
+      **DONE 2026-09-28** — an **Environment variables** card on the Code page, bound to the
+      app selected above it: add, reveal/hide, delete. Values live on the server against the
+      project (new `project_env` table, created lazily by the worker), **not** in the browser.
+      The worker hands them to the published page as **`window.__ENV` at serve time**, so a
+      change lands on the next request with no rebuild and the user's source file is never
+      rewritten. Names are validated, values capped at 4096 chars and 50 per app, ownership
+      enforced (another account gets 404), `</script>` in a value escaped to `\u003c`.
+      The UI says plainly that a published page is public. **API 17/17**, **browser 24/24**
+      (`tests/e2e/env-vars.mjs`, **0 JavaScript errors**, every ≥400 accounted for as the
+      test's own probing).
 
 ### P1 — the visible "they can do that" list
 - [x] **Discussion mode**: talk to the Agent about an idea without spending a build

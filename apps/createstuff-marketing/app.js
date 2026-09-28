@@ -2159,6 +2159,106 @@ function csPlanStage(agent) {
   }).join('<span class="cs-stage-arrow">→</span>');
 }
 
+// ============ ENVIRONMENT VARIABLES ============
+// Settings for the app chosen in the Files page. The values live on the server
+// against the project (not in this browser), and the worker hands them to the
+// published page as window.__ENV when it is served — so changing one takes
+// effect on the next request, without a rebuild.
+//
+// Values are masked by default even though the owner is looking at their own
+// data: a screen share and a support screenshot are the two ways a value like
+// this gets out, and dots cost nothing.
+let csEnvCache = {};
+
+function csEnvMask(v) {
+  return '•'.repeat(Math.min(Math.max(String(v || '').length, 6), 24));
+}
+
+async function csLoadEnv() {
+  const list = document.getElementById('env-list');
+  if (!list) return;
+  if (!currentProjectId) {
+    list.innerHTML = '<div class="env-empty">Choose an app above to see its variables.</div>';
+    return;
+  }
+  try {
+    const r = await api(`/api/projects/${currentProjectId}/env`);
+    const vars = (r && r.vars) || [];
+    csEnvCache = {};
+    if (!vars.length) {
+      list.innerHTML = '<div class="env-empty">No variables yet for this app.</div>';
+      return;
+    }
+    vars.forEach((v) => { csEnvCache[v.key] = v.value; });
+    const eye = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const bin = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7M6.5 7l.9 12.1A1.5 1.5 0 0 0 8.9 20.5h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg>';
+    list.innerHTML = vars.map((v) => `
+      <div class="env-row" data-env-key="${escapeHtml(v.key)}">
+        <span class="env-k">${escapeHtml(v.key)}</span>
+        <span class="env-v masked">${escapeHtml(csEnvMask(v.value))}</span>
+        <button type="button" class="env-icon env-eye" aria-label="Show ${escapeHtml(v.key)}" data-tip="Shows this value for as long as you leave it open." title="Shows this value for as long as you leave it open.">${eye}</button>
+        <button type="button" class="env-icon env-del" aria-label="Remove ${escapeHtml(v.key)}" data-tip="Removes this variable from the app." title="Removes this variable from the app.">${bin}</button>
+      </div>`).join('');
+  } catch (e) {
+    // A missing table on first use must not look like a broken page.
+    list.innerHTML = `<div class="env-empty">${escapeHtml(String((e && e.message) || e))}</div>`;
+  }
+}
+
+async function csAddEnv() {
+  const keyEl = document.getElementById('env-key');
+  const valEl = document.getElementById('env-value');
+  if (!keyEl || !valEl) return;
+  const key = keyEl.value.trim();
+  const value = valEl.value;
+  if (!currentProjectId) { showToast('Choose an app first'); return; }
+  if (!key) { showToast('Type a name'); keyEl.focus(); return; }
+  try {
+    await api(`/api/projects/${currentProjectId}/env`, {
+      method: 'PUT', body: JSON.stringify({ key, value }),
+    });
+    keyEl.value = ''; valEl.value = '';
+    showToast(`Saved ${key}`);
+    csLoadEnv();
+  } catch (e) {
+    showToast(String((e && e.message) || e));
+  }
+}
+
+async function csDeleteEnv(key) {
+  try {
+    await api(`/api/projects/${currentProjectId}/env/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    showToast(`Removed ${key}`);
+    csLoadEnv();
+  } catch (e) {
+    showToast(String((e && e.message) || e));
+  }
+}
+
+function csWireEnv() {
+  const list = document.getElementById('env-list');
+  const add = document.getElementById('env-add');
+  const keyEl = document.getElementById('env-key');
+  const valEl = document.getElementById('env-value');
+  if (add) add.onclick = csAddEnv;
+  if (keyEl) keyEl.onkeydown = (e) => { if (e.key === 'Enter') csAddEnv(); };
+  if (valEl) valEl.onkeydown = (e) => { if (e.key === 'Enter') csAddEnv(); };
+  if (!list) return;
+  list.onclick = (e) => {
+    const row = e.target.closest && e.target.closest('.env-row');
+    if (!row) return;
+    const key = row.dataset.envKey;
+    if (e.target.closest('.env-eye')) {
+      const val = row.querySelector('.env-v');
+      const masked = val.classList.contains('masked');
+      val.classList.toggle('masked');
+      val.textContent = masked ? (csEnvCache[key] || '') : csEnvMask(csEnvCache[key] || '');
+      return;
+    }
+    if (e.target.closest('.env-del')) csDeleteEnv(key);
+  };
+}
+
 // ============ V2: FILES, ZIP, GITHUB PUSH ============
 let currentProjectId = null;
 
@@ -2168,6 +2268,7 @@ async function loadFilesPage() {
     const sel = document.getElementById('files-project');
     if (!sel) return;
     sel.innerHTML = projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    csWireEnv();                       // buttons exist whether or not there are projects
     if (projects.length) {
       currentProjectId = projects[0].id;
       sel.value = currentProjectId;
@@ -2175,7 +2276,11 @@ async function loadFilesPage() {
         // project ids are UUID strings — parseInt() would turn them into NaN
         currentProjectId = sel.value;
         loadProjectFiles();
+        csLoadEnv();                   // the variables belong to the app just chosen
       };
+      csLoadEnv();
+    } else {
+      csLoadEnv();                     // explains "choose an app above" instead of sitting empty
     }
     const zip = document.getElementById('download-zip');
     if (zip) zip.onclick = downloadProjectZip;

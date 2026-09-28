@@ -1569,6 +1569,74 @@ async function ensureAppTables(env) {
   }
 }
 
+// ── ENVIRONMENT VARIABLES FOR A GENERATED APP ──────────────────────────────
+// plan.md P0: "Secrets / environment UI for the generated app, not just
+// ours." Until now the builder only had OUR keys (an AI key and a GitHub PAT,
+// both browser-local), so an app that needed a base URL or a public key had no
+// place to get one.
+//
+// Same lazy-DDL pattern as ensureAppTables: CREATE TABLE IF NOT EXISTS is a
+// no-op on an existing table, and the D1 REST API is not reachable from this
+// machine, so the binding is the only thing that can create it.
+let envTableReady = false;
+let envTablePending = null;
+async function ensureEnvTable(env) {
+  if (envTableReady) return;
+  const p = envTablePending || (envTablePending = (async () => {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS project_env (
+         project_id INTEGER NOT NULL,
+         key TEXT NOT NULL,
+         value TEXT,
+         user_id INTEGER NOT NULL,
+         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (project_id, key)
+       )`
+    ).run();
+    envTableReady = true;
+  })());
+  try {
+    await p;
+  } finally {
+    if (envTablePending === p) envTablePending = null;
+  }
+}
+
+// Variable names look like the ones a build tool would accept: a letter or
+// underscore first, then letters, digits or underscores, up to 64 characters.
+// Anything else is a typo waiting to happen in the app's own code.
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const ENV_VALUE_MAX = 4096;
+const ENV_MAX_PER_PROJECT = 50;
+
+// Hands the published page its own configuration as `window.__ENV`.
+//
+// Read at SERVE time, not at publish time, for three reasons: changing a value
+// takes effect on the next request instead of waiting for a rebuild; the user's
+// source file is never rewritten with values they did not type there; and the
+// stored bytes stay byte-for-byte what the builder produced.
+//
+// A generated app is a static page, so anything injected here is readable by
+// anyone who opens devtools. The UI says so in plain words — this is for a
+// base URL, a brand name or a domain-restricted public key, not a password.
+async function injectProjectEnv(env, projectId, html) {
+  let rows;
+  try {
+    await ensureEnvTable(env);
+    rows = await env.DB.prepare("SELECT key, value FROM project_env WHERE project_id=?").bind(projectId).all();
+  } catch {
+    return html;   // no table yet or a transient D1 blip: serve the page anyway
+  }
+  const vars = {};
+  for (const r of (rows && rows.results) || []) vars[r.key] = r.value == null ? "" : String(r.value);
+  if (!Object.keys(vars).length) return html;
+  // `\u003c` instead of `<` so a value containing </script> cannot close the
+  // tag early and run as code the owner never wrote.
+  const js = `<script>window.__ENV=${JSON.stringify(vars).replace(/</g, "\\u003c")};</script>`;
+  const at = html.search(/<\/head\s*>/i);
+  return at >= 0 ? html.slice(0, at) + js + html.slice(at) : js + html;
+}
+
 const cleanCol = (s) => {
   const c = String(s || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
   return c || null;
@@ -1922,7 +1990,12 @@ export default {
           : /\.js$/i.test(filePath) ? "application/javascript; charset=utf-8"
           : /\.json$/i.test(filePath) ? "application/json"
             : "text/html; charset=utf-8";
-        return new Response(row.content || "", {
+        // Only HTML carries window.__ENV; a stylesheet or a script gets the
+        // exact bytes that were built, because it has nowhere to read them from.
+        const content = type.startsWith("text/html")
+          ? await injectProjectEnv(env, projectId, row.content || "")
+          : (row.content || "");
+        return new Response(content, {
           headers: { ...CORS, "Content-Type": type, "Cache-Control": "no-cache" },
         });
       }
@@ -2138,6 +2211,70 @@ export default {
         await cacheDrop(env, projectsListKey(user.sub));
         return json({ project: p }, 201);
       }
+      // ── ENVIRONMENT VARIABLES FOR THE GENERATED APP (plan.md P0) ────────
+      // Deliberately placed BEFORE the generic /api/projects/:id DELETE below:
+      // that branch matches on the prefix alone, so an env DELETE reaching it
+      // would parse the id and delete the project. Same collision that once
+      // let one file deletion destroy a project (C9). Handled here first.
+      if (path.startsWith("/api/projects/") && path.endsWith("/env") && (method === "GET" || method === "PUT")) {
+        const id = parseInt(path.split("/")[3], 10);
+        const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(id, user.sub).first();
+        if (!p) return err("Not found", 404);
+        await ensureEnvTable(env);
+
+        if (method === "GET") {
+          const rows = await env.DB.prepare(
+            "SELECT key, value, updated_at FROM project_env WHERE project_id=? ORDER BY key"
+          ).bind(id).all();
+          return json({
+            vars: (rows.results || []).map((r) => ({
+              key: r.key,
+              value: r.value == null ? "" : String(r.value),
+              updated_at: r.updated_at,
+            })),
+          });
+        }
+
+        const b = await request.json().catch(() => ({}));
+        const key = String(b.key || "").trim();
+        const value = typeof b.value === "string" ? b.value : "";
+        if (!ENV_KEY_RE.test(key))
+          return err("A name starts with a letter or underscore and then uses only letters, digits and underscores — for example MAPS_KEY.", 400);
+        if (value.length > ENV_VALUE_MAX)
+          return err(`One value can be at most ${ENV_VALUE_MAX} characters.`, 400);
+
+        const existing = await env.DB.prepare(
+          "SELECT value FROM project_env WHERE project_id=? AND key=?"
+        ).bind(id, key).first();
+        if (existing) {
+          await env.DB.prepare(
+            "UPDATE project_env SET value=?, user_id=?, updated_at=CURRENT_TIMESTAMP WHERE project_id=? AND key=?"
+          ).bind(value, user.sub, id, key).run();
+        } else {
+          const n = await env.DB.prepare(
+            "SELECT COUNT(*) AS n FROM project_env WHERE project_id=?"
+          ).bind(id).first();
+          if (((n && n.n) || 0) >= ENV_MAX_PER_PROJECT)
+            return err(`One app can hold ${ENV_MAX_PER_PROJECT} environment variables at most.`, 400);
+          await env.DB.prepare(
+            "INSERT INTO project_env (project_id, key, value, user_id, updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP)"
+          ).bind(id, key, value, user.sub).run();
+        }
+        return json({ ok: true, key, value, created: !existing });
+      }
+      if (path.startsWith("/api/projects/") && path.includes("/env/") && method === "DELETE") {
+        const parts = path.split("/");                 // ["", "api", "projects", "165", "env", "KEY"]
+        const id = parseInt(parts[3], 10);
+        const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(id, user.sub).first();
+        if (!p) return err("Not found", 404);
+        await ensureEnvTable(env);
+        const key = decodeURIComponent(parts.slice(5).join("/"));
+        const r = await env.DB.prepare(
+          "DELETE FROM project_env WHERE project_id=? AND key=?"
+        ).bind(id, key).run();
+        return json({ ok: true, key, deleted: (r.meta && r.meta.changes) || 0 });
+      }
+
       if (path.startsWith("/api/projects/") && method === "DELETE") {
         const parts = path.split("/");                 // ["", "api", "projects", "165", ...]
         const id = parseInt(parts[3], 10);

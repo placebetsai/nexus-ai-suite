@@ -238,7 +238,41 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-28 — Environment variables / secrets for a generated app** (plan.md
+  P0, *"for the generated app, not just ours"*). An **Environment variables** card on the Code
+  page, bound to the app selected in the dropdown above it: add, reveal/hide, delete. The values
+  are **server-side**, keyed to the project in a new `project_env` table the worker creates
+  lazily with `CREATE TABLE IF NOT EXISTS` (the D1 REST API returns an auth error from this
+  machine — the binding is the only thing that can create it). New routes
+  `GET/PUT /api/projects/:id/env` and `DELETE /api/projects/:id/env/:key`, all **placed before**
+  the generic `DELETE /api/projects/:id` branch: that branch matches on the prefix alone, so an
+  env DELETE reaching it would have deleted the project — the same collision that once let one
+  file deletion destroy a project (C9). Ownership enforced: another account gets **404**.
+  The worker injects **`window.__ENV`** into HTML at **serve** time (`injectProjectEnv`), not at
+  publish time, so a change lands on the next request with no rebuild, the user's source file is
+  never rewritten, and a `</script>` in a value is escaped to `\u003c`. Guard rails: name pattern
+  `^[A-Za-z_][A-Za-z0-9_]{0,63}$`, value ≤ 4096 chars, ≤ 50 per app. The card states plainly that
+  a published page is public — this is for a base address, a brand name or a domain-restricted
+  key, never a password. **API 17/17** and **browser 24/24** (`tests/e2e/env-vars.mjs`, 0
+  JavaScript errors, every ≥400 accounted for). Note: the edge cache in `sites-proxy` serves a
+  published file for up to 60 s, so a change can take up to a minute to show on the branded host.
 - ✅ **RESOLVED 2026-09-28 — Discussion mode: talk to the Agent without spending a build.**
+  The builder box used to make *every* message create a project and start a generation, so
+  asking "is this worth building" cost an app in the list and a 60–150 s wait. There is now a
+  **Build it / Talk it through** switch above the input (`apps/createstuff-marketing/index.html`
+  + `app.js` → `csChatMode/csSetChatMode/csSend/discuss`). Talking calls the new
+  **`POST /api/ai/discuss`** (`workers/createstuff-api/src/index.js`, system prompt
+  `DISCUSS_SYS`), which runs one model call and **writes no code, creates no project, touches no
+  table**. `DISCUSS_SYS` caps the answer at 150 words, forbids unverified superlatives and
+  requires "I don't know" where it applies — the same no-unproven-claims rule as the rest of the
+  product. Proven twice: **API** (`ok:true`, 112 words, `ms 4728`, **projects 34 → 34, builds
+  1 → 1**, no-token **401**, empty message rejected) and **real Chrome 27/27**
+  (`tests/e2e/discuss-mode.mjs`, 0 console errors, 0 failed product requests), which also checks
+  the choice survives a reload and that **Build mode still creates an app (37 → 38)**. Deployed
+  to `createstuff-app` **and** `createstuff-marketing`; live sha256 == local on both.
+  The proof script reads `CS_E2E_EMAIL`/`CS_E2E_PASS` from the environment and finds playwright
+  itself, so **no credential is committed to this public repo**.
+
   The builder box used to make *every* message create a project and start a generation, so
   asking "is this worth building" cost an app in the list and a 60–150 s wait. There is now a
   **Build it / Talk it through** switch above the input (`apps/createstuff-marketing/index.html`
