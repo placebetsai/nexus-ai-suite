@@ -12,8 +12,27 @@
 //   /179/index.html   ->  /published/179/index.html   (the short branded form)
 //   /published/...    ->  same path on the worker     (old links keep working)
 //   anything else     ->  404 (this is not an open proxy)
+//
+// Why the cache below exists: the bytes come out of a database that is shared
+// with two other products under one free daily row-read budget. When that budget
+// runs out (it did on 2026-09-27, at 103% of 5,000,000), the origin answers 500
+// and a published site that was perfectly fine a minute ago starts telling
+// visitors "This address has no site" — which was both false and the worst
+// possible wording for a link somebody pasted to other people. So:
+//   * every published file is kept at the edge for 7 days,
+//   * the newest 60 seconds are served without touching the database at all,
+//   * if the database is out of budget or unreachable, the last copy we have is
+//     served instead of an error (the site keeps working through the outage),
+//   * and only a genuinely unknown address says "no site"; an outage says 503
+//     and means it.
+// The query string is deliberately not part of the cache key: a published file
+// is static, and letting anyone append ?x=1 would be a free way to bypass the
+// cache and burn the shared budget again.
 
 const ORIGIN = "https://createstuff-api.fashionistas1979.workers.dev";
+const FRESH = 60; // seconds served from the edge without asking the origin
+const KEEP = 7 * 24 * 3600; // seconds we hold a copy to ride out an outage
+const STAMP = "x-sites-cached-at"; // when this copy was last confirmed current
 
 const LANDING = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -58,6 +77,30 @@ a{color:#7fb3ff}
 <p><a href="https://createstuff.ai">createstuff.ai</a></p>
 </main></body></html>`;
 
+// Shown only when the site IS published but the database behind it cannot be
+// reached. Distinct from MISSING on purpose: one means "wrong address", the
+// other means "try again shortly", and a visitor has to be able to tell them
+// apart.
+const UNAVAILABLE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Site temporarily unavailable</title>
+<meta name="robots" content="noindex">
+<style>
+:root{color-scheme:light dark}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#0f1115;color:#e8eaed;display:grid;place-items:center;min-height:100vh}
+main{max-width:32rem;padding:2rem 1.25rem;text-align:center}
+h1{font-size:1.3rem;margin:0 0 .5rem}
+p{color:#b9bec7}.mut{color:#8b919b;font-size:.92em}
+a{color:#7fb3ff}
+</style></head>
+<body><main>
+<h1>Give it a minute</h1>
+<p>The address is right and the site is published — our publishing service is briefly overloaded.</p>
+<p class="mut">This is temporary. Refresh in a moment and it will load.</p>
+<p><a href="https://createstuff.ai">createstuff.ai</a></p>
+</main></body></html>`;
+
 function html(body, status) {
   return new Response(body, {
     status: status || 200,
@@ -65,8 +108,61 @@ function html(body, status) {
   });
 }
 
+// Tag a response with how it was produced, so a curl can prove which path ran.
+function tagged(res, how) {
+  const headers = new Headers(res.headers);
+  headers.set("x-served-by", how);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+// Serve one published file: edge copy first, database second, last-known copy
+// when the database is down. Returns {response} shaped answers only.
+async function published(path, ctx) {
+  const cache = caches.default;
+  // Query string excluded — see the note at the top of the file.
+  const key = new Request(ORIGIN + path, { method: "GET" });
+
+  let cached = null;
+  try { cached = await cache.match(key); } catch { cached = null; }
+
+  const stampedAt = Number((cached && cached.headers.get(STAMP)) || 0);
+  const ageSeconds = stampedAt ? (Date.now() - stampedAt) / 1000 : Infinity;
+  if (cached && ageSeconds < FRESH) return tagged(cached, "edge");
+
+  let res = null;
+  try {
+    res = await fetch(ORIGIN + path, {
+      headers: { "accept-encoding": "identity", "user-agent": "createstuff-sites" },
+    });
+  } catch {
+    res = null; // origin unreachable (network / outage)
+  }
+
+  if (res && (res.status === 404 || res.status === 410)) return html(MISSING, 404);
+
+  if (res && res.ok) {
+    const buf = await res.arrayBuffer();
+    const headers = {
+      "content-type": res.headers.get("content-type") || "text/html; charset=utf-8",
+      "cache-control": `public, max-age=${KEEP}`,
+      [STAMP]: String(Date.now()),
+    };
+    try {
+      const stored = new Response(buf.slice(0), { status: 200, headers });
+      if (ctx && typeof ctx.waitUntil === "function") {
+        ctx.waitUntil(cache.put(key, stored).catch(() => {}));
+      }
+    } catch { /* caching is best-effort; never fail the visitor for it */ }
+    return tagged(new Response(buf, { status: 200, headers }), "origin");
+  }
+
+  // 5xx or the origin could not be reached at all.
+  if (cached) return tagged(cached, "stale"); // riding out a database outage
+  return html(UNAVAILABLE, 503);
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     let path = url.pathname;
 
@@ -75,12 +171,7 @@ export default {
     if (short) path = "/published/" + short[1] + (short[2] || "/index.html");
 
     if (path === "/published" || path.startsWith("/published/")) {
-      const res = await fetch(ORIGIN + path + url.search, {
-        headers: { "accept-encoding": "identity", "user-agent": "createstuff-sites" },
-      });
-      if (res.status === 404 || res.status === 410) return html(MISSING, 404);
-      if (res.status >= 500) return html(MISSING, 502);
-      return res;
+      return await published(path, ctx);
     }
 
     // Everything else must be one of THIS project's own files. Pages' asset
