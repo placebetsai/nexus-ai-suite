@@ -193,6 +193,7 @@ async function projectExists(env, projectId) {
 // D1's free daily read limit, which took the databases offline for every site.
 const HOST_CACHE = new Map();
 const HOST_TTL_MS = 5 * 60 * 1000;
+let DEPLOYED_CACHE = null;
 
 async function resolveHostProject(env, hostname) {
   const hit = HOST_CACHE.get(hostname);
@@ -212,8 +213,14 @@ async function resolveHostProjectUncached(env, hostname) {
     return (await projectExists(env, mappedId)) ? mappedId : null;
   }
 
-  const deployed = await env.DB.prepare("SELECT id, deploy_url FROM projects WHERE deploy_url IS NOT NULL AND deploy_url != ''").all();
-  for (const row of deployed.results || []) {
+  // Bots probe random subdomains (mail., cpanel., ...), each a new hostname
+  // that misses HOST_CACHE, so the deployed list itself is cached too: one
+  // scan per isolate per TTL instead of one per unknown hostname.
+  if (!DEPLOYED_CACHE || Date.now() - DEPLOYED_CACHE.at > HOST_TTL_MS) {
+    const deployed = await env.DB.prepare("SELECT id, deploy_url FROM projects WHERE deploy_url IS NOT NULL AND deploy_url != ''").all();
+    DEPLOYED_CACHE = { rows: deployed.results || [], at: Date.now() };
+  }
+  for (const row of DEPLOYED_CACHE.rows) {
     if (hostnameFromDeployUrl(row.deploy_url) === hostname) {
       const projectId = positiveInteger(row.id);
       if (projectId && (await projectExists(env, projectId))) return projectId;
