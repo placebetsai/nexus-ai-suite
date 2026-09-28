@@ -238,6 +238,43 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-28 — a personal Gmail address was published on every page of two sites.**
+  **fashionistas.ai** printed it in the contact lede (*"we read every note at …"*), in 6 footers,
+  in **3 meta descriptions** (so Google and social previews carried it), in privacy's *"Email us to
+  request account deletion"* and on the about page. Cloudflare's Email Obfuscation kept it out of
+  the source but **decoded it back onto the screen**, which is why it was visible. **placebets.ai**
+  carried it in the **Organization JSON-LD on every single page** (structured data handed to Google)
+  plus rendered text on `/about`, `/privacy` and `/terms`. Removed from all of them: fashionistas
+  commit **`27fab1b`**, placebets commit **`e7eed5e`** (rebased over 5 ops-lane commits; their
+  `.github/workflows/dns-cname.yml` preserved untouched).
+  **Proof — fashionistas, real Chrome 6/6** on `/ /contact /about /privacy /fees /how-to-crosspost`:
+  0 in rendered text, 0 in source once the form's `action` attribute is excluded, **0 `mailto:`
+  links anywhere**, 0 JS errors; the lede now reads *"Send a message — we read every note."*
+  **The form still works** — one clearly-labelled test submission POSTed to `formsubmit.co`,
+  redirected to `/contact/?sent=1` and showed the success banner with 0 ≥400 responses.
+  **Proof — placebets, real Chrome 5/5** on `/ /about /privacy /terms /contact`: 0 occurrences in
+  rendered text **and** in source, JSON-LD still parses as **valid JSON** reporting
+  `email=info@placebets.ai` (Cloudflare's obfuscation did **not** corrupt it), and the new
+  *"contact form"* link on `/about` was **clicked: `hitSelf=true` → `/contact` → form visible →
+  inbox shown**, 0 of our JS errors. placebets delivery was proven **before** the change: one
+  labelled test POST to `formsubmit.co/info@placebets.ai` → `/contact/thanks`, 0 ≥400.
+  **Deliberately kept:** the FormSubmit `action` attributes (an attribute, never rendered) — they
+  are what actually delivers the message, and placebets' own contact page has always published
+  `info@placebets.ai` as its "General inbox", so the JSON-LD now matches what was already shipped.
+  **Not proven:** that mail to `info@placebets.ai` lands in an inbox — Cloudflare Email Routing MX
+  + SPF are live on the domain (`route1/2/3.mx.cloudflare.net`) but no token in this environment can
+  read that zone's routing rules, so receipt is **untested**.
+- ⚠️ **OPEN 2026-09-28 — 4 of placebets' 17 navbar links cannot be clicked.** `Tools`, `Tourneys`,
+  `Receipts` and `Contact` render at **x ≥ 1446 on a 1440 px viewport** with **no scrollable
+  ancestor**, so `overflow-x: hidden` clips them; **2 stay offscreen even at 1920 px**. Found while
+  proving the email change and **verified byte-identical on the previous production build
+  `98099151.placebetsai.pages.dev`**, so `e7eed5e` did not cause it. Needs a nav layout change plus
+  a visual re-verify — not touched. (See TODO row **P16**.)
+- ⚠️ **OPEN 2026-09-28 — two Gmail SMTP app passwords are committed in plaintext** in
+  `Placebetsai-src/scripts/test-smtp.mjs` (lines 3–4, tracked since `1e64d32`). Contained: the repo
+  is **private** and the file is never built into `.vercel/output/static`, so nothing is exposed
+  today, but they live in git history forever. Recommend rotating both app passwords. (TODO row
+  **X4**.)
 - ✅ **RESOLVED 2026-09-28 — Environment variables / secrets for a generated app** (plan.md
   P0, *"for the generated app, not just ours"*). An **Environment variables** card on the Code
   page, bound to the app selected in the dropdown above it: add, reveal/hide, delete. The values
