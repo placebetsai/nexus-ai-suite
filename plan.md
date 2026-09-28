@@ -92,8 +92,11 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       steps with free agents in parallel with live per-agent status + 30 s watchdogs, then a browser
       self-test gate before Publish. (This is Replit's Plan Mode → Parallel Agents → browser
       self-test flow, run on free agents instead of paid tokens.)
-- [ ] **Checkpoints / undo**: every build stores a version you can go back to (Replit rollback,
+- [x] **Checkpoints / undo**: every build stores a version you can go back to (Replit rollback,
       Pro-only at 28 days — ours free and unlimited).
+      **DONE 2026-09-27 (P13)** — `versions.test.mjs` **8/8**, `cs-inline` **6/6**,
+      `sites-proxy` **7/7**, live API round trip **7/7**, Chrome E2E **12/12** (0 console
+      errors, 0 failed requests), commit `f5ce0f8`.
 - [ ] **Whole repository both ways**: import every file of a repo (exists) and push every changed
       file back in one press (today: one file at a time).
 - [ ] **Real backend for user apps**: a database table and a sign-in for the app the user just
@@ -121,7 +124,10 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       and **Build mode still creating an app (37 → 38)** so the old path is unbroken.
 - [ ] **Custom domain for a published app** (Replit sells them in-app; Base44 removes branding at
       paid tiers — we should accept a domain the user already owns).
-- [ ] **Version history list in the builder** with a Restore button.
+- [x] **Version history list in the builder** with a Restore button.
+      **DONE 2026-09-27 (P13)** — the list sits under the preview with a Restore button;
+      restoring appends a new version and leaves the older numbers unchanged.
+      `versions.test.mjs` **8/8**, Chrome E2E **12/12**.
 - [ ] **Templates gallery**: start from a working app instead of a blank chat.
 - [ ] **Analytics for published apps**: views, referrers, countries (Base44 dashboard).
 - [ ] **SEO audit + one-click fixes** on the published address (Replit SEO Agent).
