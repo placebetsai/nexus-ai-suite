@@ -179,8 +179,54 @@ async function ensureSchema(env) {
      )`
   ).run();
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_app_hosts_project_id ON app_hosts(project_id)").run();
+  // The published list below used to scan ALL of projects on every refresh:
+  // 18,214 scans on 2026-09-27 read 2,445,142 rows and helped push the account
+  // past D1's free daily read limit, which took every site offline until UTC
+  // midnight. A partial index holds only the rows that query can ever return,
+  // so a scan reads ~the number of published apps instead of the whole table
+  // (the table/published ratio measured at 7.9 : 1). Wrapped in its own try:
+  // if an engine build ever refuses a partial index this must fall back to the
+  // plain scan rather than take the worker down.
+  try {
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_projects_deployed ON projects(deploy_url) " +
+        "WHERE deploy_url IS NOT NULL AND deploy_url != ''"
+    ).run();
+  } catch { /* plain full scan, exactly as before */ }
   schemaReady = true;
 }
+
+// ── account-wide D1 read-budget guard ─────────────────────────────────────
+// Cloudflare bills D1 reads per ACCOUNT: MarketPicks, Fashionistas and
+// CreateStuff share one 5,000,000-row daily pot. The status is published into
+// the shared KV namespace by createstuff-api's scheduled handler (see
+// workers/createstuff-api/src/index.js). This worker only READS it: one free
+// KV read, memoised for five minutes so the guard itself never costs anything.
+// An unreadable or missing record ALLOWS the scan — a broken monitor must not
+// be able to take a working site down.
+const D1_BUDGET_KEY = "d1budget:current";
+const BUDGET_MEMO_MS = 5 * 60 * 1000;
+let budgetMemo = null;
+
+async function readBudgetState(env) {
+  const now = Date.now();
+  if (budgetMemo && now - budgetMemo.at < BUDGET_MEMO_MS) return budgetMemo.state;
+  let state = null;
+  try {
+    const raw = await env.KV.get(D1_BUDGET_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.state === "string") state = parsed.state;
+    }
+  } catch { state = null; }
+  budgetMemo = { at: now, state };
+  return state;
+}
+
+// Scan counters live in THIS isolate's memory, not in KV: KV's free tier allows
+// 1,000 writes a day and a counter that costs a write per scan would spend the
+// budget it exists to protect. The debug route below reads them.
+const scanStats = { performed: 0, skipped: 0 };
 
 async function projectExists(env, projectId) {
   const row = await env.DB.prepare("SELECT id FROM projects WHERE id=?").bind(projectId).first();
@@ -216,9 +262,24 @@ async function resolveHostProjectUncached(env, hostname) {
   // Bots probe random subdomains (mail., cpanel., ...), each a new hostname
   // that misses HOST_CACHE, so the deployed list itself is cached too: one
   // scan per isolate per TTL instead of one per unknown hostname.
+  //
+  // CIRCUIT BREAKER: refreshing that list is a WHOLE-TABLE read, and this is
+  // the exact query whose 18,214 scans read 2,445,142 rows on 2026-09-27 and
+  // helped push the account past D1's free daily limit — which took every site
+  // on the account dark until 00:00 UTC. When the shared pot is nearly empty,
+  // keep serving the list we already have: a slightly stale list of published
+  // apps beats a day of total outage. It still scans when nothing is cached,
+  // because refusing there would 404 perfectly good apps.
   if (!DEPLOYED_CACHE || Date.now() - DEPLOYED_CACHE.at > HOST_TTL_MS) {
-    const deployed = await env.DB.prepare("SELECT id, deploy_url FROM projects WHERE deploy_url IS NOT NULL AND deploy_url != ''").all();
-    DEPLOYED_CACHE = { rows: deployed.results || [], at: Date.now() };
+    const budgetState = await readBudgetState(env);
+    if (DEPLOYED_CACHE && budgetState === "halt") {
+      scanStats.skipped++;
+      DEPLOYED_CACHE = { rows: DEPLOYED_CACHE.rows, at: Date.now(), servedStale: true };
+    } else {
+      const deployed = await env.DB.prepare("SELECT id, deploy_url FROM projects WHERE deploy_url IS NOT NULL AND deploy_url != ''").all();
+      DEPLOYED_CACHE = { rows: deployed.results || [], at: Date.now(), servedStale: false };
+      scanStats.performed++;
+    }
   }
   for (const row of DEPLOYED_CACHE.rows) {
     if (hostnameFromDeployUrl(row.deploy_url) === hostname) {
@@ -617,6 +678,30 @@ async function dispatch(request, env) {
   if (url.pathname === "/api/health") {
     if (method !== "GET" && method !== "HEAD") return methodNotAllowed("GET, HEAD, OPTIONS");
     return json({ ok: true, service: "app-host", ts: Date.now() }, 200, method === "HEAD");
+  }
+
+  // Diagnostics for the D1 read-budget guard (see readBudgetState above).
+  // Reports only this isolate's memory and the shared KV status — it never
+  // touches D1 itself, so reading it costs zero rows. Isolate counters reset
+  // when Cloudflare recycles the isolate; that is expected.
+  if (url.pathname === "/api/budget-guard") {
+    if (method !== "GET" && method !== "HEAD") return methodNotAllowed("GET, HEAD, OPTIONS");
+    const budgetState = await readBudgetState(env);
+    return json({
+      ok: true,
+      service: "app-host",
+      ts: Date.now(),
+      budget_state: budgetState || "unknown",
+      scans: { performed: scanStats.performed, skipped: scanStats.skipped },
+      cache: DEPLOYED_CACHE
+        ? {
+            rows: DEPLOYED_CACHE.rows.length,
+            age_ms: Date.now() - DEPLOYED_CACHE.at,
+            ttl_ms: HOST_TTL_MS,
+            serving_stale: !!DEPLOYED_CACHE.servedStale,
+          }
+        : null,
+    }, 200, method === "HEAD");
   }
 
   const attach = attachRoute(url.pathname);

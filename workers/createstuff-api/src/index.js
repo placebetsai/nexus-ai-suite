@@ -1904,8 +1904,148 @@ function ghStatusError(status) {
   return new HttpError(`GitHub error ${status}`, 502);
 }
 
+// ── D1 READ-BUDGET CIRCUIT BREAKER ──────────────────────────────────────
+// Cloudflare's free D1 plan allows 5,000,000 rows read PER DAY across the whole
+// account — MarketPicks, Fashionistas and CreateStuff share one pot, not one
+// pot each. When the pot empties, EVERY database read on EVERY site on the
+// account fails until 00:00 UTC. That is exactly what happened on 2026-09-27:
+// 5,133,584 reads = 103%, and all three sites went dark together.
+//
+// The traffic was ours, not the world's — bots probing random subdomains made
+// app-host rescan the projects table 18,214 times in a day (2.48M reads) while
+// MarketPicks' cron and page queries added another 2.63M. With no real users on
+// any of them. Nothing was watching the pot, so nothing could slow down before
+// it ran out.
+//
+// This is the watch. A scheduled handler queries Cloudflare's OWN analytics API
+// — which costs no D1 read, that would defeat the whole point — every 30 minutes
+// and writes ONE short-lived KV record. Guards read that record (one KV read,
+// free, memoised in memory) and refuse to start an expensive whole-table scan
+// when the pot is nearly empty, while continuing to serve everything they
+// already have. Local laptop monitor: scripts/d1-budget.py.
+const D1_READ_LIMIT = 5_000_000;
+const D1_BUDGET_KEY = "d1budget:current";   // what guards read
+const D1_BUDGET_LOG = "d1budget:";          // + YYYY-MM-DD, an 8-day history
+const BUDGET_WARN_PCT = 70;
+const BUDGET_HALT_PCT = 90;
+const BUDGET_MEMO_MS = 5 * 60 * 1000;
+
+function budgetStateFor(pct) {
+  if (pct >= BUDGET_HALT_PCT) return "halt";
+  if (pct >= BUDGET_WARN_PCT) return "warn";
+  return "ok";
+}
+
+// Read the shared KV record. One KV read (free), memoised per isolate for five
+// minutes so this cannot become the next thing that costs money.
+let budgetMemo = null;
+async function readBudget(env) {
+  const now = Date.now();
+  if (budgetMemo && now - budgetMemo.at < BUDGET_MEMO_MS) return budgetMemo.snap;
+  let snap = null;
+  try {
+    const raw = await env.KV.get(D1_BUDGET_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") snap = parsed;
+    }
+  } catch { snap = null; }
+  budgetMemo = { at: now, snap };
+  return snap;
+}
+
+// true => whole-table scans may start. An unknown or unreadable state ALLOWS:
+// a broken monitor must never be able to take a working site down.
+async function d1BudgetAllowsScan(env) {
+  const snap = await readBudget(env);
+  return !snap || snap.state !== "halt";
+}
+
+// Ask Cloudflare's analytics API what we have spent today. Uses the REST
+// GraphQL endpoint with an API token supplied as a Worker secret — never
+// committed, never read from a file at runtime.
+async function refreshD1Budget(env) {
+  const token = env.CF_ANALYTICS_TOKEN;
+  const accountId = env.CF_ACCOUNT_ID;
+  if (!token || !accountId) return { configured: false, reason: "monitor not configured" };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const query = [
+    "query($a:String!,$s:Date!){viewer{accounts(filter:{accountTag:$a}){",
+    "d1AnalyticsAdaptiveGroups(limit:200,filter:{date_geq:$s},orderBy:[date_DESC]){",
+    "dimensions{date databaseId} sum{rowsRead rowsWritten}}}}}",
+  ].join("");
+
+  let res;
+  try {
+    res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables: { a: accountId, s: today } }),
+    });
+  } catch (e) {
+    return { configured: true, reason: `analytics unreachable: ${(e && e.message) || e}` };
+  }
+  if (!res.ok) return { configured: true, reason: `analytics HTTP ${res.status}` };
+
+  let body;
+  try { body = await res.json(); } catch { return { configured: true, reason: "analytics bad JSON" }; }
+  if (body.errors) return { configured: true, reason: body.errors[0].message || "analytics error" };
+
+  const accounts = (body.data && body.data.viewer && body.data.viewer.accounts) || [];
+  const groups = (accounts[0] && accounts[0].d1AnalyticsAdaptiveGroups) || [];
+
+  let reads = 0;
+  let writes = 0;
+  const byDb = {};
+  for (const g of groups) {
+    if (!g || !g.dimensions || g.dimensions.date !== today) continue;
+    const r = (g.sum && g.sum.rowsRead) || 0;
+    const w = (g.sum && g.sum.rowsWritten) || 0;
+    reads += r;
+    writes += w;
+    const id = String(g.dimensions.databaseId || "").slice(0, 8);
+    byDb[id] = (byDb[id] || 0) + r;
+  }
+
+  const pct = Math.round((reads / D1_READ_LIMIT) * 1000) / 10;
+  const state = budgetStateFor(pct);
+  const snap = {
+    date: today,
+    reads,
+    writes,
+    limit: D1_READ_LIMIT,
+    pct,
+    state,
+    by_db: byDb,
+    ts: Date.now(),
+    configured: true,
+  };
+
+  // KV's free tier allows 1,000 WRITES a day, and this worker already spends
+  // some of that on response caching — so the write budget here is deliberate:
+  // one short key per run (48/day) and a history entry only when the state
+  // actually changes (a handful a day), not one per run.
+  try {
+    const previousRaw = await env.KV.get(D1_BUDGET_KEY);
+    let previousState = null;
+    try { previousState = previousRaw ? JSON.parse(previousRaw).state : null; } catch { /* first run */ }
+
+    await env.KV.put(D1_BUDGET_KEY, JSON.stringify(snap), { expirationTtl: 3600 });
+    if (previousState !== state) {
+      await env.KV.put(D1_BUDGET_LOG + today, JSON.stringify(snap), { expirationTtl: 60 * 60 * 24 * 8 });
+    }
+  } catch { /* a KV blip must not fail the schedule */ }
+  budgetMemo = { at: Date.now(), snap };
+  return snap;
+}
+
 // ── router ───────────────────────────────────────────────────────────────
 export default {
+  async scheduled(_event, env, _ctx) {
+    await refreshD1Budget(env);
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -1915,6 +2055,28 @@ export default {
     try {
       // health
       if (path === "/api/health") return json({ ok: true, service: "createstuff-api", ts: Date.now() });
+
+      // Where the account-wide D1 read budget stands. Answers from the shared
+      // KV snapshot; if that is older than 45 minutes it asks Cloudflare's
+      // analytics API directly (a REST call, NOT a D1 read) so the number is
+      // truthful between cron runs. Per-worker scan counts live on app-host's
+      // own /api/budget-guard (in isolate memory, so counting them here costs
+      // no KV writes) — they are deliberately not duplicated into this key.
+      if (path === "/api/d1-budget" && method === "GET") {
+        let snap = await readBudget(env);
+        if (!snap || Date.now() - snap.ts > 45 * 60 * 1000) {
+          const fresh = await refreshD1Budget(env);
+          if (fresh && fresh.date) snap = fresh;
+        }
+        return json({
+          ok: true,
+          limit: D1_READ_LIMIT,
+          warn_at_pct: BUDGET_WARN_PCT,
+          halt_at_pct: BUDGET_HALT_PCT,
+          budget: snap || { configured: false, state: "unknown" },
+          scan_counters: "https://app-host.fashionistas1979.workers.dev/api/budget-guard",
+        });
+      }
 
       // Hive callback: the relay runs the build for us. It authenticates with
       // HIVE_TOKEN rather than a user session, so this MUST sit above the

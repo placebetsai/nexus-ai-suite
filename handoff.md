@@ -319,6 +319,45 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 - ⚠️ Pages projects are **direct-upload only (no git connection)** — pushes never deploy. Deploy manually with `./deploy.sh` (see §6).
 - ⚠️ User's sudo password was shared in chat (`Izzy@1299`) — **recommend changing it.**
 
+- ✅ **RESOLVED 2026-09-28 — D1 is watched, breakered, indexed and off its worst offender.**
+  Raised by *"why the fuck is D1 full when no one uses the sites?"*. Free tier is
+  **5,000,000 rows read/day across the WHOLE account**; MarketPicks, Fashionistas and CreateStuff
+  share one pot, and on **2026-09-27 it hit 5,133,584 = 103%** and every database read on every
+  site failed until 00:00 UTC. Full diagnosis + 7-day table + all four fixes are in
+  **plan.md → P0 → "Stop D1 going to zero"**. What is proven here:
+  - **Monitor** runs on Cloudflare (`createstuff-api` cron `*/30`, version `9e5fb49a`) and reads
+    **Cloudflare's own analytics API — zero D1 reads, otherwise the watch would eat what it
+    protects**. Public readout **`GET /api/d1-budget`**; token is the Worker secret
+    `CF_ANALYTICS_TOKEN` (never in the repo).
+  - **Circuit breaker in `app-host`** (version `0134bfea`) — one KV read, memoised 5 min, exposed
+    at **`GET /api/budget-guard`**. **Forced-halt proof:** KV state set to `halt` → guard returned
+    `skipped:1` + `serving_stale:true` while `/api/health` stayed **200**; cleared → `performed`
+    rose `1 → 2` and `serving_stale:false`. Unknown/unreadable state **allows** the scan (a broken
+    monitor must never take a site down).
+  - **Partial index** `idx_projects_deployed … WHERE deploy_url IS NOT NULL AND deploy_url != ''`
+    → the scan went **7.71 rows-read-per-row-returned → 1.0** (19,037/2,470 → **114/114**);
+    `createstuff-db` is now **865 reads/hour**.
+  - **MarketPicks diet, commit `b6e21b1`, deployed site 13:21 + cron worker `69115a12` 13:22.**
+    MarketPicks was **94% of all reads (590,399 of 628,951)** on a near-empty site. Fixed:
+    the `COUNT(*) politician_trades` cap check (**71,478 rows/day to police a 50k cap on a
+    2k-row table**) is memoised 24 h; the receipts COUNT no longer shares a cache key with
+    `limit`/`offset` (was 230 scans/day); quotes/news memos 600 → 1800 s; and the cron stopped
+    re-fetching six of its **own** live URLs every 15 minutes (576 self-requests/day) — housekeeping
+    and grading are hourly now, with predictions deduped per ticker+day so the track record is
+    untouched. **Browser proof 4/4** (`/`, `/receipts`, `/trending`, `/world-markets`): 0 JS errors,
+    0 first-party ≥400, receipts renders **ALL-TIME 224 · 48.6% win rate**; ad-slot 400s are
+    identical on the pre-change deployment `0c91f640` so they are not ours.
+  - **MarketPicks build gotcha:** the repo's `deploy.sh` runs only `next build`, **not**
+    `next-on-pages`, so it would re-upload a stale bundle — and `next-on-pages@1.13.16` demands
+    `next>=14.3.0` while the project pins `next@14.2.35`, so the nested `npm install` fails
+    (ERESOLVE) unless built with **`npm_config_legacy_peer_deps=true npm run pages:build`**.
+    A failed `vercel build` **wipes `.vercel/output/{functions,static}`** — they are gitignored, so
+    always rebuild before deploying. Ships from branch **`live-source`** (`origin/live-source`),
+    not `main` (`main` is a separate static landing page).
+  - **Re-check after a clean hour:** GraphQL
+    `d1AnalyticsAdaptiveGroups` grouped by `databaseId`+`datetimeFifteenMinutes` (this costs nothing)
+    — marketpicks baseline was **~35–60k/hour ≈ 1.2M/day**.
+
 ---
 
 ## 9. HIVE — HOW TO DRIVE IT
