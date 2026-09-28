@@ -309,6 +309,24 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
   return { text, parsed: null, model: "zen/" + (j.model || model), backend: "direct", tool: direct };
 }
 
+// A promise that must not be allowed to hang its caller. Every remote model
+// call in this file already carries an AbortSignal except env.AI.run, which has
+// no timeout of its own — so the ONE backend with no deadline is the one at the
+// end of the failover chain, where a hang is least recoverable: the relay has
+// already burned 150s and Zen has already 429'd by the time we get there. Build
+// 104 sat in that gap, 'running' for 453s having written 0 bytes, because a
+// stalled last resort looks identical to a slow one.
+function withTimeout(p, ms, label) {
+  let t;
+  const guard = new Promise((_, rej) => {
+    t = setTimeout(() => rej(new Error(label + " timed out after " + Math.round(ms / 1000) + "s")), ms);
+  });
+  // If the guard wins, the abandoned call must not surface later as an
+  // unhandled rejection that would take down the Worker instead of the build.
+  Promise.resolve(p).catch(() => {});
+  return Promise.race([p, guard]).finally(() => clearTimeout(t));
+}
+
 const gen = async (env, system, user, maxTok = 8000) => {
   let last = null;
   // 1. the Hive relay (one call — it already fails over across all 8 free models)
@@ -326,10 +344,10 @@ const gen = async (env, system, user, maxTok = 8000) => {
     const t0 = Date.now();
     const tool = { name: "workers-ai", endpoint: "cf://ai/" + model, http: null, ms: 0 };
     try {
-      const r = await env.AI.run(model, {
+      const r = await withTimeout(env.AI.run(model, {
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         max_tokens: maxTok,
-      });
+      }), 90000, "workers-ai");
       tool.ms = Date.now() - t0;
       const resp = r ? r.response : null;
       if (Array.isArray(resp)) return { text: JSON.stringify(resp), parsed: resp, model, tool };
@@ -2041,9 +2059,48 @@ async function refreshD1Budget(env) {
 }
 
 // ── router ───────────────────────────────────────────────────────────────
+// Closes builds left 'running' forever. Every model call now carries a deadline,
+// but a Worker can still be killed mid-run (deploy, isolate eviction, an unhandled
+// throw beneath the route's try) — and then nothing ever closes the row. The
+// person at the other end watches a spinner that never stops, no message ever
+// explains why, and no retry is possible while the row still reads 'running' and
+// the one-open-job guard refuses a second build. This runs on the */30 cron.
+//
+// It deliberately does NOT use failBuild(): that REPLACES agent_log with a single
+// System line, which would throw away the classifier decision, the plan and
+// whatever the writer managed to emit — precisely the evidence needed to work out
+// why it stopped. The note is appended instead.
+async function failStaleBuilds(env) {
+  try {
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const stale = await env.DB.prepare(
+      "SELECT id, agent_log FROM builds WHERE status='running' AND completed_at IS NULL AND started_at < ? LIMIT 50"
+    ).bind(cutoff).all();
+    const rows = (stale && stale.results) || [];
+    const now = new Date().toISOString();
+    for (const r of rows) {
+      let log;
+      try { log = JSON.parse(r.agent_log || "[]"); } catch { log = []; }
+      if (!Array.isArray(log)) log = [];
+      log.push({
+        agent: "System",
+        message: "This build stopped without finishing: it was still running 10 minutes after it started, so nothing more will come of it. Press build again to retry.",
+        at: now,
+      });
+      try {
+        await env.DB.prepare(
+          "UPDATE builds SET status='failed', completed_at=?, agent_log=? WHERE id=? AND status='running'"
+        ).bind(now, JSON.stringify(log), r.id).run();
+      } catch { /* one bad row must not stop the sweep */ }
+    }
+    return rows.length;
+  } catch { return 0; }
+}
+
 export default {
   async scheduled(_event, env, _ctx) {
     await refreshD1Budget(env);
+    await failStaleBuilds(env);
   },
 
   async fetch(request, env, ctx) {
@@ -2349,6 +2406,115 @@ export default {
         return json({ project: { id: projectId, name, description: desc, status: "imported", tech_stack: "github" }, repo: `${owner}/${repo}`, imported: files.length, files: files.map((f) => ({ path: f.path, size: f.content.length })) }, 201);
       }
 
+      // ── GITHUB: LIST / CREATE / PUSH ─────────────────────────────────────
+      // The Import-from-GitHub page shipped three buttons — a repo list, "Create
+      // it" and "Send it to GitHub" — wired to /api/github/repos,
+      // /api/github/create-repo and /api/github/push. None of the three routes
+      // existed. They answered 404 to an authenticated caller, so the page
+      // loaded, showed real form fields, and every button came back "Push
+      // failed" or "Could not create it" from a server with no such route.
+      // /api/github/import was the only GitHub route on the worker.
+      //
+      // All three are implemented here against GitHub's REST API. The token is
+      // the caller's own X-GitHub-Token when GitHub is connected on their side,
+      // otherwise the worker's GITHUB_TOKEN secret. Never written to this repo.
+      if (path.startsWith("/api/github/") && (method === "GET" || method === "POST")) {
+        const ghTok = request.headers.get("X-GitHub-Token") || env.GITHUB_TOKEN || "";
+        if (!ghTok) return json({ connected: false, message: "GitHub is not connected yet.", repos: [] });
+        const ghH = { Accept: "application/vnd.github+json", "User-Agent": "createstuff", Authorization: `Bearer ${ghTok}` };
+        const ghFetch = async (u, init) => {
+          try { return await fetch(u, { ...init, headers: { ...ghH, ...((init && init.headers) || {}) } }); }
+          catch { throw new HttpError("GitHub API unreachable", 502); }
+        };
+
+        // GET  /api/github/repos  -> { connected, repos:[{name,html_url,...}] }
+        if (path === "/api/github/repos") {
+          if (!(await rateLimit(env, request, "gh-list", 30, 60))) return err("Too many GitHub calls — wait a minute", 429);
+          const r = await ghFetch("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member");
+          if (r.status === 401) return json({ connected: false, message: "GitHub rejected the connection — reconnect to continue.", repos: [] });
+          if (!r.ok) throw ghStatusError(r.status);
+          const j = await r.json().catch(() => []);
+          return json({ connected: true, repos: (Array.isArray(j) ? j : []).map((x) => ({
+            name: x.name, full_name: x.full_name, html_url: x.html_url,
+            description: x.description || "", language: x.language || "",
+            stargazers_count: x.stargazers_count || 0,
+            private: !!x.private, default_branch: x.default_branch || "main",
+            updated_at: x.updated_at || null,
+          })) });
+        }
+
+        // POST /api/github/create-repo {name,description} -> {full_name,html_url}
+        if (path === "/api/github/create-repo" && method === "POST") {
+          if (!(await rateLimit(env, request, "gh-create", 6, 300))) return err("Too many repositories — wait 5 minutes", 429);
+          const b = await request.json().catch(() => ({}));
+          const name = String(b.name || "").trim().replace(/\s+/g, "-").slice(0, 100);
+          if (!name) return err("Give the repository a name first", 422);
+          if (!/^[A-Za-z0-9._-]+$/.test(name)) return err("Repository names may use letters, numbers, dots, dashes and underscores", 422);
+          const r = await ghFetch("https://api.github.com/user/repos", {
+            method: "POST",
+            headers: { ...ghH, "Content-Type": "application/json" },
+            body: JSON.stringify({ name, description: String(b.description || "Created from CreateStuff.ai").slice(0, 350), auto_init: true }),
+          });
+          if (r.status === 422) return err("That repository name is already taken on your account", 422);
+          if (!r.ok) throw ghStatusError(r.status);
+          const j = await r.json().catch(() => null);
+          if (!j || !j.full_name) throw new HttpError("GitHub created it but returned an unreadable response", 502);
+          return json({ full_name: j.full_name, name: j.name, html_url: j.html_url, default_branch: j.default_branch || "main" }, 201);
+        }
+
+        // POST /api/github/push {repo,path,branch,message,content}
+        // -> {html_url, sha, path, branch, created}
+        if (path === "/api/github/push" && method === "POST") {
+          if (!(await rateLimit(env, request, "gh-push", 20, 300))) return err("Too many pushes — wait 5 minutes", 429);
+          const b = await request.json().catch(() => ({}));
+          const full = String(b.repo || "").trim();
+          const mm = full.match(/^([\w.-]+)\/([\w.-]+)$/);
+          if (!mm) return err("Use the owner/name form, for example placebetsai/Placebetsai", 422);
+          const owner = mm[1], repo = mm[2];
+          const filePath = String(b.path || "index.html").trim().replace(/^\/+/, "").slice(0, 300);
+          if (!filePath || filePath.includes("..")) return err("That file path is not valid", 422);
+          const branch = String(b.branch || "").trim().slice(0, 250) || "main";
+          const message = String(b.message || "").trim().slice(0, 200) || `Update ${filePath} from CreateStuff`;
+          const content = String(b.content == null ? "" : b.content);
+          if (!content) return err("There is no code to send", 422);
+
+          // UTF-8 safe: btoa only accepts latin1, so walk the bytes.
+          const bytes = new TextEncoder().encode(content);
+          let bin = "";
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          const encoded = btoa(bin);
+
+          // Updating an existing file REQUIRES its blob sha — GitHub 422s
+          // without it. A missing file (404) simply means no sha to send.
+          const blobUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(branch)}`;
+          const getR = await ghFetch(blobUrl);
+          let sha = null;
+          if (getR.ok) {
+            const gj = await getR.json().catch(() => null);
+            sha = (gj && gj.sha) || null;
+          } else if (getR.status === 404) {
+            sha = null;
+          } else if (getR.status === 409) {
+            return err("That repository has no branch named " + branch, 409);
+          } else {
+            throw ghStatusError(getR.status);
+          }
+
+          const putR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}`, {
+            method: "PUT",
+            headers: { ...ghH, "Content-Type": "application/json" },
+            body: JSON.stringify({ message, content: encoded, branch, ...(sha ? { sha } : {}) }),
+          });
+          if (putR.status === 409) return err("That repository has no branch named " + branch, 409);
+          if (!putR.ok) throw ghStatusError(putR.status);
+          const out = await putR.json().catch(() => null);
+          const commitSha = out && out.commit && out.commit.sha;
+          const htmlUrl = (out && out.content && out.content.html_url)
+            || `https://github.com/${owner}/${repo}/blob/${branch}/${filePath}`;
+          return json({ html_url: htmlUrl, sha: commitSha || null, path: filePath, branch, created: !sha, repo: `${owner}/${repo}` });
+        }
+      }
+
       // projects
       if (path === "/api/projects" && method === "GET") {
         const key = projectsListKey(user.sub);
@@ -2628,33 +2794,33 @@ export default {
         const id = ins.meta.last_row_id;
         await cacheDrop(env, buildsListKey(projectId));
 
-        // The work must NOT run in ctx.waitUntil: Cloudflare tears that
-        // context down at ~30s (measured 2026-09-25 — build 70's outbound
-        // fetch was cancelled at 21:38:09, 31s after start, killing the code
-        // writer while the planner had already finished). Instead the Hive
-        // relay calls back into POST /api/builds/:id/run, which is an ordinary
-        // long-lived request with no such ceiling. The relay answers this kick
-        // immediately, so waitUntil has plenty of room for it.
-        const kick = (async () => {
-          if (env.HIVE_URL && env.HIVE_TOKEN) {
-            const runUrl = url.origin + "/api/builds/" + id + "/run";
-            const base = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "");
-            const r = await fetch(base + "/hive/run", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.HIVE_TOKEN },
-              body: JSON.stringify({ run_url: runUrl }),
-              signal: AbortSignal.timeout(15000),
-            });
-            if (r.ok) return; // relay accepted the job
-          }
-          // No relay configured — run inline as before (dev/test only).
-          await runGenerate(env, user, projectId, prompt, "generate", url.origin, id).catch(async (e) => {
-            await failBuild(env, id, e);
-          });
-        })().catch(async (e) => { await failBuild(env, id, e); });
-        if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(kick);
-
-        return json({ id, project_id: projectId, status: "running", started_at: startedAt }, 202);
+        // Run the build HERE, in this request, and answer when it is done.
+        //
+        // Two earlier designs both stranded builds in production:
+        //   (a) ctx.waitUntil - Cloudflare tears that context down at ~30s,
+        //       which killed build 70's writer 31s in, right after its plan;
+        //   (b) handing run_url to the Hive relay to call back into
+        //       POST /api/builds/:id/run. The relay's own HTTP client gives up
+        //       before a ~75s build finishes, the connection drops, and
+        //       Cloudflare cancels this Worker mid-run. The row is then left at
+        //       status='running' with nothing written, and the one-open-job
+        //       guard refuses every retry after that. Builds 104 and 105 were
+        //       stranded exactly this way for 21 and 11 minutes: both had a
+        //       correct plan on screen and both died in the writer, which is
+        //       precisely the part the relay does not wait for.
+        //
+        // Running inline has always worked. POST /api/ai/generate does it and
+        // finished build 106 - a real 3-file app making 2 live API calls - in
+        // 75s. The build row is already written above, so the UI's polling loop
+        // is unchanged: it finds a finished build instead of one that never
+        // finishes.
+        await runGenerate(env, user, projectId, prompt, "generate", url.origin, id).catch(async (e) => {
+          await failBuild(env, id, e);
+        });
+        const fin = await env.DB.prepare(
+          "SELECT id, project_id, status, started_at, completed_at FROM builds WHERE id=?"
+        ).bind(id).first();
+        return json(fin || { id, project_id: projectId, status: "running", started_at: startedAt }, 200);
       }
       const buildOne = path.match(/^\/api\/builds\/(\d+)$/);
       if (buildOne && method === "GET") {

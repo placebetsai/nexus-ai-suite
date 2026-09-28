@@ -771,49 +771,20 @@ async function csShim(path, options = {}) {
     return { ok: true, value: { url, ok: true } };
   }
 
-  // GitHub READ — forge-api has no /api/github/repos, so the page pressed
-  // "Show my repositories", got a 404 and printed "Could not reach GitHub".
-  // The list comes from the same place create/push do: the user's own token
-  // against api.github.com. The first time, the connect dialog opens, GitHub
-  // checks the token before anything is stored, and only then do we list.
-  if (path === '/api/github/repos' && method === 'GET') {
-    // Opening the page must not throw a modal over the import box underneath
-    // (that one works with no token at all). The dialog is opened on purpose by
-    // the card's button — connectGitHubFlow() below.
-    if (!csGhConnected()) {
-      return {
-        ok: true,
-        value: {
-          connected: false,
-          repos: [],
-          message: 'GitHub is not connected yet. Press "Show my repositories" and paste the token GitHub gives you (it starts with ghp_), or paste a project link in the box below to bring a public project in.',
-        },
-      };
-    }
-    csGhSeen = true; // already checked when it was saved — do not re-ask for a read
-    const repos = await csGh('/user/repos?per_page=30&sort=updated');
-    return { ok: true, value: { connected: true, repos: Array.isArray(repos) ? repos : [] } };
-  }
-
-  // GitHub WRITE (forge-api is read-only) -> user's own PAT against api.github.com
-  if (path === '/api/github/create-repo' && method === 'POST') {
-    const r = await csGh('/user/repos', { method: 'POST', body: JSON.stringify({ name: body.name, description: body.description || '', private: false }) });
-    return { ok: true, value: { full_name: r.full_name, html_url: r.html_url } };
-  }
-  if (path === '/api/github/push' && method === 'POST') {
-    const rel = String(body.path || 'index.html').replace(/^\/+/, '');
-    let sha;
-    try { const cur = await csGh(`/repos/${body.repo}/contents/${rel}?ref=${encodeURIComponent(body.branch || 'main')}`); sha = cur && cur.sha; } catch { /* new file */ }
-    const r = await csGh(`/repos/${body.repo}/contents/${rel}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: body.message || 'Update from CreateStuff.ai',
-        content: btoa(unescape(encodeURIComponent(body.content || ''))),
-        branch: body.branch || 'main',
-        ...(sha ? { sha } : {}),
-      }),
-    });
-    return { ok: true, value: { html_url: r && r.content && r.content.html_url } };
+  // GitHub READ / CREATE / PUSH.
+  //
+  // These three were shimmed here — straight from the browser to
+  // api.github.com — because the API had no such routes and every one of them
+  // answered 404. The shim therefore asked each person to paste a GitHub
+  // personal access token (ghp_...) into their own browser before a single
+  // repository could be listed, created or written to, and until they did, the
+  // page printed "GitHub is not connected yet".
+  //
+  // The API now serves all three server-side (GET /api/github/repos,
+  // POST /api/github/create-repo, POST /api/github/push), so they fall through
+  // to the real request and there is no token to paste.
+  if (path === '/api/github/repos' || path === '/api/github/create-repo' || path === '/api/github/push') {
+    return { ok: false }; // real API — the server holds the connection
   }
 
   return { ok: false }; // not shimmed -> real API
@@ -1357,10 +1328,10 @@ async function loadGitHubRepos() {
 // the button: arriving at the page just shows the state and leaves the import
 // box below reachable, because importing a public project needs no token.
 async function connectGitHubFlow() {
-  if (!csGhConnected()) {
-    const pat = await csGhDialog();
-    if (!pat) { await loadGitHubRepos(); return; }   // cancelled: honest not-connected state
-  }
+  // It used to open a dialog demanding a personal access token (ghp_...) before
+  // a single repository could be listed — that was the browser shim's only way
+  // to reach GitHub. The API lists repositories with its own connection now, so
+  // pressing this just loads them.
   await loadGitHubRepos();
 }
 
@@ -2389,20 +2360,38 @@ window.createGitHubRepo = async function() {
 
 window.fillPushFromBuild = async function() {
   try {
-    let code = '';
-    try {
-      const b = await api('/api/builds/20');
-      code = b.generated_code || '';
-    } catch {}
+    // What the user is looking at right now wins: the code editor may hold
+    // work that has not been saved to the server yet.
+    const ed = document.getElementById('editor-content');
+    let code = ed && ed.value ? ed.value : '';
+    let filePath = '';
+
     if (!code) {
-      const ed = document.getElementById('editor-content');
-      code = ed && ed.value ? ed.value : '';
+      // This used to GET /api/builds/20 — a hardcoded build id on a route that
+      // does not exist on the worker, so it 404'd every single time and the
+      // user was told there was nothing to send even with a finished app.
+      // The generated code lives in the project's own files, so read that.
+      if (!currentProjectId) { showToast('Choose an app first'); return; }
+      const r = await api(`/api/projects/${currentProjectId}/files`);
+      const files = (r && r.files) || [];
+      const p = (f) => f.file_path || f.path || '';
+      const pick = files.find((f) => /(^|\/)index\.html?$/i.test(p(f)))
+                || files.find((f) => /\.html?$/i.test(p(f)))
+                || files.find((f) => /\.js$/i.test(p(f)))
+                || files[0];
+      if (pick) { code = pick.content || ''; filePath = p(pick); }
     }
+
     if (!code) { showToast('Nothing to copy in — paste the code yourself'); return; }
     document.getElementById('push-content').value = code;
-    showToast('Copied your latest app into the box');
+    // Send it to the file the code actually came from, not always index.html.
+    if (filePath) {
+      const pathEl = document.getElementById('push-path');
+      if (pathEl && !pathEl.value.trim()) pathEl.value = filePath;
+    }
+    showToast('Copied your app into the box');
   } catch (e) {
-    showToast('Could not fill content');
+    showToast(String((e && e.message) || 'Could not fill content'));
   }
 };
 
