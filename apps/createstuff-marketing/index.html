@@ -378,6 +378,12 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
 
   /* DEFECT A5: make chat input the widest control, send button touch-friendly */
   .chat-input-area{display:flex;align-items:center;gap:.35rem;width:100%;min-width:0;padding:.6rem .5rem;box-sizing:border-box}
+  #chat-mode{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;width:100%;padding:.55rem .5rem 0;box-sizing:border-box}
+  .mode-btn{font-size:.72rem;line-height:1;padding:.34rem .68rem;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text3);cursor:pointer;font-family:inherit;transition:background .16s ease,color .16s ease,border-color .16s ease,transform .16s cubic-bezier(.2,.7,.3,1)}
+  .mode-btn:hover{border-color:var(--text3);color:var(--text);transform:translateY(-1px)}
+  .mode-btn:focus-visible{outline:2px solid var(--accent,#4f8cff);outline-offset:2px}
+  .mode-btn.active{background:var(--text);border-color:var(--text);color:var(--bg);font-weight:600}
+  .mode-hint{font-size:.68rem;color:var(--text3);margin-left:.1rem}
   #chat-input{flex:1 1 auto;min-width:0;max-width:100%;height:40px;box-sizing:border-box}
   #voice-btn{flex:0 0 auto;width:40px;height:40px;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center}
   #send-btn{flex:0 0 auto;width:40px;height:40px;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center;padding:0;font-size:1.1rem;line-height:1}
@@ -877,6 +883,11 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
           <div class="chat-messages" id="chat-messages">
             <div class="msg agent"><div class="msg-avatar"><svg viewBox="0 0 24 24"><path d="M4 6.5h16M4 12h11M4 17.5h7"/></svg></div><div class="msg-content"><strong>Planner Agent</strong><p>Welcome! I'm your planning agent. Describe what you want to build, and I'll coordinate the team to make it happen.</p><p>Try: "Build me a restaurant website with online ordering"</p></div></div>
           </div>
+          <div class="chat-mode" id="chat-mode" role="group" aria-label="What should the Agent do with what you type">
+            <button type="button" class="mode-btn active" data-chat-mode="build" aria-pressed="true" data-tip="Writes the code, makes a new app and adds it to your list." title="Writes the code, makes a new app and adds it to your list.">Build it</button>
+            <button type="button" class="mode-btn" data-chat-mode="talk" aria-pressed="false" data-tip="Talk your idea through first. Creates no app and uses none of your builds." title="Talk your idea through first. Creates no app and uses none of your builds.">Talk it through</button>
+            <span class="mode-hint" id="mode-hint">Writes the code and makes a new app.</span>
+          </div>
           <div class="chat-input-area">
             <input type="text" id="chat-input" placeholder="Say what you want in plain words..." autocomplete="off" data-tip="Type what you want built, the way you would tell a person. Press Enter to send it." title="Type what you want built, the way you would tell a person. Press Enter to send it.">
             <button id="voice-btn" class="btn-icon" aria-label="Speak instead of typing" data-tip="Speak your idea instead of typing it." title="Speak your idea instead of typing it."><svg viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
@@ -1192,6 +1203,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }catch(e){}
 })();
 </script>
-<script src="/app.js?v=dc45c05781e7"></script>
+<script src="/app.js?v=623b36cf09ee"></script>
 </body>
 </html>

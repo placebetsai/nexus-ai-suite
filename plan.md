@@ -101,8 +101,14 @@ Our free tier publishes real apps to real addresses with no credits — that sta
 - [ ] **Secrets / environment UI** for the generated app, not just ours.
 
 ### P1 — the visible "they can do that" list
-- [ ] **Discussion mode**: talk to the Agent about an idea without spending a build
-      (Base44 has this explicitly; we currently spend a build on every message).
+- [x] **Discussion mode**: talk to the Agent about an idea without spending a build
+      (Base44 has this explicitly; we were spending a build on every message).
+      **DONE 2026-09-28** — a **Build it / Talk it through** switch above the chat box.
+      Talking calls `POST /api/ai/discuss`, which writes no code and touches no table:
+      **projects 37 → 37, builds unchanged**, answer in ~4.8 s. **Browser E2E 27/27**
+      (`tests/e2e/discuss-mode.mjs`, 0 console errors, 0 failed requests) — covers the
+      switch, its tips, the answer, *no project created*, the choice surviving a reload,
+      and **Build mode still creating an app (37 → 38)** so the old path is unbroken.
 - [ ] **Custom domain for a published app** (Replit sells them in-app; Base44 removes branding at
       paid tiers — we should accept a domain the user already owns).
 - [ ] **Version history list in the builder** with a Restore button.

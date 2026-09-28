@@ -1672,8 +1672,15 @@ function setupBuilder() {
   const input = document.getElementById('chat-input');
   const voiceBtn = document.getElementById('voice-btn');
 
-  sendBtn.onclick = function() { const v = input.value.trim(); if (v) { input.value = ''; startBuild(v) } };
-  input.onkeydown = function(e) { if (e.key === 'Enter') { const v = input.value.trim(); if (v) { input.value = ''; startBuild(v) } } };
+  sendBtn.onclick = function() { const v = input.value.trim(); if (v) { input.value = ''; csSend(v) } };
+  input.onkeydown = function(e) { if (e.key === 'Enter') { const v = input.value.trim(); if (v) { input.value = ''; csSend(v) } } };
+
+  // The Build / Talk switch. Restored from storage first so a reload keeps
+  // whichever mode the user last chose, then the click handler takes over.
+  document.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.onclick = function() { csSetChatMode(this.dataset.chatMode); };
+  });
+  csPaintChatMode();
 
   if (voiceBtn) {
     voiceBtn.onclick = function() {
@@ -1688,7 +1695,7 @@ function setupBuilder() {
       recognition.onresult = function(event) {
         const text = event.results[0][0].transcript;
         input.value = text;
-        setTimeout(() => { input.value = ''; startBuild(text) }, 500);
+        setTimeout(() => { input.value = ''; csSend(text) }, 500);
       };
       recognition.start();
     };
@@ -1910,6 +1917,97 @@ async function startBuild(prompt) {
     addAgentMsg('System', 'Error starting build. Please try again.');
     agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>Error';
   }
+}
+
+// ============ DISCUSSION MODE ============
+// Talk the idea through with the Agent without spending a build. Every other
+// message in this box creates a project and starts a generation; asking "is
+// this worth building" should not cost the user an app in their list and a
+// build they had to wait for. This path calls /api/ai/discuss, which writes no
+// code and touches no table, so the only thing that happens is an answer.
+const CS_MODE_KEY = 'cs_chat_mode';
+
+function csChatMode() {
+  try { return localStorage.getItem(CS_MODE_KEY) === 'talk' ? 'talk' : 'build'; }
+  catch { return 'build'; }
+}
+
+// Paints the two-way switch to match what is stored. Called on load and on
+// every click so the button, the hint and the send button's own tip can never
+// disagree about what pressing Enter will do.
+function csPaintChatMode() {
+  const mode = csChatMode();
+  document.querySelectorAll('.mode-btn').forEach((b) => {
+    const on = b.dataset.chatMode === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const hint = document.getElementById('mode-hint');
+  const send = document.getElementById('send-btn');
+  const input = document.getElementById('chat-input');
+  if (mode === 'talk') {
+    if (hint) hint.textContent = 'Just talking — creates no app and uses none of your builds.';
+    if (send) { send.title = 'Send your question to the Agent.'; send.dataset.tip = 'Send your question to the Agent.'; send.textContent = '💬'; }
+    if (input) {
+      input.placeholder = 'Ask anything about your idea...';
+      input.title = 'Ask the Agent about your idea. Nothing is built and no build is used.';
+      input.dataset.tip = 'Ask the Agent about your idea. Nothing is built and no build is used.';
+    }
+  } else {
+    if (hint) hint.textContent = 'Writes the code and makes a new app.';
+    if (send) { send.title = 'Send your description and start the build.'; send.dataset.tip = 'Send your description and start the build.'; send.textContent = '→'; }
+    if (input) {
+      input.placeholder = 'Say what you want in plain words...';
+      input.title = 'Type what you want built, the way you would tell a person. Press Enter to send it.';
+      input.dataset.tip = 'Type what you want built, the way you would tell a person. Press Enter to send it.';
+    }
+  }
+}
+
+function csSetChatMode(mode) {
+  const m = mode === 'talk' ? 'talk' : 'build';
+  try { localStorage.setItem(CS_MODE_KEY, m); } catch { /* private mode: the paint still happens */ }
+  csPaintChatMode();
+}
+
+// One place decides what sending does, so the button, Enter and the microphone
+// can never drift apart and send a question down the build path by mistake.
+function csSend(text) {
+  const v = String(text || '').trim();
+  if (!v) return;
+  if (csChatMode() === 'talk') discuss(v); else startBuild(v);
+}
+
+async function discuss(message) {
+  const chat = document.getElementById('chat-messages');
+  const agentStatusBar = document.getElementById('agent-status-bar');
+  if (!chat) return;
+
+  chat.innerHTML += `<div class="msg user"><div class="msg-avatar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.2a7.5 7.5 0 0 1 15 0"/></svg></div><div class="msg-content">${escapeHtml(message)}</div></div>`;
+  if (agentStatusBar) agentStatusBar.innerHTML = '<span class="status-dot active"></span>Thinking it through…';
+
+  // The pending line gets its own id so it can be swapped in place: appending
+  // a second message here would leave "Thinking…" stuck above the answer.
+  const PH = 'discussPending';
+  chat.innerHTML += `<div class="msg agent"><div class="msg-avatar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6z"/><path d="M12 8.4 16 10.6v4.2M12 8.4 8 10.6v4.2M12 8.4v4.2"/></svg></div><div class="msg-content" id="${PH}"><strong>Planner Agent</strong><p>Thinking it through…</p></div></div>`;
+  chat.scrollTop = chat.scrollHeight;
+
+  try {
+    const r = await api('/api/ai/discuss', { method: 'POST', body: JSON.stringify({ message }) });
+    const slot = document.getElementById(PH);
+    if (agentStatusBar) agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>No build was used.';
+    if (!slot) return;
+    if (r && r.ok && r.reply) {
+      slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml(r.reply).replace(/\n/g, '<br>')}</p>`;
+    } else {
+      slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml((r && (r.error || r.notes)) || 'I could not answer that. Ask it again.')}</p>`;
+    }
+  } catch (e) {
+    const slot = document.getElementById(PH);
+    if (agentStatusBar) agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>No answer';
+    if (slot) slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml(String((e && e.message) || e))}</p>`;
+  }
+  chat.scrollTop = chat.scrollHeight;
 }
 
 window.deployBuild = async function(buildId) {

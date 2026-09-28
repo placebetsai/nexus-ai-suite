@@ -634,6 +634,32 @@ OUTPUT FORMAT — output ONLY this array, no prose before or after, no markdown 
 // failure, and the writer then receives exactly the prompt it received before
 // multi-agent existed — so a broken planner can only ever put us back on the
 // old path, it cannot make an output worse.
+// DISCUSSION MODE — talk about an idea without spending a build.
+// Base44 offers this explicitly and we did not: every message used to create a
+// project row and start a generation, so asking "is this a good idea" cost the
+// user a full build and a new app in their list. This route writes no code,
+// creates no project, touches no table. It is a plain conversation.
+//
+// Deliberately not a chat generalist: it is asked to be useful about one idea
+// and to say plainly when something is untested or unknowable, because the
+// whole point of the product is that nothing is claimed without being checked.
+const DISCUSS_SYS = `You are the builder's design partner on createstuff.ai. The person in front of you is describing an app idea and wants to think it through BEFORE paying for a build with a message.
+
+Answer them in plain English, the way a helpful developer friend would. Do not write code and do not produce a spec - nothing is being built yet.
+
+Cover, in this order, skipping any part that does not apply:
+1. What the idea actually is, in one sentence, in their own words.
+2. The one screen to build first, and what has to be on it.
+3. What could go wrong or be harder than it looks, honestly. Say "I don't know" or "this depends" when it genuinely does rather than guessing.
+4. What to decide before building: the audience, what it stores, and whether anyone pays.
+
+Rules:
+- Maximum 150 words. Short and concrete beats long and impressive.
+- Never promise a result, a deadline, a ranking, or a number you have not been given. Do not use words like revolutionary, game-changing, perfect, guaranteed, or best-in-class.
+- If they ask whether something was tested or works, say you have no evidence of it rather than implying it does.
+- Use their vocabulary, not product jargon. Never mention agents, models, tokens or pipelines.
+- Plain text only: no JSON, no markdown headings, no code fences, no bullet characters. Short paragraphs are fine.`;
+
 const PLAN_SYS = `You are the planner in a three-agent build pipeline: planner, writer, verifier. You write NO code. You turn one person's plain-English brief into a tight build spec that the writer must satisfy.
 
 Return plain text only - no JSON, no markdown fences, no preamble - in exactly this shape, under 130 words:
@@ -2198,6 +2224,25 @@ export default {
         const m = await planAgent(env, plan);
         const spec = m && m.spec ? String(m.spec).trim() : null;
         return json({ ok: !!spec, plan: spec, why: spec ? null : (m && m.why) || "no plan", model: (m && m.model) || null });
+      }
+      // DISCUSSION MODE. Talk to the Agent about an idea without spending a
+      // build: no project row, no build row, no files, no deploy. The answer
+      // is an answer and nothing else — that is the entire feature, and it is
+      // what "without spending a build" has to mean literally.
+      if (path === "/api/ai/discuss" && method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        const message = String(b.message || b.plan || b.prompt || "").trim().slice(0, 4000);
+        if (!message) return err("message required");
+        const t0 = Date.now();
+        try {
+          const r = await gen(env, DISCUSS_SYS, message, 700);
+          const reply = String((r && r.text) || "").trim();
+          if (!reply) return err("The Agent did not answer. Ask it again.", 502);
+          return json({ ok: true, reply, model: (r && r.model) || null, ms: Date.now() - t0 });
+        } catch (e) {
+          console.warn("discuss failed: " + (e && e.message));
+          return err("The Agent could not answer that just now. Try again in a moment.", 502);
+        }
       }
       if (path === "/api/ai/generate" && method === "POST") {
         const b = await request.json().catch(() => ({}));

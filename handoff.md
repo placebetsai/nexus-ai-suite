@@ -238,6 +238,23 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-28 — Discussion mode: talk to the Agent without spending a build.**
+  The builder box used to make *every* message create a project and start a generation, so
+  asking "is this worth building" cost an app in the list and a 60–150 s wait. There is now a
+  **Build it / Talk it through** switch above the input (`apps/createstuff-marketing/index.html`
+  + `app.js` → `csChatMode/csSetChatMode/csSend/discuss`). Talking calls the new
+  **`POST /api/ai/discuss`** (`workers/createstuff-api/src/index.js`, system prompt
+  `DISCUSS_SYS`), which runs one model call and **writes no code, creates no project, touches no
+  table**. `DISCUSS_SYS` caps the answer at 150 words, forbids unverified superlatives and
+  requires "I don't know" where it applies — the same no-unproven-claims rule as the rest of the
+  product. Proven twice: **API** (`ok:true`, 112 words, `ms 4728`, **projects 34 → 34, builds
+  1 → 1**, no-token **401**, empty message rejected) and **real Chrome 27/27**
+  (`tests/e2e/discuss-mode.mjs`, 0 console errors, 0 failed product requests), which also checks
+  the choice survives a reload and that **Build mode still creates an app (37 → 38)**. Deployed
+  to `createstuff-app` **and** `createstuff-marketing`; live sha256 == local on both.
+  The proof script reads `CS_E2E_EMAIL`/`CS_E2E_PASS` from the environment and finds playwright
+  itself, so **no credential is committed to this public repo**.
+
 - ✅ **RESOLVED 2026-09-27 — `sites.createstuff.ai` (the branded publish host) is LIVE.** The one
   thing that had blocked it for weeks was a single missing DNS record plus the absence of any
   credential here that could write it. Fixed: user issued token **`raspy-credit-99f5`**
