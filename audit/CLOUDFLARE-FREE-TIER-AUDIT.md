@@ -168,8 +168,59 @@ Measured `app-host` invocations per hour (fix landed **14:33Z**):
 ```
 
 Pre-fix baseline over the measured window: **avg 1,553/hr**, range 30 → 7,016/hr, 24,841 total.
-The traffic is spiky in a way human usage of four portfolio sites is not. A clean post-fix hour
-needs to elapse before the drop can be quoted — recorded below when available.
+The traffic is spiky in a way human usage of four portfolio sites is not.
+
+### Post-fix measurement (recorded 2026-09-29 15:47Z, ~74 minutes after the fix)
+
+Because the hourly series is bursty, a single post-fix hour on its own would prove nothing — a quiet
+hour would have happened anyway and a burst would have hidden the effect. So the comparison is made
+**like for like**: the same 74-minute clock window (14:33Z → 15:47Z), one day apart, from the Workers
+analytics GraphQL dataset.
+
+| Window 14:33Z → 15:47Z | 2026-09-28 (pre-fix) | 2026-09-29 (post-fix) | Change |
+|---|---:|---:|---:|
+| **All Workers, account-wide** | 3,602 | 796 | **−77.9%** |
+| **`app-host` only** | 3,562 | 568 | **−84.1%** |
+
+Full days for context: 2026-09-28 = **51,056** account-wide requests; 2026-09-29 = **25,808** through
+15:47Z (the fix landed at 14:33Z, so all but the last 74 minutes of that are pre-fix).
+
+**What is causal and what is only correlated.** The percentages above are the *effect*; the *cause* is
+a deterministic check that does not depend on traffic levels at all:
+
+- Wildcard DNS records remaining across all 8 zones: **0** (was 4).
+- Records whose first label is a scanner magnet (`mail`, `cpanel`, `webmail`, `ftp`, `smtp`, `imap`,
+  `autodiscover`, `test`, `dev`, `admin`, …): **0**, across all **51** records / **23** proxied.
+- `dig +short @1.1.1.1 cpanel.{israeljoffe.com,israeljoffe.org,wuwonline.com,wuwonline.org}` →
+  **empty (NXDOMAIN)** on all four, while each zone's apex still resolves to Cloudflare
+  (172.67.x.x / 104.21.x.x). A scanner probing a random label now stops at DNS: **0 Worker
+  invocations, 0 D1 rows, 0 CPU ms**, where before it reached the Worker and got a `404`.
+
+**What the remaining traffic is.** The 568 post-fix `app-host` requests are not a residue of the
+wildcard mechanism, which by construction cannot fire any more. A 10-minute burst (15:05–15:15Z)
+accounts for 498 of them, and the burst was **isolated to `app-host`** — in the same window
+`createstuff-api` saw 5 requests, so it was not caused by this session's deploys. With no wildcards
+and no magnet labels left, that traffic can only be reaching hostnames that genuinely exist (the 23
+proxied records), i.e. bots path-scanning real hostnames — traffic the sites would receive whether or
+not the wildcard existed. It is bounded and, importantly, **cheap**: it is served from the per-isolate
+hostname cache and does not re-trigger the whole-table D1 read that caused the outage.
+
+**The metric that actually took the sites down is healthy.** `scripts/d1-budget.py`, run at 15:47Z:
+
+```
+D1 reads today: 480,233 / 5,000,000 (10%) — marketpicks-db 406,829, createstuff-db 65,952, fashionistas-db 7,452
+```
+
+versus **5,133,584 (103%)** on 2026-09-27, the day every site on the account went dark until 00:00 UTC.
+
+**Honest limits of this measurement.** 74 minutes is a short sample and the traffic is bursty, so the
+day-over-day percentage is directionally strong but not a final figure; a full post-fix day
+(00:00Z → 00:00Z) is the number that settles it. Workers analytics has **no hostname dimension**
+(`AccountWorkersInvocationsAdaptiveDimensions` = cacheStatus, coloCode, date, datetime\*, 
+dispatchNamespaceName, environmentName, isDispatcher, isPreview, previewSlug, scriptName, scriptTag,
+scriptVersion, status, usageModel), and `CF_API_TOKEN` has no zone-analytics read, so per-hostname
+attribution of the burst is not obtainable with the credentials in this repo — it is stated as
+unattributed here rather than guessed at.
 
 ---
 

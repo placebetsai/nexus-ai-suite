@@ -588,12 +588,36 @@ function csInline(files) {
   return doc;
 }
 
-async function csStartBuild(promptText, projectId) {
-  const id = `b_${Date.now().toString(36)}`;
+// Which log entry lights which chip. The two vocabularies differ — the markup
+// calls the last chip `deploy` while the generator reports the stage as
+// `Online`, and `Plan` is the planner's own card rather than a stage — so this
+// is spelled out instead of derived from the agent's name lowercased.
+// Keep it in step with CS_PLAN_STAGES below: those five are the only names a
+// completed run ever writes, plus `Plan`, which arrives from the fast planner.
+const CHIP_AGENTS = [
+  ['planner', ['planner', 'plan']],
+  ['frontend', ['frontend']],
+  ['test', ['test']],
+  ['fix', ['fix']],
+  ['deploy', ['online', 'deploy']],
+];
+
+async function csStartBuild(promptText, projectId, serverRow) {
+  // The SERVER owns the id when it gave us one. Every stage the generator
+  // reports is written into that row as it lands, so the chat an owner
+  // watches is the machine that is actually building talking — not this tab
+  // writing one line when the build starts and another when it ends, with
+  // two minutes of nothing in between.
+  const serverId = serverRow && serverRow.id != null && !serverRow.alreadyRunning ? serverRow.id : null;
+  const shownId = serverRow && serverRow.id != null ? serverRow.id : null;
+  const id = shownId != null ? String(shownId) : `b_${Date.now().toString(36)}`;
   const build = {
     id, project_id: projectId, prompt: promptText, status: 'running',
     agent_log: [{ agent: 'Planner', message: `Accepted brief: ${promptText.slice(0, 90)}` }],
-    generated_code: '', error: null, started: Date.now(), done: false,
+    generated_code: '', error: null,
+    started: (serverRow && serverRow.started_at && Date.parse(serverRow.started_at)) || Date.now(),
+    done: false,
+    server_build_id: shownId,
   };
   const all = csBuilds(); all[id] = build; csSaveBuilds(all);
 
@@ -607,13 +631,31 @@ async function csStartBuild(promptText, projectId) {
     cur.planShown = true;
     cur.agent_log.push({ agent: 'Plan', message: String(spec) });
     const pack = csBuilds(); pack[id] = cur; csSaveBuilds(pack);
+    // And onto the server's row, because that is what the poll reads now.
+    // Failure is fine: the build runs regardless, it just shows its own Plan
+    // entry a little later.
+    if (shownId != null) {
+      api(`/api/builds/${shownId}/log`, {
+        method: 'POST',
+        body: JSON.stringify({ agent: 'Plan', message: String(spec) }),
+      }).catch(() => {});
+    }
   };
   api('/api/ai/plan', { method: 'POST', body: JSON.stringify({ plan: promptText }) })
     .then((r) => showPlan(r && r.plan))
     .catch(() => { /* the planner is additive — the build continues without it */ });
 
-  // REAL generation on forge-api
-  api('/api/ai/generate', { method: 'POST', body: JSON.stringify({ projectId, plan: promptText }) })
+  // A row another browser is already filling: show that run instead of
+  // starting a second writer against the same files.
+  if (serverRow && serverRow.alreadyRunning) return build;
+
+  // REAL generation. `buildId` is what makes the run worth watching: with it,
+  // the worker appends each stage to the row as it happens instead of
+  // discarding them and inserting one entry at the very end.
+  api('/api/ai/generate', {
+    method: 'POST',
+    body: JSON.stringify(serverId == null ? { projectId, plan: promptText } : { projectId, plan: promptText, buildId: serverId }),
+  })
     .then((r) => {
       const files = (r && r.files) || [];
       const b = csBuilds()[id];
@@ -660,6 +702,15 @@ async function csStartBuild(promptText, projectId) {
       if (!b) return;
       b.status = 'failed'; b.error = String(e && e.message || e); b.done = true;
       const all = csBuilds(); all[id] = b; csSaveBuilds(all);
+      // The row on the server was opened before the worker was asked to fill
+      // it. If the call never landed, nothing else will ever close it — and
+      // an open row blocks every later build of this project.
+      if (serverId != null) {
+        api(`/api/builds/${serverId}/log`, {
+          method: 'POST',
+          body: JSON.stringify({ agent: 'System', message: 'Build failed: ' + b.error }),
+        }).catch(() => {});
+      }
     });
   return build;
 }
@@ -676,6 +727,26 @@ function csServerBuildId(id) {
   return b && b.server_build_id ? String(b.server_build_id) : null;
 }
 
+// The server's build row -> the shape the cockpit polls for.
+//
+// The two records are deliberately not the same object. The server stamps
+// `started_at` and reports failure through `status` plus a System line in the
+// log; the poll measures elapsed seconds from `started` and reads `error`.
+// Without this mapping every running build looked 0s old forever and every
+// failure said "unknown error" even though the worker had written the reason.
+function csFromServerBuild(row) {
+  if (!row || typeof row !== 'object') return row;
+  const log = Array.isArray(row.agent_log) ? row.agent_log : [];
+  const lastSystem = [...log].reverse().find((l) => String(l && l.agent) === 'System');
+  const startedMs = Date.parse(row.started_at || '') || Date.now();
+  const done = row.status === 'completed' || row.status === 'failed' || row.status === 'answered';
+  let error = row.error != null ? row.error : null;
+  if (row.status === 'failed' && !error) {
+    error = lastSystem ? String(lastSystem.message).replace(/^Build failed:\s*/, '') : 'The build did not finish.';
+  }
+  return { ...row, agent_log: log, started: startedMs, error, done };
+}
+
 async function csShim(path, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   let body = null;
@@ -684,9 +755,30 @@ async function csShim(path, options = {}) {
   // GET /api/templates -> real local catalog (route 404s on forge-api)
   if (method === 'GET' && path === '/api/templates') return { ok: true, value: CS_TEMPLATE_CATALOG };
 
-  // POST /api/builds -> start a REAL forge-api generation
+  // POST /api/builds -> start a REAL build, with the SERVER owning the row.
+  //
+  // The row is opened here, before the first frame is drawn, because every
+  // stage of the run is appended to it and the poll reads it. An id minted in
+  // this browser would leave the cockpit watching a record that a refresh — or
+  // any other device — could never see. `prepare:1` returns the id at once and
+  // leaves the generation to csStartBuild, which is what makes the log paint
+  // live instead of arriving in one lump when the whole run finishes.
   if (method === 'POST' && path === '/api/builds') {
-    return { ok: true, value: await csStartBuild((body && body.prompt) || '', body && body.project_id) };
+    const prompt = (body && body.prompt) || '';
+    const projectId = body && body.project_id;
+    let serverRow = null;
+    try {
+      serverRow = await apiDirect('/api/builds', {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, prompt, prepare: 1 }),
+      });
+    } catch (e) {
+      // Without a row the run is invisible from anywhere else, but it must
+      // still happen: csStartBuild falls back to a local id and the build
+      // itself does not depend on this call succeeding.
+      console.warn('build row not prepared:', e && e.message);
+    }
+    return { ok: true, value: await csStartBuild(prompt, projectId, serverRow) };
   }
 
   // GET /api/builds/20 -> legacy "latest generated code" lookup
@@ -701,7 +793,24 @@ async function csShim(path, options = {}) {
   // GET /api/builds/:id -> real progress + real generated_code
   const bm = path.match(/^\/api\/builds\/([^/]+)$/);
   if (method === 'GET' && bm) {
-    const b = csBuilds()[bm[1]];
+    const key = bm[1];
+    // A numeric id IS the server's row, and the poll reads it live so the
+    // cockpit shows each stage as it lands on every device. Answering it from
+    // localStorage instead meant "current status" was whatever this tab had
+    // managed to write — which after a refresh, or on a second browser, is
+    // nothing at all.
+    const local = csBuilds()[key];
+    const sid = /^\d+$/.test(key) ? key : (local && local.server_build_id ? String(local.server_build_id) : null);
+    if (sid) {
+      try {
+        return { ok: true, value: csFromServerBuild(await apiDirect(`/api/builds/${sid}`)) };
+      } catch (e) {
+        // Row swept or signed out. The local copy is stale, but blanking the
+        // cockpit on a transient 401 would be worse than showing it.
+        if (!local) throw e;
+      }
+    }
+    const b = local;
     if (!b) throw new Error('API error: 404');
     if (!b.done && Date.now() - b.started > 120000) {
       b.status = 'failed'; b.error = 'Generation timed out'; b.done = true;
@@ -1848,7 +1957,12 @@ async function startBuild(prompt) {
         } else if (buildStatus.status === 'failed') {
           clearInterval(pollInterval);
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>Build failed';
-          addAgentMsg('System', 'Build failed: ' + (buildStatus.error || 'unknown error'));
+          // The worker writes the reason into agent_log when it fails, and the
+          // loop above has already painted every entry in that log — so adding
+          // a second line here printed "Build failed: …" twice on screen. Only
+          // speak if the log itself never did.
+          const logSaidIt = (buildStatus.agent_log || []).some((l) => String(l && l.agent) === 'System');
+          if (!logSaidIt) addAgentMsg('System', 'Build failed: ' + (buildStatus.error || 'unknown error'));
           showToast('Build failed');
         } else if (buildStatus.status === 'running') {
           // The generator is one long call, so the only thing honestly known
@@ -1862,12 +1976,17 @@ async function startBuild(prompt) {
         // them off by index claimed "Architect: Done / Backend: Done" and
         // "Frontend: Working" on runs where none of those were ever called —
         // including a refusal, where only the Planner answered.
+        //
+        // The mapping is keyed by the chip, because the chip's data-agent and
+        // the agent name in the log are not the same word: the last chip is
+        // called `deploy` in the markup and lit up only when a log entry said
+        // "Online", so it never once turned green.
         const ran = new Set((buildStatus.agent_log || []).map((l) => String((l && l.agent) || '').toLowerCase()));
-        ['Planner', 'Architect', 'Frontend', 'Backend', 'Style', 'Test', 'Deploy'].forEach((name) => {
-          const chip = document.querySelector(`.agent-chip[data-agent="${name.toLowerCase()}"]`);
+        CHIP_AGENTS.forEach(([chipKey, agents]) => {
+          const chip = document.querySelector(`.agent-chip[data-agent="${chipKey}"]`);
           if (!chip) return;
           const txt = chip.querySelector('.agent-status-text');
-          if (ran.has(name.toLowerCase())) {
+          if (agents.some((a) => ran.has(a))) {
             chip.classList.remove('working');
             chip.classList.add('done');
             if (txt) txt.textContent = 'Done';

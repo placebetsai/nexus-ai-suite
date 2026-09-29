@@ -176,13 +176,22 @@ Our free tier publishes real apps to real addresses with no credits — that sta
 
       **Two root causes, both ours — zero of it was real users.**
       1. **app-host rescanned `projects` on every unknown hostname.** Bots probe `mail.`,
-         `cpanel.` etc. across the 8 wildcard zones app-host fronts; each missed the host cache and
+         `cpanel.` etc. across the zones app-host fronts — and 4 of them (`israeljoffe.com/.org`,
+         `wuwonline.com/.org`) had **wildcard DNS records**, so those random labels resolved and
+         every probe reached the Worker; each missed the host cache and
          fell through to `SELECT id, deploy_url FROM projects WHERE deploy_url IS NOT NULL …` — a
          **whole-table read**. Measured **18,214 scans on 09-27 → 2,445,142 rows**. The table holds
          **~146 projects, only 19 published** (ratio **7.9 : 1**, confirmed from reads/returns), so
          every scan paid for 146 rows to hand back 19. A per-isolate cache had already cut this to
          **~130 scans/day ≈ 19,000 reads** by 09-28 — a **99.2%** reduction — but nothing stopped
          it from coming back, and nothing watched the pot.
+         **Both halves are now closed.** The cache/index/breaker above stop the *scan*; the
+         **wildcard records themselves were deleted on 2026-09-29**, so a random label on those
+         zones is **NXDOMAIN** and the probe never reaches the Worker at all — **0 invocations, 0 D1
+         rows, 0 CPU**. Post-fix: **0 wildcards and 0 scanner-magnet labels** across all 8 zones'
+         51 records (23 proxied), and a like-for-like 74-minute window day-over-day shows
+         account-wide requests **3,602 → 796 (−77.9%)**, `app-host` **3,562 → 568 (−84.1%)**.
+         Full numbers and their honest limits: `audit/CLOUDFLARE-FREE-TIER-AUDIT.md` §4.
       2. **MarketPicks runs a `*/15` cron plus full-surface page queries**: a window-function scan
          over `quotes` (107,316 reads/13 h), `SELECT COUNT(*) FROM politician_trades` (71,478 reads
          to return 33 — 2,166 rows a call), `news_items` and `predictions` list scans. Steady

@@ -1,7 +1,7 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
 > **Newer:** `HANDOFF-2026-09-26.md` — MarketPicks + PlaceBets data/tools session (deploy rules, what's live, open problems).
-**Last updated: 2026-09-24** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Last updated: 2026-09-29** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
 **Local path:** `/home/billionaremaker/Documents/Default Project/nexus-ai-suite`
 **Local GitHub backup (mirror):** `/home/billionaremaker/Documents/GitHub-Backup/`
 
@@ -237,6 +237,47 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 ---
 
 ## 8. KNOWN GAPS / OPEN ITEMS
+
+- ✅ **RESOLVED 2026-09-29 — CreateStuff's build cockpit was theatre, and its poll could not read
+  the server.** Four defects in one path: **(1)** the chip bar listed **9** helpers while the
+  generator writes 6 agent names / 5 stages — *Architect, Backend, Style, Git* are written by no
+  run ever and sat on "Idle" through every build; **(2)** the poll ranked chips off a **positional**
+  array, so it printed "Architect: Done / Frontend: Working" on runs where those agents never spoke
+  (including a refusal, where only the Planner answered) — and the chip called `deploy` in the
+  markup is matched against the word "Deploy" while the generator writes **`Online`**, so that chip
+  **never once turned green** and the run's own `Fix` stage was never checked; **(3)** the poll read
+  the build from **localStorage**, where a numeric id is the server's row carrying `started_at` — a
+  refresh or a second device had nothing to show, and any row it did find read **0s old** and
+  **"unknown error"** even when the Worker had written the reason; **(4)** `POST /api/builds`
+  answered only when the **whole** build had finished, so the id did not exist until there was
+  nothing left to watch. **Fix:** `CHIP_AGENTS` name-keyed mapping (5 chips = exactly the 5 stages),
+  `csFromServerBuild()` to translate a server row into the shape the poll reads, the browser opening
+  the row with `prepare:1` *before* it draws, an append-only `POST /api/builds/:id/log` that only
+  works while the build is `running`, the stale sweep **15 → 5 min**, and a failure line that says
+  the reason **once** instead of twice. **Proof `tests/e2e/createstuff-build.mjs` (22 checks, live):
+  CONTROL pre-fix `5/22` exit 1** — 9 chips, old positional array still shipped, `CHIP_AGENTS` /
+  `csFromServerBuild` / `prepare: 1` all absent, and **`no prepared:true after 79561ms …
+  "status":"completed"`** (the Worker ran the entire build before it could return an id) → **post-fix
+  `22/22` exit 0, and `22/22` on re-run** (`prepare` answered in **610–690 ms**, row readable
+  `status=running log=1` mid-run, then **6 log entries** to `completed` in **83–96 s**, **3 files**).
+  **Full suite after deploy: `4 passed / 0 failed / 0 skipped`, 136.0 s, exit 0** — createstuff-build
+  **22/22**, crosspost **26/26**, discuss-mode **27/27**, env-vars **25/25** = **100 checks**.
+  Deployed to worker `createstuff-api` (version `362bd490`) and **both** Pages projects
+  (`createstuff-marketing`, `createstuff-app`) from `apps/createstuff-marketing`. Two harness bugs
+  were found by the control run and fixed before shipping — see TODO **C19**.
+- ✅ **RESOLVED 2026-09-29 — Cloudflare free-tier burn: post-fix measurement recorded.** Full audit
+  in `audit/CLOUDFLARE-FREE-TIER-AUDIT.md`; §4 now carries the like-for-like numbers. **Same 74-min
+  clock window (14:33Z→15:47Z), day over day: account-wide 3,602 → 796 (−77.9%), `app-host` 3,562 →
+  568 (−84.1%).**** Cause, not correlation: **0 wildcard records remain across all 8 zones** (was 4),
+  **0 scanner-magnet labels** (`mail`, `cpanel`, `webmail`, `ftp`, …) across all **51** records /
+  **23** proxied, and `dig +short @1.1.1.1 cpanel.<each of the 4 zones>` → **NXDOMAIN** while every
+  apex still resolves — a scanner now stops at DNS: **0 Worker invocations, 0 D1 rows, 0 CPU**. The
+  metric that caused the 2026-09-27 outage is healthy: **D1 reads today 480,233 / 5,000,000 (10%)**
+  vs **5,133,584 (103%)** then. Honest limits, stated in the doc rather than glossed: 74 min is a
+  short sample on bursty traffic (a full post-fix day settles it), and a 498-request burst at
+  15:05–15:15Z is **unattributed** — Workers analytics has no hostname dimension and `CF_API_TOKEN`
+  has no zone-analytics read, so per-hostname attribution is not obtainable with the credentials in
+  this repo.
 
 - ✅ **RESOLVED 2026-09-29 — there was no command that ran the e2e suites.** `tests/e2e/` held
   suites and no runner, so "the e2e tests" was not something you could do. **`node

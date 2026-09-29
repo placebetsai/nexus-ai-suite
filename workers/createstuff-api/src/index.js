@@ -1296,9 +1296,17 @@ async function repairAgent(env, files, flags, plan) {
 // polling UI shows why instead of spinning forever on 'running'.
 async function failBuild(env, id, e) {
   try {
+    // APPEND, do not replace. A build row now collects its log as each stage
+    // lands, so overwriting it with a single entry would throw away the only
+    // record of how far the run got before it died — which is exactly what
+    // someone debugging a failed build needs to see.
+    const row = await env.DB.prepare("SELECT agent_log FROM builds WHERE id=?").bind(id).first();
+    let log = [];
+    try { const p = row && row.agent_log ? JSON.parse(row.agent_log) : []; if (Array.isArray(p)) log = p; } catch { log = []; }
+    log.push({ agent: "System", message: "Build failed: " + String((e && e.message) || e), at: new Date().toISOString() });
     await env.DB.prepare("UPDATE builds SET status='failed', completed_at=?, agent_log=? WHERE id=?").bind(
       new Date().toISOString(),
-      JSON.stringify([{ agent: "System", message: "Build failed: " + String((e && e.message) || e), at: new Date().toISOString() }]),
+      JSON.stringify(log),
       id
     ).run();
   } catch {}
@@ -1642,7 +1650,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
       // The row exists (POST /api/builds created it) — close it out with an
       // empty preview so the polling UI stops and renders NO website.
       await env.DB.prepare(
-        "UPDATE builds SET status='completed', generated_code='', preview_html='', completed_at=?, agent_log=? WHERE id=?"
+        "UPDATE builds SET status='answered', generated_code='', preview_html='', completed_at=?, agent_log=? WHERE id=?"
       ).bind(new Date().toISOString(), JSON.stringify(log), buildId).run();
       await cacheDrop(env, buildsListKey(projectId));
     }
@@ -3301,7 +3309,28 @@ export default {
         const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(projectId, user.sub).first();
         if (!p) return err("Not found", 404);
         const plan = b.plan || b.prompt || `Build a complete website called ${p.name || "my site"}`;
-        return await runGenerate(env, user, projectId, plan, "generate", url.origin);
+        // A caller may hand back the build row it created up front, so this
+        // run writes its log INTO that row as each stage lands. Without it
+        // runGenerate runs with buildId=null: every per-stage line is thrown
+        // away and only a single-entry row is inserted at the very end, which
+        // is why the builder's chat sat on one bubble for two minutes.
+        // Ownership is checked here, not assumed: the row must belong to a
+        // project this same user already proved they own above.
+        let buildId = parseInt(b.buildId, 10) || null;
+        if (buildId) {
+          const br = await env.DB.prepare("SELECT id, project_id FROM builds WHERE id=?").bind(buildId).first();
+          if (!br || Number(br.project_id) !== projectId) return err("buildId does not belong to this project");
+        }
+        try {
+          return await runGenerate(env, user, projectId, plan, "generate", url.origin, buildId);
+        } catch (e) {
+          // The caller opened this row before asking us to fill it. Close it
+          // as failed: a row left on 'running' would block the project
+          // permanently, because POST /api/builds refuses to start a second
+          // one while a first is still open.
+          if (buildId) await failBuild(env, buildId, e);
+          throw e;
+        }
       }
       if (path === "/api/ai/modify" && method === "POST") {
         const b = await request.json().catch(() => ({}));
@@ -3366,6 +3395,24 @@ export default {
         if (!p) return err("Not found", 404);
         // One open job per project: a second send while one is running would
         // race the first and overwrite its files.
+        //
+        // Rows older than 5 minutes are swept first. `prepare` hands the id
+        // back before any work happens, so a browser that opened a row and
+        // then died (closed tab, lost wifi, generator crashed before it could
+        // close it) would otherwise leave the project blocked forever with no
+        // way to clear it.
+        //
+        // 5 minutes is deliberately just past the 3-minute window the browser
+        // itself polls for, and 2x the 60–150s a real build takes, so an
+        // ordinary run is never swept. If one ever were, this is recoverable
+        // rather than corrupting: runGenerate's `finish()` writes status
+        // unconditionally by id, so the row flips back to completed/answered
+        // when the writer actually lands.
+        const staleBefore = new Date(Date.now() - 5 * 60000).toISOString();
+        await env.DB.prepare(
+          "UPDATE builds SET status='failed', completed_at=? WHERE project_id=? AND status='running' AND completed_at IS NULL AND started_at < ?"
+        ).bind(new Date().toISOString(), projectId, staleBefore).run();
+
         const busy = await env.DB.prepare(
           "SELECT id FROM builds WHERE project_id=? AND status='running' AND completed_at IS NULL ORDER BY id DESC LIMIT 1"
         ).bind(projectId).first();
@@ -3378,6 +3425,16 @@ export default {
         ).bind(projectId, "running", prompt.slice(0, 4000), "", "", JSON.stringify(firstLog), startedAt).run();
         const id = ins.meta.last_row_id;
         await cacheDrop(env, buildsListKey(projectId));
+
+        // `prepare` makes the row and returns immediately, leaving the caller
+        // to run the generation itself with this id and poll
+        // GET /api/builds/:id — so the log can be painted as each stage lands
+        // instead of arriving in one lump after a minute. Without the flag
+        // this route still runs the build inline, which is what a bare curl
+        // gets and what the comment above is about.
+        if (b.prepare) {
+          return json({ id, project_id: projectId, status: "running", started_at: startedAt, prepared: true }, 201);
+        }
 
         // Run the build HERE, in this request, and answer when it is done.
         //
@@ -3407,6 +3464,43 @@ export default {
         ).bind(id).first();
         return json(fin || { id, project_id: projectId, status: "running", started_at: startedAt }, 200);
       }
+      // ── ONE LOG ENTRY, APPENDED ────────────────────────────────────────
+      // The plan arrives from the fast planner about a second after send,
+      // long before the generator's own planner runs. It used to be written
+      // into this browser's localStorage while the poll read localStorage, so
+      // it looked right — and then it became unreachable the moment the poll
+      // reads the server's row instead. Appending it here keeps the plan card
+      // at the front of the run, and it now survives closing the tab.
+      //
+      // Append-only and only while the build is open: entries cannot be
+      // edited or added after the fact, so this cannot be used to rewrite
+      // what a completed build reported. `close:"failed"` additionally ends
+      // the run — that is how the browser closes the row when the generate
+      // call itself never came back, which nothing else would ever do.
+      const logEntry = path.match(/^\/api\/builds\/(\d+)\/log$/);
+      if (logEntry && method === "POST") {
+        const id = +logEntry[1];
+        const row = await env.DB.prepare(
+          "SELECT b.id, b.status, b.agent_log FROM builds b JOIN projects p ON p.id=b.project_id WHERE b.id=? AND p.user_id=?"
+        ).bind(id, user.sub).first();
+        if (!row) return err("Not found", 404);
+        if (row.status !== "running") return err("This build is no longer open.", 409);
+        const body2 = await readJson(request);
+        const agent = String(body2.agent || "").trim().slice(0, 40);
+        const message = String(body2.message || "").trim().slice(0, 4000);
+        if (!agent || !message) return err("agent and message required");
+        let log = [];
+        try { const p = row.agent_log ? JSON.parse(row.agent_log) : []; if (Array.isArray(p)) log = p; } catch { log = []; }
+        log.push({ agent, message, at: new Date().toISOString() });
+        const closeFailed = body2.close === "failed";
+        await env.DB.prepare(
+          closeFailed
+            ? "UPDATE builds SET agent_log=?, status='failed', completed_at=? WHERE id=?"
+            : "UPDATE builds SET agent_log=? WHERE id=?"
+        ).bind(...(closeFailed ? [JSON.stringify(log), new Date().toISOString(), id] : [JSON.stringify(log), id])).run();
+        return json({ ok: true, entries: log.length, status: closeFailed ? "failed" : row.status }, 201);
+      }
+
       const buildOne = path.match(/^\/api\/builds\/(\d+)$/);
       if (buildOne && method === "GET") {
         const row = await env.DB.prepare(

@@ -943,15 +943,15 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
         </div>
       </div>
       <div class="agents-bar" id="agents-bar" data-tip="The helpers that plan, design, write and check your app. Each chip lights up while it's its turn." title="The helpers that plan, design, write and check your app. Each chip lights up while it's its turn.">
+        <!-- Exactly the stages the generator actually emits (see CS_PLAN_STAGES:
+             Planner, Frontend, Test, Fix, Online). Chips that no run ever sets
+             were theatre: they sat on "Idle" for every build and invited the
+             reader to wonder what had gone wrong. -->
         <div class="agent-chip" data-agent="planner"><span class="agent-dot"></span>Planner<span class="agent-status-text">Idle</span></div>
-        <div class="agent-chip" data-agent="architect"><span class="agent-dot"></span>Architect<span class="agent-status-text">Idle</span></div>
         <div class="agent-chip" data-agent="frontend"><span class="agent-dot"></span>Frontend<span class="agent-status-text">Idle</span></div>
-        <div class="agent-chip" data-agent="backend"><span class="agent-dot"></span>Backend<span class="agent-status-text">Idle</span></div>
-        <div class="agent-chip" data-agent="style"><span class="agent-dot"></span>Style<span class="agent-status-text">Idle</span></div>
         <div class="agent-chip" data-agent="test"><span class="agent-dot"></span>Test<span class="agent-status-text">Idle</span></div>
-        <div class="agent-chip" data-agent="deploy"><span class="agent-dot"></span>Online<span class="agent-status-text">Idle</span></div>
-        <div class="agent-chip" data-agent="git"><span class="agent-dot"></span>Git<span class="agent-status-text">Idle</span></div>
         <div class="agent-chip" data-agent="fix"><span class="agent-dot"></span>Fix<span class="agent-status-text">Idle</span></div>
+        <div class="agent-chip" data-agent="deploy"><span class="agent-dot"></span>Online<span class="agent-status-text">Idle</span></div>
       </div>
     </div>
 
@@ -1288,6 +1288,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }catch(e){}
 })();
 </script>
-<script src="/app.js?v=256833003836"></script>
+<script src="/app.js?v=62e413ab7f21"></script>
 </body>
 </html>
