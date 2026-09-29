@@ -293,6 +293,49 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
   key, never a password. **API 17/17** and **browser 24/24** (`tests/e2e/env-vars.mjs`, 0
   JavaScript errors, every ≥400 accounted for). Note: the edge cache in `sites-proxy` serves a
   published file for up to 60 s, so a change can take up to a minute to show on the branded host.
+- ✅ **RESOLVED 2026-09-28 — webhooks and scheduled jobs for a user's own app (`7fb643e`).** Two
+  new outbound mechanisms behind one **Automations** card on the Code page (same dropdown as
+  Environment variables, immediately below it):
+  **webhooks** fire when a record is created/changed/removed in the generated app — signed
+  `HMAC-SHA256` as `X-CreateStuff-Signature`, plus `X-CreateStuff-Event` and a unique
+  `X-CreateStuff-Delivery`, sent *after* the response through `ctx.waitUntil` so a dead receiver
+  can never fail or slow the write it is announcing; the signing key is returned **once** and
+  `GET .../hooks` deletes it from every later listing.
+  **scheduled jobs** call an address on a 5/10/15/30/60-minute interval off a new `*/5` cron
+  trigger, and `last_run_at` is written **even on failure** so a dead endpoint retries once per
+  interval instead of hundreds of times a day. `crons` is now `["*/30 * * * *", "*/5 * * * *"]`,
+  split by `event.cron` inside `scheduled()` so the D1 budget watcher and the stale-build
+  watchdog keep their original cadence and nothing runs twice at minute 30. **The account is now
+  at the free plan's ceiling of 5 cron triggers — no further trigger can be added without
+  removing one** (that is also why `workers/hook-sink` deliberately has none).
+  Both are owner-only (other account **404**, signed out **401**), capped at **10 per app**,
+  `http(s)` only, 10 s timeout, with a plain-language result instead of a bare status.
+  **SSRF is refused by the network, not a regex**: `global_fetch_strictly_public` was already set
+  in `wrangler.toml`, and the proof shows `169.254.169.254` and `127.0.0.1` both coming back
+  **403** with *"Refused. Calls to private or internal addresses are blocked."*
+  **Proven 113/113 across three suites**, all measured against **`workers/hook-sink`** — a
+  separate worker that records what genuinely arrives, so nothing is asserted from the sender's
+  own log: `/tmp/hooks_jobs_proof.sh` **76/76**, `/tmp/cron_proof.sh` **11/11**,
+  `/tmp/auto_ui_proof.mjs` **26/26** (0 console errors, 0 failed first-party calls).
+  **Three real bugs were found by that proof and fixed with it:**
+  1. **`DELETE /api/projects/:id/<anything>` deleted the entire project.** The generic branch
+     matched on the prefix alone, so `DELETE /api/projects/204/hooks/21` — *delete one webhook* —
+     parsed `id=204`, wiped `project_files` and `builds`, dropped the `projects` row and answered
+     `{"ok":true}`. Same collision as C9, and it had survived the env-vars fix because that fix
+     only special-cased `files`. Now the exact path removes a project; `/hooks` and `/jobs` fall
+     through to their own routes. Regression-covered by checks 8b/8c of the proof.
+  2. **A deleted app still accepted writes** — `handleAppRequest` never checked the project
+     existed, so rows landed in `app_data` for a project with nobody left to read them and its
+     auth routes kept minting sessions. One indexed `SELECT id FROM projects WHERE id=?` now
+     guards the API side (`serveAppFile` already 404'd).
+  3. **Scheduled jobs had no request around them**, so a deleted app's jobs would have gone on
+     calling outside URLs indefinitely. `runDueJobs` drops orphaned rows and joins `projects`;
+     project `DELETE` now cascades across all ten tables it owns, each `.catch()`-guarded so a
+     table this deployment never created cannot abort the deletion.
+  Also corrected: the test reply used to say `reachable: true` for a **403 or 530** — an HTTP
+  answer from Cloudflare's edge is not a reachable endpoint — replaced with a written note.
+  `workers/hook-sink` (the receiver) is committed as a **TEST HARNESS**; its dump key is a Worker
+  secret, never a line in git.
 - ✅ **RESOLVED 2026-09-28 — Discussion mode: talk to the Agent without spending a build.**
   The builder box used to make *every* message create a project and start a generation, so
   asking "is this worth building" cost an app in the list and a 60–150 s wait. There is now a
@@ -384,6 +427,18 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
     untouched. **Browser proof 4/4** (`/`, `/receipts`, `/trending`, `/world-markets`): 0 JS errors,
     0 first-party ≥400, receipts renders **ALL-TIME 224 · 48.6% win rate**; ad-slot 400s are
     identical on the pre-change deployment `0c91f640` so they are not ours.
+    **CORRECTION (measured 2026-09-29, `/tmp/corrected.py`, Cloudflare query analytics for
+    `marketpicks-db`, window 2026-09-28 04:00 → 2026-09-29 02:00, DESC + ASC unioned):** the
+    `COUNT(*) AS n FROM politician_trades` cap check above must **not** be credited with any drop
+    to zero. **Last run of that COUNT: 2026-09-28 12:00 UTC. Memo deployed: 13:21:38 UTC — 81
+    minutes LATER.** The counter went quiet before the fix existed, because the insider-feed job
+    died on a Bargo 429 and stopped executing its cron body. The job then recovered on its own
+    (81 INSERT runs at 19:45, 256 at 00:00 on the 29th) while `COUNT(*)` never ran again — so the
+    workload is **not** currently exercising the memo at all. `cache_snapshots` (the memo table)
+    appears on every 15-minute bucket across the whole window, before, during and after the
+    deploy, which is the only directly observable part. **`COUNT → 0` is therefore UNPROVEN as a
+    memo effect; it measures "nobody asked", not "nobody read".** Earlier wording conflated the
+    two.
   - **MarketPicks build gotcha:** the repo's `deploy.sh` runs only `next build`, **not**
     `next-on-pages`, so it would re-upload a stale bundle — and `next-on-pages@1.13.16` demands
     `next>=14.3.0` while the project pins `next@14.2.35`, so the nested `npm install` fails

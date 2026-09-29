@@ -180,6 +180,20 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       **pre-change deployment `0c91f640`** and are identical there, so they are reported apart.
       Post-deploy read rate to be re-measured after a full clean hour (see handoff.md §8).
 
+      **CORRECTION (measured, not asserted — 2026-09-29, `/tmp/corrected.py`):** item 1's
+      `COUNT(*) AS n FROM politician_trades` must **NOT** be credited with dropping to zero.
+      Cloudflare's own query analytics for `marketpicks-db` show the counter **stopped being
+      asked at 2026-09-28 12:00 UTC** — **81 minutes before** the `b6e21b1` fix went live at
+      13:21:38 — because the insider-feed job died on a Bargo 429 and stopped running its cron
+      body. After the deploy the job **came back on its own** (81 INSERT runs at 19:45, 256 at
+      00:00 on the 29th) and yet `COUNT(*)` has still never run again, so it reads **0** for a
+      reason the memo had nothing to do with. The memo table `cache_snapshots` runs continuously
+      through the whole window — before, during and after the deploy — which is the only part of
+      item 1 that is directly observable. What stays **unproven**: that the 24 h memo actually
+      saved the reads it was projected to save (71,478 rows/day), because the workload it was
+      meant to shrink had already stopped for unrelated reasons. Do not restate this anywhere as
+      "COUNT → 0, fixed by the memo."
+
       **KV budget respected:** writes kept to 48/day for the
       status key plus a history entry **only on state change** (KV free tier is 1,000 writes/day and
       response caching already spends some of it).
@@ -256,8 +270,46 @@ Our free tier publishes real apps to real addresses with no credits — that sta
 - [ ] **Templates gallery**: start from a working app instead of a blank chat.
 - [ ] **Analytics for published apps**: views, referrers, countries (Base44 dashboard).
 - [ ] **SEO audit + one-click fixes** on the published address (Replit SEO Agent).
-- [ ] **Scheduled runs / automations** for user apps (Replit Scheduled Deployments, natural
+- [x] **Scheduled runs / automations** for user apps (Replit Scheduled Deployments, natural
       language → cron, error alerts).
+      **DONE 2026-09-28 (`7fb643e`)** — and it went in as two real outbound mechanisms, not a
+      mock, because both Replit and Base44 are judged on this row:
+      * **Webhooks** — a generated app can POST to any address when a record is created, changed
+        or removed. Signed `HMAC-SHA256` (`X-CreateStuff-Signature`) plus `X-CreateStuff-Event`
+        and a unique `X-CreateStuff-Delivery`, delivered *after* the response via `ctx.waitUntil`
+        so a dead receiver can never fail or delay the write that triggered it. Signing key is
+        returned once and never listed again.
+      * **Scheduled jobs** — an address called on an owner-chosen interval (5/10/15/30/60 min)
+        off a new `*/5` cron trigger. `last_run_at` is written **even when the call fails**, so a
+        dead endpoint is retried once per interval instead of hundreds of times a day.
+      * Both are owner-only (other account 404, signed out 401), capped at 10 per app, `http(s)`
+        only, 10 s timeout, and the reply is plain language ("Refused. Calls to private or
+        internal addresses are blocked.") rather than a bare number.
+      * **SSRF is enforced by the network**, not by a regex: `wrangler.toml` already carries
+        `global_fetch_strictly_public`, measured refusing `169.254.169.254` and `127.0.0.1` with
+        403. Those two addresses never see the request.
+      * UI: an **Automations** card on the Code page sharing the Environment-variables project
+        picker — add/remove/test either kind, key shown once, last result printed in the row.
+      * **Proven live, three suites, 113/113**, all against an *independent* receiver
+        (`workers/hook-sink`, a separate worker that records what actually arrives — never
+        asserting from the sender's own log): `/tmp/hooks_jobs_proof.sh` **76/76** (delivery
+        headers + signature, create/update/delete each firing exactly once, refusal of internal
+        targets, ftp:// and javascript: rejected, cap 409, cross-owner 404, cascade),
+        `/tmp/cron_proof.sh` **11/11** (jobs fired by the real `*/5` trigger with no manual
+        trigger — *and after deleting one app its job stopped at 1 while the survivor went
+        1→2*), `/tmp/auto_ui_proof.mjs` **26/26** (0 console errors, 0 failed calls).
+      * **Three bugs found while proving it**, all fixed in the same commit:
+        1. **`DELETE /api/projects/:id/<anything>` deleted the whole project** — the generic
+           branch keyed off the prefix alone, so deleting *one webhook* parsed `id=165`, wiped
+           every file and build, dropped the project row and answered `{"ok":true}`. Same shape
+           as C9. Only the exact path removes a project now.
+        2. **A deleted app kept accepting writes** — `handleAppRequest` never checked the
+           project still existed.
+        3. **Scheduled jobs had no request around them**, so a deleted app's jobs would have
+           called outside URLs forever — `runDueJobs` now joins `projects` and drops orphans,
+           and project DELETE cascades across all ten tables it owns.
+      * Not done here: the *natural-language → cron* phrasing, and inbound connectors
+        (Slack/GitHub/Notion) — webhooks are the outbound primitive those will sit on. See P2.
 - [ ] **Share a preview link** (password-optional) so someone can look before it goes live.
 
 ### P2 — later, do not start these before P0
