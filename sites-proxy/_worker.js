@@ -11,6 +11,7 @@
 // Routing:
 //   /179/index.html   ->  /published/179/index.html   (the short branded form)
 //   /published/...    ->  same path on the worker     (old links keep working)
+//   <name>.createstuff.ai/... -> that project's file  (its own address)
 //   anything else     ->  404 (this is not an open proxy)
 //
 // Why the cache below exists: the bytes come out of a database that is shared
@@ -30,6 +31,9 @@
 // cache and burn the shared budget again.
 
 const ORIGIN = "https://createstuff-api.fashionistas1979.workers.dev";
+// Suffix of a project's own address. A project claims
+// <something>.createstuff.ai through `Connect it`; this file is what serves it.
+const CUSTOM_SUFFIX = ".createstuff.ai";
 const FRESH = 60; // seconds served from the edge without asking the origin
 const KEEP = 7 * 24 * 3600; // seconds we hold a copy to ride out an outage
 const STAMP = "x-sites-cached-at"; // when this copy was last confirmed current
@@ -115,12 +119,16 @@ function tagged(res, how) {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
-// Serve one published file: edge copy first, database second, last-known copy
-// when the database is down. Returns {response} shaped answers only.
-async function published(path, ctx) {
+// Serve one file the origin hands back: edge copy first, origin second,
+// last-known copy when the origin is down. `originUrl` is the exact URL to ask,
+// so the same cache-and-ride-out logic covers both ways a site can be reached.
+// Returns {response} shaped answers only.
+async function published(originUrl, ctx) {
   const cache = caches.default;
-  // Query string excluded — see the note at the top of the file.
-  const key = new Request(ORIGIN + path, { method: "GET" });
+  // Query string excluded from the PATH below — see the note at the top of the
+  // file. For a hostname-served site the query IS part of the key, because the
+  // hostname lives in it: two projects must never share an edge copy.
+  const key = new Request(originUrl, { method: "GET" });
 
   let cached = null;
   try { cached = await cache.match(key); } catch { cached = null; }
@@ -131,7 +139,7 @@ async function published(path, ctx) {
 
   let res = null;
   try {
-    res = await fetch(ORIGIN + path, {
+    res = await fetch(originUrl, {
       headers: { "accept-encoding": "identity", "user-agent": "createstuff-sites" },
     });
   } catch {
@@ -165,13 +173,35 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     let path = url.pathname;
+    const host = (url.hostname || "").toLowerCase();
+
+    // ── a project's OWN address: <name>.createstuff.ai ────────────────────
+    // This project is attached to a handful of hostnames rather than a
+    // wildcard, so the only names that reach this branch are ones somebody
+    // deliberately claimed for one project (see `Connect it`). There is no
+    // wildcard route anywhere, which is why claiming a name can never shadow
+    // app., sites., www. or the apex — those hostnames are simply never
+    // attached to this project.
+    //
+    // The hostname carries no project id, so it is resolved by the API that
+    // owns the mapping and the bytes come back from there. One hop on
+    // Cloudflare's own network, and the same edge cache as below.
+    if (host.endsWith(CUSTOM_SUFFIX) && host !== "sites" + CUSTOM_SUFFIX && host !== CUSTOM_SUFFIX) {
+      let p = path || "/";
+      if (p.endsWith("/")) p += "index.html";
+      else if (!/(^|\/)[^/]+\.[^/]+$/.test(p)) p += "/index.html";
+      const originUrl =
+        ORIGIN + "/api/hosts/serve?host=" + encodeURIComponent(host) +
+        "&path=" + encodeURIComponent(p);
+      return await published(originUrl, ctx);
+    }
 
     // short branded form: /<projectId>/<file>
     const short = path.match(/^\/(\d+)(\/.*)?$/);
     if (short) path = "/published/" + short[1] + (short[2] || "/index.html");
 
     if (path === "/published" || path.startsWith("/published/")) {
-      return await published(path, ctx);
+      return await published(ORIGIN + path, ctx);
     }
 
     // Everything else must be one of THIS project's own files. Pages' asset

@@ -449,6 +449,46 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
   - **Re-check after a clean hour:** GraphQL
     `d1AnalyticsAdaptiveGroups` grouped by `databaseId`+`datetimeFifteenMinutes` (this costs nothing)
     — marketpicks baseline was **~35–60k/hour ≈ 1.2M/day**.
+- ✅ **RESOLVED 2026-09-29 — a project had no web address of its own.** The "Your own web address"
+  box on *Put it online* (and step D of *Start here*) already called
+  `POST /api/projects/:id/host`, but `createstuff.ai` was missing from `app-host`'s
+  `CONTROLLED_ZONES`, so every name on our own zone came back **422**. Two hard facts had to be
+  designed around first, both measured: a CNAME from the `createstuff.ai` zone to
+  `app-host…workers.dev` is refused by Cloudflare with **error 1014 (cross-client)**, and a Worker
+  can only have routes in its **own** account — zone `ca23f072` sits in account `2765cb27` while
+  `app-host` lives in `7eb89b01`, and `CS_API_TOKEN` returns **403 "No access to the specified
+  resource"** for both `PUT …/workers/scripts` and `POST …/zones/…/workers/routes`, so **no
+  `*.createstuff.ai` worker route can be created with the credentials we hold.**
+  **What works instead:** DNS `CNAME <name> → createstuff-sites.pages.dev` written with
+  `raspy-credit-99f5`, **and** that name attached to the `createstuff-sites` Pages project via
+  `POST /accounts/…/pages/projects/createstuff-sites/domains`. Pages serves it;
+  `sites-proxy/_worker.js` now branches on `url.hostname` and calls the new public
+  `GET /api/hosts/serve?host=…&path=…` on `createstuff-api`, which resolves through the **same
+  `app_hosts` row** the button wrote — one source of truth, no second copy of anybody's site.
+  A proxied record is flattened to A records on the wire, so the CNAME is read back through the
+  Cloudflare API, never `dig`.
+  **Proof 79/79** — `/tmp/domain_proof.sh` **33/33**, `/tmp/domain_proof_v2.sh` **27/27**,
+  `/tmp/domain_ui_proof.mjs` **19/19** (real Chrome, screenshot `/tmp/domain_ui.png`). Each suite
+  creates *and* deletes its own project and its own hostname. Measured lifecycle: DNS `created`
+  immediately → address **200 at ~75 s** → Pages **`active` at ~150 s** → release → gone once the
+  60 s edge window lapses (re-checked at 95 s). Also covered: a **second real account → 403 with
+  no DNS record written**, `app`/`sites`/`www`/`api`/`mail` → **422**, duplicate → **409**, no
+  token → **401**, `..` traversal → **404**, and `app.` / `sites.` / apex / `api.` / `www.`
+  byte-checked unchanged afterwards. Zone left with exactly its original **5 records**;
+  `createstuff-sites` left with exactly one domain (`sites.createstuff.ai`).
+  **Two bugs found by proving it, both fixed:** (1) **nothing stopped a user claiming
+  `app.createstuff.ai`** — the attach would have overwritten the CNAME behind the product itself
+  and taken the builder offline. Fixed twice over: a reserved-label list refuses it, and
+  `ensureDnsRecord` now refuses to repoint any record pointing somewhere else. (2) The claim's
+  evidence was overwritten a second later by the host-list refresh, so the person pressing the
+  button never saw whether the record was created — `lzCheckHosts()` now runs *before* the result
+  is written.
+  **Told straight in the UI:** the badge reads *Attached — warming up* and the evidence says the
+  address answers within about two minutes, until step D gets a real 200 from that exact URL.
+  **Gotchas:** `wrangler secret list` on `app-host` printed nothing on the first attempts and
+  looks empty — it is not; `CF_DNS_TOKEN`, `CF_DNS_TOKEN_CREATESTUFF` and `CS_API_TOKEN` are all
+  set (verified by a successful attach). Two Worker secrets carry the cross-account credentials;
+  neither is in git.
 
 ---
 

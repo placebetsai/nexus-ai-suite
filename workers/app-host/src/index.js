@@ -1,5 +1,10 @@
+// Zones this Worker will claim a hostname in. `createstuff.ai` is in the OTHER
+// Cloudflare account (Placebetsai) — that is not a reason to leave it out, it
+// is a reason to handle its DNS and its serving differently, which the two
+// helpers below do.
 const CONTROLLED_ZONES = new Set([
   "fashionistas.ai",
+  "createstuff.ai",
   "marketpicks.ai",
   "israeljoffe.com",
   "israeljoffe.org",
@@ -7,6 +12,33 @@ const CONTROLLED_ZONES = new Set([
   "religiousjews.com",
   "wuwonline.com",
   "wuwonline.org",
+]);
+
+// The zones that are NOT in this Worker's own account, and what serves them
+// there instead. Two measured facts drive this:
+//   1. A CNAME from the createstuff.ai zone to a workers.dev hostname in this
+//      account is refused by Cloudflare with error 1014 (cross-client) —
+//      measured 2026-09-29 — so the old DNS_TARGET cannot be used there.
+//   2. A Worker can only have routes in its own account, so this Worker cannot
+//      answer `*.createstuff.ai` itself. The `createstuff-sites` Pages project
+//      IS in that account, already serves published sites, and accepts a custom
+//      domain per claim through the Pages API.
+const CROSS_ACCOUNT_ZONES = new Set(["createstuff.ai"]);
+const CROSS_ACCOUNT_DNS_TARGET = "createstuff-sites.pages.dev";
+const PAGES_ACCOUNT_ID = "2765cb2786006552f33cc3dfe0b680a1";
+const PAGES_SERVE_PROJECT = "createstuff-sites";
+
+// First labels that are never claimable. Without this list a user could type
+// `app.createstuff.ai` and the attach would overwrite the CNAME that points at
+// the product itself — `Connect it` would take the builder offline rather than
+// publish anything. Every name a zone already uses for itself is listed here,
+// along with the ones that are conventionally somebody else's.
+const RESERVED_HOST_LABELS = new Set([
+  "app", "api", "sites", "www", "mail", "smtp", "imap", "pop", "ftp", "cdn",
+  "static", "assets", "admin", "dashboard", "login", "signin", "signup",
+  "auth", "account", "accounts", "status", "support", "help", "docs", "blog",
+  "dev", "test", "staging", "preview", "build", "files", "storage", "hooks",
+  "jobs", "ns1", "ns2", "vpn", "webmail", "autoconfig", "mta", "laboratory",
 ]);
 
 const DEFAULT_AUTH_ORIGIN = "https://createstuff-api.fashionistas1979.workers.dev";
@@ -544,10 +576,21 @@ async function cfJson(response) {
 // render honestly — including "unconfigured" when the secret is absent, which
 // must never fail the attach itself.
 async function ensureDnsRecord(env, hostname) {
-  const token = env.CF_DNS_TOKEN;
-  if (!token) return { status: "unconfigured", detail: "CF_DNS_TOKEN is not set on this worker" };
   const zone = zoneFor(hostname);
   if (!zone) return { status: "unsupported-zone", detail: `no controlled zone matches ${hostname}` };
+  // Which account's DNS token can write this zone: the two accounts are
+  // separate, and neither token reaches into the other (measured 2026-09-29).
+  const crossAccount = CROSS_ACCOUNT_ZONES.has(zone);
+  const token = crossAccount ? env.CF_DNS_TOKEN_CREATESTUFF : env.CF_DNS_TOKEN;
+  const target = crossAccount ? CROSS_ACCOUNT_DNS_TARGET : DNS_TARGET;
+  if (!token) {
+    return {
+      status: "unconfigured",
+      detail: crossAccount
+        ? "CF_DNS_TOKEN_CREATESTUFF is not set on this worker"
+        : "CF_DNS_TOKEN is not set on this worker",
+    };
+  }
 
   try {
     const zoneRes = await cfJson(await fetch(`${CF_API}/zones?name=${encodeURIComponent(zone)}`, {
@@ -561,16 +604,28 @@ async function ensureDnsRecord(env, hostname) {
     }));
     const found = existing.payload && existing.payload.result && existing.payload.result[0];
 
-    const record = { type: "CNAME", name: hostname, content: DNS_TARGET, proxied: true, ttl: 1 };
+    const record = { type: "CNAME", name: hostname, content: target, proxied: true, ttl: 1 };
 
     if (found) {
+      // Never repoint a record that belongs to something else. A name that
+      // already resolves to a different target has a service behind it — most
+      // dangerously `app.`, `sites.` or `www.` on our own zone — and overwriting
+      // it would take that service down in exchange for publishing one site.
+      // Pointing at the same target means it is already ours: refresh and go.
+      const sameTarget = String(found.content || "").trim().toLowerCase() === target.toLowerCase();
+      if (!sameTarget) {
+        return {
+          status: "error",
+          detail: `an address already exists at ${hostname} pointing somewhere else, so it was left untouched`,
+        };
+      }
       const upd = await cfJson(await fetch(`${CF_API}/zones/${zoneId}/dns_records/${found.id}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(record),
       }));
       if (!upd.ok) return { status: "error", detail: `update failed (HTTP ${upd.status})` };
-      return { status: "updated", zone, target: DNS_TARGET };
+      return { status: "updated", zone, target };
     }
 
     const created = await cfJson(await fetch(`${CF_API}/zones/${zoneId}/dns_records`, {
@@ -582,7 +637,43 @@ async function ensureDnsRecord(env, hostname) {
       const msg = created.payload && created.payload.errors && created.payload.errors[0] && created.payload.errors[0].message;
       return { status: "error", detail: msg || `create failed (HTTP ${created.status})` };
     }
-    return { status: "created", zone, target: DNS_TARGET };
+    return { status: "created", zone, target };
+  } catch (error) {
+    return { status: "error", detail: String(error && error.message || error).slice(0, 200) };
+  }
+}
+
+// Cross-account half of domain connect. For a zone this Worker cannot route to
+// (createstuff.ai), making DNS resolve is not enough: Cloudflare Pages refuses
+// a hostname it has not been told about — measured as HTTP 522 before this
+// ran — so the name must also be attached to the Pages project that will serve
+// it. Attaching is idempotent, and the status is reported honestly, including
+// "attaching": Cloudflare takes roughly a minute to issue the certificate, and
+// the UI must not call that "live" while it is still pending.
+async function ensurePagesDomain(env, hostname) {
+  const token = env.CS_API_TOKEN;
+  if (!token) return { status: "unconfigured", detail: "CS_API_TOKEN is not set on this worker" };
+  const base = `${CF_API}/accounts/${PAGES_ACCOUNT_ID}/pages/projects/${PAGES_SERVE_PROJECT}/domains`;
+  try {
+    const list = await cfJson(await fetch(base, { headers: { Authorization: `Bearer ${token}` } }));
+    if (!list.ok) {
+      const msg = list.payload && list.payload.errors && list.payload.errors[0] && list.payload.errors[0].message;
+      return { status: "error", detail: msg || `domain list failed (HTTP ${list.status})` };
+    }
+    const found = ((list.payload && list.payload.result) || []).find((d) => d && d.name === hostname);
+    if (found) return { status: found.status || "known", project: PAGES_SERVE_PROJECT };
+
+    const created = await cfJson(await fetch(base, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: hostname }),
+    }));
+    if (!created.ok) {
+      const msg = created.payload && created.payload.errors && created.payload.errors[0] && created.payload.errors[0].message;
+      return { status: "error", detail: msg || `attach failed (HTTP ${created.status})` };
+    }
+    const body = created.payload && created.payload.result;
+    return { status: (body && body.status) || "attaching", project: PAGES_SERVE_PROJECT };
   } catch (error) {
     return { status: "error", detail: String(error && error.message || error).slice(0, 200) };
   }
@@ -641,6 +732,12 @@ async function attachHost(request, env, route) {
   const projectId = route.projectId || bodyProjectId;
   const hostname = normalizeAttachHostname(body.hostname ?? body.host ?? body.domain);
   if (!hostname) return err("hostname must be a subdomain of a controlled zone", 422);
+  // Refuse before touching DNS or Pages: a reserved first label is a name the
+  // platform already uses, and attaching it would repoint the product itself.
+  const firstLabel = hostname.split(".")[0];
+  if (RESERVED_HOST_LABELS.has(firstLabel)) {
+    return err(`"${firstLabel}" is a name the platform keeps for itself — pick a different word`, 422);
+  }
   const project = await env.DB.prepare("SELECT id, user_id FROM projects WHERE id=?").bind(projectId).first();
   if (!project) return err("Project not found", 404);
   if (!sameId(project.user_id, authenticated.user.id)) return err("You do not own this project", 403);
@@ -655,18 +752,25 @@ async function attachHost(request, env, route) {
   // Attach the hostname AND make it resolve. dns is reported either way so the
   // UI can say plainly what happened instead of implying the site is live.
   const dns = await ensureDnsRecord(env, hostname);
+  // DNS that resolves is not the same as a hostname the serving project knows
+  // about: for a zone in the other account there is no Worker route to fall
+  // back on, and Pages answers an unattached name with 522. So the attach is
+  // finished here, and its own status travels back to the UI.
+  const pages = CROSS_ACCOUNT_ZONES.has(zoneFor(hostname) || "")
+    ? await ensurePagesDomain(env, hostname)
+    : null;
   if (existing) {
     await env.DB.prepare("UPDATE app_hosts SET user_id=?, updated_at=? WHERE id=?").bind(authenticated.user.id, now, existing.id).run();
-    return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns });
+    return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns, pages });
   }
   try {
     const result = await env.DB.prepare(
       "INSERT INTO app_hosts (hostname, project_id, user_id, created_at, updated_at) VALUES (?,?,?,?,?)"
     ).bind(hostname, projectId, authenticated.user.id, now, now).run();
-    return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns, id: result?.meta?.last_row_id || null }, 201);
+    return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns, pages, id: result?.meta?.last_row_id || null }, 201);
   } catch (error) {
     const raced = await env.DB.prepare("SELECT id, project_id FROM app_hosts WHERE hostname=? LIMIT 1").bind(hostname).first();
-    if (raced && sameId(raced.project_id, projectId)) return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns });
+    if (raced && sameId(raced.project_id, projectId)) return json({ ok: true, attached: true, hostname, project_id: projectId, url: `https://${hostname}/`, dns, pages });
     throw error;
   }
 }

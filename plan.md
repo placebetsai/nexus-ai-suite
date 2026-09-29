@@ -261,8 +261,44 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       (`tests/e2e/discuss-mode.mjs`, 0 console errors, 0 failed requests) — covers the
       switch, its tips, the answer, *no project created*, the choice surviving a reload,
       and **Build mode still creating an app (37 → 38)** so the old path is unbroken.
-- [ ] **Custom domain for a published app** (Replit sells them in-app; Base44 removes branding at
+- [x] **Custom domain for a published app** (Replit sells them in-app; Base44 removes branding at
       paid tiers — we should accept a domain the user already owns).
+      **DONE 2026-09-29 — every project can claim `<name>.createstuff.ai` and really be served
+      there** (`Put it online → Your own web address → Connect it`). Two of the three things
+      needed were blockers rather than features:
+      * `createstuff.ai` was **not** in `app-host`'s `CONTROLLED_ZONES`, so the endpoint the UI
+        already called returned 422 for every name on our own zone.
+      * A CNAME from that zone to `app-host…workers.dev` is refused by Cloudflare with **error
+        1014 (cross-client)** — the two Cloudflare accounts are separate and a Worker can only
+        have routes in its own account, so `app-host` cannot answer `*.createstuff.ai` at all.
+      What ships instead: DNS `CNAME <name> → createstuff-sites.pages.dev` (written with
+      `raspy-credit-99f5`) **plus** that same name attached to the `createstuff-sites` Pages
+      project through the Pages API. Pages serves it; `sites-proxy/_worker.js` reads
+      `GET /api/hosts/serve?host=…&path=…` from `createstuff-api`, which resolves it against the
+      **same `app_hosts` row the button writes** — one source of truth, no second copy of
+      anybody's site.
+      **Live proof 79/79** across three suites that each create *and* delete their own project
+      and their own hostname: `/tmp/domain_proof.sh` **33/33**, `/tmp/domain_proof_v2.sh`
+      **27/27**, `/tmp/domain_ui_proof.mjs` **19/19** (real Chrome). Covered: the DNS record
+      read back from the Cloudflare API (a proxied record is flattened on the wire, so `dig`
+      can never show it), `initializing → pending → active` with the address serving in
+      between, the bytes belonging to that exact project, `..` traversal refused, a **second
+      real account** getting **403** on someone else's project **with no DNS record written**,
+      reserved names (`app`, `sites`, `www`, `api`, `mail`) **422**, **409** when the name is
+      taken, **401** with no token, release → gone once the 60 s edge window lapses, and
+      `app.` / `sites.` / apex / `api.` / `www.` checked unchanged afterwards. Zone left with
+      exactly its original 5 records.
+      **Two real bugs the proof caught, both fixed:** ① nothing stopped a user claiming
+      `app.createstuff.ai`, which would have **repointed the product's own CNAME and taken the
+      builder offline** — there is now a reserved-label list, and `ensureDnsRecord` refuses to
+      overwrite any record that points somewhere else. ② the claim's evidence was overwritten a
+      second later by the host-list refresh, so the person never saw whether the record was
+      created.
+      Timing is told straight: **serving at ~75 s, `active` at ~150 s** — the badge says
+      *Attached — warming up*, never "live", until a real 200 comes back from that address.
+- [ ] **A domain the user already owns** (their own apex, e.g. `myshop.com`) — **not started**.
+      Distinct from the address above: that one is on our zone. This needs the user to point a
+      record at us and a Pages attach against a zone we do not hold.
 - [x] **Version history list in the builder** with a Restore button.
       **DONE 2026-09-27 (P13)** — the list sits under the preview with a Restore button;
       restoring appends a new version and leaves the older numbers unchanged.

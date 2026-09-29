@@ -2790,7 +2790,7 @@ function lzControls(key) {
     case 'project':  return lzProjectControls();
     case 'generate': return btn('generate', st.status === 'working' ? 'Building…' : (st.status === 'done' ? 'Build it again' : 'Build it'), undefined, 'Hands your sentence to the AI and waits while it writes the HTML, CSS and JavaScript. Usually 1-3 minutes. Leave this tab open.');
     case 'publish':  return btn('publish', st.status === 'working' ? 'Putting it online…' : (st.status === 'done' ? 'Put online again' : 'Put online'), undefined, 'Copies your files to a public web address so anyone with the link can open them.');
-    case 'domain':   return `<input id="lz-host" class="lz-input" data-tip="Type the address you want, for example my-app.fashionistas.ai. We set up the pointing for you." title="Type the address you want, for example my-app.fashionistas.ai. We set up the pointing for you."${hold ? ' disabled' : ''} placeholder="my-app.fashionistas.ai" value="${escapeHtml(lz.hostname)}">` + btn('domain', st.status === 'working' ? 'Setting it up…' : (st.status === 'done' ? 'Use this address again' : 'Use this address'), undefined, 'Attaches this address to your app and points it at your files.');
+    case 'domain':   return `<input id="lz-host" class="lz-input" data-tip="Type the address you want, for example my-app.createstuff.ai. We do the pointing for you." title="Type the address you want, for example my-app.createstuff.ai. We do the pointing for you."${hold ? ' disabled' : ''} placeholder="my-app.createstuff.ai" value="${escapeHtml(lz.hostname)}">` + btn('domain', st.status === 'working' ? 'Setting it up…' : (st.status === 'done' ? 'Use this address again' : 'Use this address'), undefined, 'Attaches this address to your app and points it at your files.');
     case 'live':     return btn('live', st.status === 'working' ? 'Checking…' : 'Check it is live', undefined, 'Opens your real web address and prints exactly what came back, including the HTTP status.')
       + (lz.liveUrl ? `<a class="lz-open" href="${escapeHtml(lz.liveUrl)}" target="_blank" rel="noopener" data-tip="Opens your app in a new tab." title="Opens your app in a new tab.">Open ${escapeHtml(lz.liveUrl.replace(/^https?:\/\//, ''))}</a>` : '');
   }
@@ -3202,7 +3202,7 @@ async function lzAct(kind, nested) {
 
     if (kind === 'domain') {
       if (!lz.projectId) { lzSet('domain', { status: 'blocked', badge: 'No project', detail: 'Choose a project first (step C).' }); return; }
-      const host = (lz.hostname || `app-${lz.projectId}.fashionistas.ai`).trim();
+      const host = (lz.hostname || `myapp-${lz.projectId}.createstuff.ai`).trim();
       lz.hostname = host;
       lzSet('domain', { status: 'working', badge: 'Connecting', detail: `POST /api/projects/${lz.projectId}/host {hostname:"${host}"}\nCreating the DNS record…` });
       const r = await lzCall(`${LZ_HOST}/api/projects/${lz.projectId}/host`, {
@@ -3211,13 +3211,30 @@ async function lzAct(kind, nested) {
         body: JSON.stringify({ hostname: host, projectId: lz.projectId }),
       });
       const dns = r.body && r.body.dns;
+      const pgs = r.body && r.body.pages;
       if ((r.status === 200 || r.status === 201) && r.body && r.body.ok) {
         lz.liveUrl = r.body.url;
-        lzSet('domain', { status: 'done', badge: 'Attached', detail: `POST /api/projects/${lz.projectId}/host → ${r.status} in ${lzMs(r.ms)}\nhostname ${r.body.hostname}\nDNS ${dns ? dns.status : 'unreported'}${dns && dns.zone ? ` in zone ${dns.zone} → ${dns.target}` : ''}` });
-        showToast('Address set: ' + host);
+        // Refresh the host list FIRST, then write the attach result LAST — the
+        // refresh sets this same step's text, so the order is what decides
+        // whether the person ever sees whether the DNS record was created and
+        // how long the certificate still has to go. (It used to run the other
+        // way round, and "DNS created … warming up" was replaced within a
+        // second by "1 hostname(s) point at project N".)
         await lzCheckHosts();
+        // The address is attached but not necessarily ANSWERING yet: Cloudflare
+        // needs roughly a minute or two to issue the certificate, and the page
+        // has to keep its promise of never calling something live before a real
+        // 200 came back from that exact address (step D prints the status).
+        const warm = pgs && (pgs.status === 'active');
+        lzSet('domain', {
+          status: 'done', badge: warm ? 'Attached' : 'Attached — warming up',
+          detail: `POST /api/projects/${lz.projectId}/host → ${r.status} in ${lzMs(r.ms)}\nhostname ${r.body.hostname}\nDNS ${dns ? dns.status : 'unreported'}${dns && dns.zone ? ` in zone ${dns.zone} → ${dns.target}` : ''}` +
+            (pgs ? `\nserving ${pgs.project || 'project'}: ${pgs.status}${pgs.detail ? ` — ${pgs.detail}` : ''}` : '') +
+            (warm ? '' : '\nThe address starts answering within about two minutes.\nStep D checks it and prints exactly what came back.'),
+        });
+        showToast(warm ? 'Address set: ' + host : 'Address set — it will answer within about two minutes');
       } else {
-        lzSet('domain', { status: 'blocked', badge: 'Connect failed', detail: `POST /api/projects/${lz.projectId}/host → ${r.status} in ${lzMs(r.ms)}\nhostname ${host}\n${lzErr(r)}${dns && dns.detail ? `\nDNS: ${dns.detail}` : ''}` });
+        lzSet('domain', { status: 'blocked', badge: 'Connect failed', detail: `POST /api/projects/${lz.projectId}/host → ${r.status} in ${lzMs(r.ms)}\nhostname ${host}\n${lzErr(r)}${dns && dns.detail ? `\nDNS: ${dns.detail}` : ''}${pgs && pgs.detail ? `\nServing: ${pgs.detail}` : ''}` });
       }
       return;
     }
@@ -3252,7 +3269,7 @@ async function lzRunAll() {
     if (lzState('generate').status === 'blocked') return;
     await lzAct('publish', true);
     if (lzState('publish').status === 'blocked') return;
-    if (!lz.hostname) lz.hostname = `app-${lz.projectId}.fashionistas.ai`;
+    if (!lz.hostname) lz.hostname = `myapp-${lz.projectId}.createstuff.ai`;
     await lzAct('domain', true);
     if (lzState('domain').status === 'blocked') return;
     await lzAct('live', true);

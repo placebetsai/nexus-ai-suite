@@ -1927,6 +1927,34 @@ const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const ENV_VALUE_MAX = 4096;
 const ENV_MAX_PER_PROJECT = 50;
 
+// One published file, as a Response — the single place that reads a project's
+// bytes and decides what it is. Two callers need exactly this and no more:
+// /published/<id>/<path> (the branded short address) and /api/hosts/serve
+// (the same site under its own <name>.createstuff.ai address). Keeping it in
+// one function means the two addresses can never drift apart — a fix to the
+// content type or the environment injection lands on both at once.
+//
+// Returns null when there is no such file, so a caller can answer 404 itself
+// with whatever wording suits its own route.
+async function projectFileResponse(env, projectId, filePath) {
+  const row = await env.DB.prepare(
+    "SELECT content FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
+  ).bind(projectId, filePath, filePath).first();
+  if (!row) return null;
+  const type = /\.css$/i.test(filePath) ? "text/css; charset=utf-8"
+    : /\.js$/i.test(filePath) ? "application/javascript; charset=utf-8"
+    : /\.json$/i.test(filePath) ? "application/json"
+      : "text/html; charset=utf-8";
+  // Only HTML carries window.__ENV; a stylesheet or a script gets the exact
+  // bytes that were built, because it has nowhere to read them from.
+  const content = type.startsWith("text/html")
+    ? await injectProjectEnv(env, projectId, row.content || "")
+    : (row.content || "");
+  return new Response(content, {
+    headers: { ...CORS, "Content-Type": type, "Cache-Control": "no-cache" },
+  });
+}
+
 // Hands the published page its own configuration as `window.__ENV`.
 //
 // Read at SERVE time, not at publish time, for three reasons: changing a value
@@ -2676,28 +2704,60 @@ export default {
         if (appThrown) throw appThrown;
       }
 
-      // ── published site files (authenticated: app.js sends the bearer) ──
+      // ── published site files ───────────────────────────────────────
       if (path.startsWith("/published/")) {
         const parts = path.split("/").filter(Boolean); // published, :id, ...
         const projectId = parts[1];
         const filePath = decodeURIComponent(parts.slice(2).join("/")) || "index.html";
         if (!projectId) return err("missing project id", 404);
-        const row = await env.DB.prepare(
-          "SELECT content FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
-        ).bind(projectId, filePath, filePath).first();
-        if (!row) return err("Not found", 404);
-        const type = /\.css$/i.test(filePath) ? "text/css; charset=utf-8"
-          : /\.js$/i.test(filePath) ? "application/javascript; charset=utf-8"
-          : /\.json$/i.test(filePath) ? "application/json"
-            : "text/html; charset=utf-8";
-        // Only HTML carries window.__ENV; a stylesheet or a script gets the
-        // exact bytes that were built, because it has nowhere to read them from.
-        const content = type.startsWith("text/html")
-          ? await injectProjectEnv(env, projectId, row.content || "")
-          : (row.content || "");
-        return new Response(content, {
-          headers: { ...CORS, "Content-Type": type, "Cache-Control": "no-cache" },
-        });
+        const res = await projectFileResponse(env, projectId, filePath);
+        return res || err("Not found", 404);
+      }
+
+      // ── a published site under its OWN web address ─────────────────
+      // `Connect it` claims `<name>.createstuff.ai` for a project. That hostname
+      // is answered by the sites Pages project, which lives in the OTHER
+      // Cloudflare account (a Worker can only have routes in its own account, and
+      // a cross-account CNAME is refused with error 1014) — so it cannot read this
+      // database. It hands the hostname and the path here and this returns the
+      // bytes. Resolution reuses the SAME `app_hosts` row the Connect button
+      // writes, so there is one source of truth and never a second copy of
+      // anybody's site.
+      //
+      // Public on purpose: a visitor to somebody's published site has never
+      // heard of us, let alone signed in. It only ever reveals files that
+      // `Put online` already made public at /published/<id>/… — it adds the
+      // hostname, not the visibility.
+      if (path === "/api/hosts/serve" && method === "GET") {
+        const host = String(url.searchParams.get("host") || "").trim().toLowerCase();
+        const want = String(url.searchParams.get("path") || "");
+        // A hostname is labels and dots, nothing else. Refusing the shape here
+        // means a crafted value can never be turned into a query we did not
+        // intend below.
+        if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)) {
+          return err("Not found", 404);
+        }
+        const filePath = decodeURIComponent((want || "/index.html").replace(/^\/+/, "")) || "index.html";
+        // Same traversal rule as the asset layer: a published path is a flat
+        // file path, and `..` has no meaning in one.
+        if (filePath.includes("\0") || filePath.split("/").some((s) => s === "." || s === "..")) {
+          return err("Not found", 404);
+        }
+        let mapped = null;
+        try {
+          mapped = await env.DB.prepare(
+            "SELECT project_id FROM app_hosts WHERE hostname=? LIMIT 1"
+          ).bind(host).first();
+        } catch {
+          // The table is created lazily by the worker that writes it. Before it
+          // exists there is simply nothing claimed, which is a 404 — never a 500
+          // telling a visitor that our database is unhappy.
+          mapped = null;
+        }
+        const projectId = mapped && (mapped.project_id || mapped.projectId);
+        if (!projectId) return err("Not found", 404);
+        const res = await projectFileResponse(env, projectId, filePath);
+        return res || err("Not found", 404);
       }
 
       // ── auth ────────────────────────────────────────────────────────
