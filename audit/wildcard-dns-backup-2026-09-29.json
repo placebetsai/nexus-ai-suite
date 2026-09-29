@@ -1,0 +1,90 @@
+{
+  "israeljoffe.com": {
+    "zone_id": "e6f72ac4e2888d90cc64fc1fbd3e2c6e",
+    "wildcards": [
+      {
+        "id": "31eab70b9132518f00db6ef2dd34619c",
+        "name": "*.israeljoffe.com",
+        "type": "CNAME",
+        "content": "israeljoffe.com",
+        "proxiable": true,
+        "proxied": true,
+        "ttl": 1,
+        "settings": {
+          "flatten_cname": false
+        },
+        "meta": {},
+        "comment": null,
+        "tags": [],
+        "created_on": "2026-05-02T02:16:04.212764Z",
+        "modified_on": "2026-05-02T02:16:04.212764Z"
+      }
+    ]
+  },
+  "israeljoffe.org": {
+    "zone_id": "dc1fbd4dd35f64ffd35f53588a486c26",
+    "wildcards": [
+      {
+        "id": "3a051598372063c347f3247e06d9ddc8",
+        "name": "*.israeljoffe.org",
+        "type": "CNAME",
+        "content": "israeljoffe.org",
+        "proxiable": true,
+        "proxied": true,
+        "ttl": 1,
+        "settings": {
+          "flatten_cname": false
+        },
+        "meta": {},
+        "comment": null,
+        "tags": [],
+        "created_on": "2026-05-02T02:16:53.06755Z",
+        "modified_on": "2026-05-02T02:16:53.06755Z"
+      }
+    ]
+  },
+  "wuwonline.com": {
+    "zone_id": "9a714d9088e7b1c962e0742a088bf9a6",
+    "wildcards": [
+      {
+        "id": "3e2b2c4d2ff8e3a2ae45080617480604",
+        "name": "*.wuwonline.com",
+        "type": "CNAME",
+        "content": "wuwonline.com",
+        "proxiable": true,
+        "proxied": true,
+        "ttl": 1,
+        "settings": {
+          "flatten_cname": false
+        },
+        "meta": {},
+        "comment": null,
+        "tags": [],
+        "created_on": "2026-05-02T02:17:47.104081Z",
+        "modified_on": "2026-05-02T02:17:47.104081Z"
+      }
+    ]
+  },
+  "wuwonline.org": {
+    "zone_id": "8deff32ee9c7979857e1bc0172cb1378",
+    "wildcards": [
+      {
+        "id": "d6d201b4201c8c0d25c4ecb15e52c03a",
+        "name": "*.wuwonline.org",
+        "type": "CNAME",
+        "content": "wuwonline.org",
+        "proxiable": true,
+        "proxied": true,
+        "ttl": 1,
+        "settings": {
+          "flatten_cname": false
+        },
+        "meta": {},
+        "comment": null,
+        "tags": [],
+        "created_on": "2026-05-02T02:19:41.117471Z",
+        "modified_on": "2026-05-02T02:19:41.117471Z"
+      }
+    ]
+  }
+}

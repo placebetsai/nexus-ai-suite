@@ -1,0 +1,102 @@
+{
+  "fashionistas.ai": {
+    "zone_id": "1329a2e63b17d6d9afd291fac2d0beab",
+    "routes": [
+      {
+        "id": "db094184ecbf431583c12ce1736862e1",
+        "pattern": "*.fashionistas.ai/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "israeljoffe.com": {
+    "zone_id": "e6f72ac4e2888d90cc64fc1fbd3e2c6e",
+    "routes": [
+      {
+        "id": "c19022d0a1c14be69929de01eb3478c8",
+        "pattern": "*.israeljoffe.com/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "israeljoffe.org": {
+    "zone_id": "dc1fbd4dd35f64ffd35f53588a486c26",
+    "routes": [
+      {
+        "id": "02d280d80a6b4f3d8027ca2dbd72a1c4",
+        "pattern": "*.israeljoffe.org/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "ketiservice.com": {
+    "zone_id": "139fd5f6079cd193f7907c6ad8d8e618",
+    "routes": [
+      {
+        "id": "5135cee56aac4ecb9b911186ac5de2e7",
+        "pattern": "*.ketiservice.com/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "marketpicks.ai": {
+    "zone_id": "197ce22dba464339621df3b2fd5e40c5",
+    "routes": [
+      {
+        "id": "29d42c5252f84ff89756d0a3a25166f2",
+        "pattern": "marketpicks.ai/api/politician-trades*",
+        "script": "marketpicks-ai-api",
+        "request_limit_fail_open": false
+      },
+      {
+        "id": "854486bdeca7491d9ea87ba38d092dce",
+        "pattern": "www.marketpicks.ai/api/politician-trades*",
+        "script": "marketpicks-ai-api",
+        "request_limit_fail_open": false
+      },
+      {
+        "id": "b479509a7a224deda568e031acf2b4c5",
+        "pattern": "*.marketpicks.ai/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "religiousjews.com": {
+    "zone_id": "f1a3b694ead4c4b75abb869e147f7597",
+    "routes": [
+      {
+        "id": "99c1a00e650544849664d1be8b2be1ba",
+        "pattern": "*.religiousjews.com/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "wuwonline.com": {
+    "zone_id": "9a714d9088e7b1c962e0742a088bf9a6",
+    "routes": [
+      {
+        "id": "98d5e1f639bd4953b309e77e0421544e",
+        "pattern": "*.wuwonline.com/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  },
+  "wuwonline.org": {
+    "zone_id": "8deff32ee9c7979857e1bc0172cb1378",
+    "routes": [
+      {
+        "id": "0845b80fc92f4f658bd3c3d44076cf25",
+        "pattern": "*.wuwonline.org/*",
+        "script": "app-host",
+        "request_limit_fail_open": false
+      }
+    ]
+  }
+}

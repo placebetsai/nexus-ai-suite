@@ -822,7 +822,11 @@ async function dispatch(request, env) {
     return response || err("File not found", 404);
   }
 
-  // www.<zone> is never a project: redirect before touching the database.
+  // www.<zone> and app.<zone> are never projects: redirect before touching the
+  // database. `app` is in RESERVED_HOST_LABELS, so attachHost refuses it — but
+  // the record itself is real (app.fashionistas.ai is a CNAME straight to the
+  // Pages project), and without this hop the route below answered it with
+  // 404 {"error":"No project matched hostname"} instead of the site it points at.
   const wwwApex = canonicalApex(hostname);
   if (wwwApex) {
     return new Response(null, {
@@ -856,10 +860,18 @@ async function dispatch(request, env) {
   return response || err("File not found", 404);
 }
 
-/** www.marketpicks.ai -> marketpicks.ai (only for zones this Worker fronts). */
+/**
+ * www.marketpicks.ai -> marketpicks.ai, app.fashionistas.ai -> fashionistas.ai
+ * (only for zones this Worker fronts). Both labels are reserved, so neither can
+ * ever be a published project — they are aliases of the zone's own site.
+ */
 function canonicalApex(hostname) {
   if (!hostname) return null;
-  return [...CONTROLLED_ZONES].find((zone) => hostname === `www.${zone}`) || null;
+  return (
+    [...CONTROLLED_ZONES].find(
+      (zone) => hostname === `www.${zone}` || hostname === `app.${zone}`
+    ) || null
+  );
 }
 
 export default {
