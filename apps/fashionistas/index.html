@@ -2596,7 +2596,7 @@ const XL_CONNECT_KEY = "fash_connect_v1";
 const XL_EBAY_KEYS_KEY = "fash_ebay_keys_v1";
 const XL_EBAY_REDIRECT = "https://fashionistas.ai/api/ebay/oauth/callback";
 let XL_SHOP_GUIDE_ID = null;
-let XL_EBAY_LIVE = { probed: false, connected: false, expired: false, hasRefresh: false, env: "sandbox", needsReconnect: false };
+let XL_EBAY_LIVE = { probed: false, available: false, connected: false, expired: false, hasRefresh: false, env: "sandbox", needsReconnect: false };
 const XL_EBAY_SELLER_HUB = {
   sandbox: "https://www.sandbox.ebay.com/bp/manage",
   production: "https://www.ebay.com/bp/manage"
@@ -2629,12 +2629,27 @@ function xlEbayNeedsReconnect(){
   if (XL_EBAY_LIVE.needsReconnect) return true;
   try { return localStorage.getItem("fash_ebay_needs_reconnect") === "1"; } catch { return false; }
 }
+// Fail closed: until the server has actually said "I can do this", the eBay
+// create affordances stay hidden. A button that reads "Create on eBay" and
+// can only ever return 404 is worse than no button.
+function xlEbayCanCreate(){
+  return !!(XL_EBAY_LIVE.probed && XL_EBAY_LIVE.available);
+}
 async function xlEbayProbeStatus(){
   try {
-    const r = await fetch("/api/ebay/status", { credentials: "same-origin", headers: { "cache-control": "no-store" } });
+    // Was a relative URL, i.e. fashionistas.ai/api/ebay/status — a STATIC
+    // Pages project with no such route, so this got the 404 page back, r.json()
+    // threw, and the panel concluded "needs keys" from an empty object. The
+    // API origin is what every other call in this app already uses.
+    const r = await fetch(API + "/api/ebay/status", { headers: { "cache-control": "no-store" } });
     const data = await r.json().catch(() => ({}));
     XL_EBAY_LIVE = {
       probed: true,
+      // Whether the server can create an eBay listing AT ALL. Until it can,
+      // offering a "Create on eBay" button is offering something that does
+      // not exist, so the button is gated on this rather than on the local
+      // "connected" flag the owner can set for themselves.
+      available: !!(data && data.available),
       connected: !!(data && data.connected),
       expired: !!(data && data.expired),
       hasRefresh: !!(data && data.hasRefreshToken),
@@ -2776,7 +2791,10 @@ function xlConnectStatusTag(st){
 function xlConnectStatusTagForShop(id){
   const st = xlConnectStatus(id);
   if (id !== "ebay") {
-    if (st === "connected") return `<span class="tag connected">Connected</span>`;
+    // Green, because the owner did do something — but the old label read
+    // "Connected" for a flag in this browser's localStorage, with no account,
+    // token or link behind it. The tip says what is actually true.
+    if (st === "connected") return `<span class="tag connected" data-tip="You told us you have an account here. Nothing was connected — posting on this shop is copy-and-paste.">Account noted</span>`;
     if (st === "ready") return `<span class="tag ready">Ready to guide</span>`;
     return `<span class="tag needs">Needs account</span>`;
   }
@@ -2867,7 +2885,7 @@ function xlConnectMarkLocal(id){
   const state = xlConnectLoad();
   state[id] = { status: "connected", via: "local", at: new Date().toISOString() };
   xlConnectSave(state);
-  toast(id + " marked Connected locally — paste still works; API post needs a real link");
+  toast(id + ": account noted here. Nothing was connected — you still post it yourself.");
   xlConnectRefresh();
   try { xlShopPaintStatus(id); } catch {}
 }
@@ -3029,7 +3047,7 @@ function xlShopOpenGuide(id){
    <div class="shop-cg-actions">
     <a class="btn btn-accent" href="${escapeHtml(shop.createListing)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} create-listing.">Open create listing</a>
     <a class="btn btn-soft" href="${escapeHtml(shop.signup)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} signup.">Open signup</a>
-    <button type="button" class="btn btn-soft" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Marks Connected locally — does not grant API post.">I've connected</button>
+    <button type="button" class="btn btn-soft" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Notes that you have an account here. Nothing is connected.">I've connected</button>
    </div>
    <p class="shop-cg-foot">No API keys here — ${escapeHtml(shop.name)} is guide + paste only.</p>`;
     }
@@ -3147,7 +3165,7 @@ async function xlEbayConnectStart(){
     } else {
       opts.body = JSON.stringify({});
     }
-    const r = await fetch("/api/ebay/oauth/start", opts);
+    const r = await fetch(API + "/api/ebay/oauth/start", opts);
     const data = await r.json().catch(() => ({}));
     if (data && data.authorizeUrl) {
       xlShopCloseGuide();
@@ -4143,7 +4161,7 @@ async function openListing(id){
  </div>
  <div class="card">
  <h3 style="margin-top:0">Shops I've prepared it for</h3>
- ${platforms.length ? [...new Map(platforms.map(p=>[p.platform,p])).values()].map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><b>${platformName(p.platform)}</b><span class="tag active">${p.status||"draft"}</span></div>`).join("") : `<p class="mut">Nothing prepared for a shop yet.</p>`}
+ ${platforms.length ? [...new Map(platforms.map(p=>[p.platform,p])).values()].map(p=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><b>${platformName(p.platform)}</b><span class="tag active" data-tip="The kit for this shop is saved here so you can copy it. Nothing has been posted.">Draft saved</span></div>`).join("") : `<p class="mut">Nothing prepared for a shop yet.</p>`}
  </div>
  <button class="btn btn-danger btn-sm" style="width:100%" onclick="delListing(${id})" data-tip="Removes it for good.">Delete listing</button>`;
  const pick = $("#xl-pick");
@@ -4222,7 +4240,23 @@ const XL_KIT_RULES = {
 
 function xlKitRules(shopId){
   const k = String(shopId||"").toLowerCase();
-  return XL_KIT_RULES[k] || XL_KIT_RULES.depop;
+  if (XL_KIT_RULES[k]) return XL_KIT_RULES[k];
+  // Only 6 of the 21 shops in the picker have bespoke rules. Anything else
+  // used to fall through to Depop's, so ticking Amazon printed a heading that
+  // read "=== Depop kit ===" full of Depop's tone and hashtags — and live
+  // listings show sellers did tick Amazon, Etsy, Shopify, Square and
+  // BigCommerce. Build a neutral kit under the real shop name instead.
+  const m = (S.markets||[]).find(x => x.id === shopId) || {};
+  const name = m.name || (shopId ? String(shopId) : "Marketplace");
+  return {
+    id: k,
+    name,
+    titleMax: Math.max(20, Math.min(Number(m.maxChar) || 140, 140)),
+    tone: "Plain and factual — " + name + " rewards a clear, honest listing over a punchy one.",
+    fieldHints: "Title, price, condition, photos, description",
+    tags: [],
+    cats: {}
+  };
 }
 
 function xlKitTags(rules, l){
@@ -4238,11 +4272,19 @@ function xlKitTags(rules, l){
     const extra = ["#"+brand, "#"+cat].filter(t => t.length > 2);
     return [...new Set(rules.tags.concat(extra))].slice(0, 8).join(" ");
   }
-  /* Posh/Mercari/Vinted/Grailed — optional soft tags only if brand known */
-  if (brand && brand.toLowerCase() !== "unknown"){
-    return rules.id === "grailed" ? "" : "";
-  }
-  return "";
+  /* Posh/Mercari/Vinted/Grailed and every shop without bespoke rules.
+     The old line here was `return rules.id === "grailed" ? "" : ""` — both
+     branches empty, i.e. a dead ternary that made the comment above it a
+     promise the code never kept. Grailed genuinely takes no hashtags; the
+     rest do, so give them the tags the comment already describes. Use the
+     raw values rather than `brand`/`cat` above, which default to "resale"
+     and "fashion" and would otherwise stamp #resale onto every kit. */
+  if (rules.id === "grailed") return "";
+  const raw = (v) => (v && String(v).toLowerCase() !== "unknown") ? String(v) : "";
+  const soft = [raw(l.brand), raw(l.category)]
+    .filter(Boolean)
+    .map(v => "#" + v.replace(/\s+/g, ""));
+  return [...new Set(soft)].slice(0, 6).join(" ");
 }
 
 function xlKitDescription(rules, l){
@@ -4361,7 +4403,10 @@ async function crosspost(id){
  const allKit = picks.map(pid => kits[pid]).join("\n\n" + "\u2500".repeat(42) + "\n\n");
  let copied = false;
  try { await navigator.clipboard.writeText(allKit); copied = true; } catch(e){}
- try { await api(`/api/listings/${id}/crosspost`, { method:"POST", body: JSON.stringify({ platforms: picks }) }); } catch(e){}
+ // Send the kits with the request. The server used to store the listing's raw
+ // description instead — text nobody ever pastes — even though we had just
+ // built the exact kit per shop a line above.
+ try { await api(`/api/listings/${id}/crosspost`, { method:"POST", body: JSON.stringify({ platforms: picks, copy: kits }) }); } catch(e){}
  xlSheet(l, picks, copied, kits, allKit);
 }
 
@@ -4388,7 +4433,12 @@ function xlSheet(l, picks, copied, kits, allKit){
  const shopMeta = xlConnectShopById(pid) || {};
  const openUrl = shopMeta.createListing || m.signup || "#";
  let optionalEbay = "";
- if (pid === "ebay" && ebayConnected && !needReconnect) {
+ if (pid === "ebay" && !xlEbayCanCreate()) {
+   // No button. Until the server says it can create eBay listings, "Create on
+   // eBay" is a promise with nothing behind it — the four endpoints it needs
+   // did not exist until today, so this used to render and then fail.
+   optionalEbay = `<span class="mut" style="font-size:12px" data-tip="eBay posting is not switched on for this site yet. Copy kit works for every shop, including eBay.">eBay posting not available here</span>`;
+ } else if (pid === "ebay" && ebayConnected && !needReconnect) {
    optionalEbay = `<button type="button" class="btn btn-soft btn-sm" id="xl-ebay-create-btn" onclick="xlEbayCreateListingFromId(${listingId})" data-tip="Optional: create inventory + offer on eBay when Connected.">Create on eBay</button>`;
  } else if (pid === "ebay" && needReconnect) {
    optionalEbay = `<button type="button" class="btn btn-soft btn-sm" onclick="xlEbayReconnect()" data-tip="Restarts eBay OAuth with sell.inventory scopes.">Reconnect</button>`;
@@ -4404,12 +4454,22 @@ function xlSheet(l, picks, copied, kits, allKit){
  <p class="xl-kit-hint">${escapeHtml(rules.fieldHints||"")} · title ≤ ${rules.titleMax||"\u221e"} · fee ~${m.feePct!=null?m.feePct:(feeTableById(pid)||{}).feePct||"?"}%</p>
  <div class="xl-title">${escapeHtml(t)}</div>
  <pre class="xl-kit">${escapeHtml(kit)}</pre>
- ${pid === "ebay" ? `<div class="xl-ebay-cta-wrap" id="xl-ebay-inline"><div class="xl-ebay-status mut" id="xl-ebay-create-msg" aria-live="polite">${ebayConnected && !needReconnect ? "Optional Create available — paste kit still works anytime." : ""}</div></div>` : ""}
+ ${pid === "ebay" ? `<div class="xl-ebay-cta-wrap" id="xl-ebay-inline"><div class="xl-ebay-status mut" id="xl-ebay-create-msg" aria-live="polite">${!xlEbayCanCreate() ? "eBay posting is not switched on for this site — Copy kit works." : (ebayConnected && !needReconnect ? "Optional Create available — paste kit still works anytime." : "")}</div></div>` : ""}
 </div>`;
  }).join("");
 
+ // Where a seller actually pastes a kit. Computed once so the "not
+ // available" branch below can offer a real destination instead of a dead end.
+ const ebaySellUrl = ((S.markets||[]).find(x=>x.id==="ebay")||{}).signup || "https://www.ebay.com/lstng";
  const ebayNote = picks.includes("ebay") ? (
-  needReconnect
+  !xlEbayCanCreate()
+   ? `<div class="xl-ebay-create" id="xl-ebay-create-box"><p><b>Straight answer:</b> eBay posting is not switched on for this site — there is no eBay connection behind it, so there is no Create button to press. Your eBay kit above is complete and real: <b>Copy kit</b>, then paste it on eBay yourself.</p>
+      <div class="xl-ebay-actions">
+        <a class="btn btn-accent btn-sm" href="${escapeHtml(ebaySellUrl)}" target="_blank" rel="noopener noreferrer" data-tip="Opens eBay's sell page — paste the kit there.">Open eBay sell page</a>
+        <button type="button" class="btn btn-soft btn-sm" onclick="xlShopOpenGuide('ebay')">Guide</button>
+      </div>
+      <div id="xl-ebay-create-msg" class="xl-ebay-status mut">eBay auto-posting: not available. Nothing was sent anywhere.</div></div>`
+   : needReconnect
    ? `<div class="xl-ebay-create" id="xl-ebay-create-box"><p><b>Coach:</b> eBay scopes look stale — Reconnect once if you want optional API create. Paste kit works either way.</p>
       <div class="xl-ebay-actions"><button type="button" class="btn btn-soft btn-sm" onclick="xlEbayReconnect()">Reconnect</button>
       <button type="button" class="btn btn-soft btn-sm" onclick="xlShopOpenGuide('ebay')">Guide</button></div>
@@ -4602,7 +4662,7 @@ async function xlEbayCreateListing(item){
     clientSecret: keys.clientSecret || ""
   };
   try {
-    const r = await fetch("/api/ebay/listing", {
+    const r = await fetch(API + "/api/ebay/listing", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
@@ -4640,11 +4700,17 @@ async function xlEbayCreateListing(item){
     const next = (data && data.nextStep) || "";
     const scopeErr = err === "insufficient_scope_or_auth" || err === "insufficient_account_scope" || err === "ebay_not_connected" || err === "token_expired_missing_secret" || err === "token_refresh_failed";
     const policyErr = err === "missing_business_policies";
+    // The server's own "I cannot do this" answer. Without this it fell through
+    // to `escapeHtml(err)` and the owner read a raw error code as the reason.
+    const notBuilt = err === "ebay_not_configured";
 
     if (scopeErr) xlEbayMarkNeedsReconnect(true);
 
     let actions = "";
-    if (scopeErr) {
+    if (notBuilt) {
+      actions = actionRow(`<a class="btn btn-accent btn-sm" href="${escapeHtml(((S.markets||[]).find(x=>x.id==="ebay")||{}).signup || "https://www.ebay.com/lstng")}" target="_blank" rel="noopener noreferrer">Open eBay sell page</a>
+        <button type="button" class="btn btn-soft btn-sm" onclick="xlShopOpenGuide('ebay')">Guide</button>`);
+    } else if (scopeErr) {
       actions = actionRow(`<button type="button" class="btn btn-accent btn-sm" onclick="xlEbayReconnect()">Reconnect eBay</button>
         <button type="button" class="btn btn-soft btn-sm" onclick="xlShopOpenGuide('ebay')">Open Connect</button>`);
     } else if (policyErr) {
@@ -4657,9 +4723,10 @@ async function xlEbayCreateListing(item){
 
     const friendly = policyErr
       ? "Needs business policies"
-      : (scopeErr ? "Needs Reconnect" : escapeHtml(err));
+      : (scopeErr ? "Needs Reconnect"
+        : (notBuilt ? "eBay posting isn't switched on" : escapeHtml(err)));
     setMsg("<b>" + friendly + ":</b> " + escapeHtml(message) + (next ? "<br>" + escapeHtml(next) : "") + (data && data.sku ? "<br>SKU: " + escapeHtml(data.sku) : "") + actions, "err");
-    toast(policyErr ? "Add eBay business policies, then retry" : (scopeErr ? "Reconnect eBay, then retry" : "eBay create blocked — see panel"));
+    toast(policyErr ? "Add eBay business policies, then retry" : (scopeErr ? "Reconnect eBay, then retry" : (notBuilt ? "eBay posting isn't available — copy the kit" : "eBay create blocked — see panel")));
   } catch(e){
     setBusy(false);
     setMsg("<b>Network:</b> Could not reach Create. Paste the kit instead." + actionRow(`<button type="button" class="btn btn-soft btn-sm" onclick="xlEbayCreateListingFromId(${Number(item && item.id)||0})">Retry</button>`), "err");

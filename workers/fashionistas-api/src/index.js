@@ -369,27 +369,38 @@ async function rateLimit(env, request, bucket, limit = 30, windowSec = 60) {
 }
 
 // Marketplace registry.
-//   api:"full"   → we can create/update listings through their public API
-//   api:"deep"   → no listing API; we pre-fill a paste-ready draft + deep link
+//   api:"full"   → we actually create/update listings through their public API
+//   api:"deep"   → no listing API on our side; we write a paste-ready kit + link
+//
+// 2026-09-29: eight rows claimed api:"full" with ZERO integration behind them —
+// this comment was the only place the promise was ever made, and no Etsy,
+// Shopify, TikTok, Amazon, Square, BigCommerce or WooCommerce call exists in
+// this repo, authenticated or otherwise. eBay was worse: it carried a full
+// Connect/Create UI whose four endpoints did not exist at all (a live
+// `GET /api/ebay/status` came back as the site's branded 404 page). All of
+// them now say "deep", which is what the product really does for them: we
+// write the listing text, you paste it. `full` is left only on our own
+// storefront, where it is true.
+//
 //   feePct marked estimate where the platform publishes no public seller rate.
 // Removed 2026-09-26: Tradesy (closed 2023), Redbubble (print-on-demand, not
 // resale), Zalando and KicksCrew (not open to individual US sellers).
 const MARKETPLACES = [
   { id: "depop",     name: "Depop",          feePct: 10,    maxChar: 1100, api: "deep",  signup: "https://depop.com" },
-  { id: "ebay",      name: "eBay",           feePct: 13.25, maxChar: 80,   api: "full",  signup: "https://www.ebay.com/lstng" },
+  { id: "ebay",      name: "eBay",           feePct: 13.25, maxChar: 80,   api: "deep",  signup: "https://www.ebay.com/lstng" },
   { id: "poshmark",  name: "Poshmark",       feePct: 20,    maxChar: 75,   api: "deep",  signup: "https://poshmark.com" },
   { id: "mercari",   name: "Mercari",        feePct: 13.9,  maxChar: 60,   api: "deep",  signup: "https://www.mercari.com" },
   { id: "vinted",    name: "Vinted",         feePct: 5,     maxChar: 50,   api: "deep",  signup: "https://www.vinted.com" },
   { id: "grailed",   name: "Grailed",        feePct: 9,     maxChar: 80,   api: "deep",  signup: "https://www.grailed.com" },
-  { id: "etsy",      name: "Etsy",           feePct: 9.5,   maxChar: 140,  api: "full",  signup: "https://www.etsy.com/sell" },
-  { id: "shopify",   name: "Shopify",        feePct: 0,     maxChar: 255,  api: "full",  signup: "https://www.shopify.com" },
-  { id: "tiktok",    name: "TikTok Shop",    feePct: 8,     maxChar: 34,   api: "full",  signup: "https://shop.tiktok.com" },
+  { id: "etsy",      name: "Etsy",           feePct: 9.5,   maxChar: 140,  api: "deep",  signup: "https://www.etsy.com/sell" },
+  { id: "shopify",   name: "Shopify",        feePct: 0,     maxChar: 255,  api: "deep",  signup: "https://www.shopify.com" },
+  { id: "tiktok",    name: "TikTok Shop",    feePct: 8,     maxChar: 34,   api: "deep",  signup: "https://shop.tiktok.com" },
   { id: "whatnot",   name: "Whatnot",        feePct: 8,     maxChar: 100,  api: "deep",  signup: "https://www.whatnot.com" },
   { id: "facebook",  name: "Facebook Mktpl", feePct: 0,     maxChar: 100,  api: "deep",  signup: "https://www.facebook.com/marketplace" },
-  { id: "amazon",    name: "Amazon",         feePct: 15,    maxChar: 200,  api: "full",  signup: "https://sellercentral.amazon.com", note: "estimate" },
-  { id: "square",    name: "Square",         feePct: 2.6,   maxChar: 140,  api: "full",  signup: "https://squareup.com" },
-  { id: "bigcommerce", name: "BigCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://www.bigcommerce.com" },
-  { id: "woocommerce", name: "WooCommerce",  feePct: 0,     maxChar: 255,  api: "full",  signup: "https://woocommerce.com" },
+  { id: "amazon",    name: "Amazon",         feePct: 15,    maxChar: 200,  api: "deep",  signup: "https://sellercentral.amazon.com", note: "estimate" },
+  { id: "square",    name: "Square",         feePct: 2.6,   maxChar: 140,  api: "deep",  signup: "https://squareup.com" },
+  { id: "bigcommerce", name: "BigCommerce",  feePct: 0,     maxChar: 255,  api: "deep",  signup: "https://www.bigcommerce.com" },
+  { id: "woocommerce", name: "WooCommerce",  feePct: 0,     maxChar: 255,  api: "deep",  signup: "https://woocommerce.com" },
   { id: "depop_alt", name: "Etsy Vintage",   feePct: 9.5,   maxChar: 140,  api: "deep",  signup: "https://www.etsy.com/market/vintage" },
   { id: "vestiaire", name: "Vestiaire Col.",  feePct: 15,    maxChar: 100,  api: "deep",  signup: "https://www.vestiairecollective.com", note: "estimate" },
   { id: "theRealReal", name: "The RealReal", feePct: 20,    maxChar: 100,  api: "deep",  signup: "https://www.therealreal.com", note: "estimate" },
@@ -817,6 +828,59 @@ async function dispatch(request, env) {
           { headers: { ...CORS, "Content-Type": "application/xml; charset=utf-8" } }
         );
       }
+      // ── eBay ───────────────────────────────────────────────────────────
+      // These four calls were made against fashionistas.ai, a STATIC Pages
+      // project — so a live `GET /api/ebay/status` returned the site's
+      // branded 404 page, `POST /api/ebay/oauth/start` returned 404 and
+      // `POST /api/ebay/listing` (the one button that claims to create a
+      // listing) answered 404 too. The Connect panel, its 4-step progress
+      // widget and the Create button could therefore never succeed, and the
+      // button reported the 404 as a network fault. They are served here now
+      // and say in plain language what is true: we have not built eBay.
+      //
+      // Public on purpose. `status` reports only whether THIS SERVER has eBay
+      // wired up — no seller, no token, no account, nothing to leak. Do not
+      // move `connected` behind auth until a real token store exists with it.
+      if (path === "/api/ebay/status" && method === "GET") {
+        return json({
+          ok: true,
+          available: false,
+          connected: false,
+          expired: false,
+          hasRefreshToken: false,
+          env: "sandbox",
+          message: "eBay posting is not switched on for this site yet.",
+          nextStep: "You do not need it — copy the kit and paste it on eBay yourself.",
+        });
+      }
+      if (path === "/api/ebay/oauth/start" && method === "POST") {
+        return json({
+          error: "ebay_not_configured",
+          message: "This site cannot start an eBay sign-in yet — that step is not built here.",
+          nextStep: "No sign-in is needed to sell: copy the kit and paste it on eBay.",
+        }, 501);
+      }
+      if (path === "/api/ebay/listing" && method === "POST") {
+        return json({
+          error: "ebay_not_configured",
+          message: "This site cannot create an eBay listing for you yet — that step is not built here.",
+          nextStep: "Copy the kit and paste it on eBay. Nothing has been sent anywhere.",
+        }, 501);
+      }
+      // The OAuth redirect URI. No OAuth flow can start, so this can only be
+      // reached by hand — but it used to land on the 404 page because nothing
+      // under /api/ on fashionistas.ai is routed to this worker. _redirects
+      // now sends it here so it answers honestly instead of looking broken.
+      if (path === "/api/ebay/oauth/callback" && method === "GET") {
+        const to = "https://fashionistas.ai/";
+        return new Response(
+          "<!doctype html><meta charset=\"utf-8\"><title>eBay sign-in — not available</title>" +
+          "<p>eBay sign-in is not switched on for this site yet. Nothing was connected.</p>" +
+          `<p><a href="${to}">Back to Fashionistas</a></p>`,
+          { status: 501, headers: { ...CORS, "Content-Type": "text/html; charset=utf-8" } }
+        );
+      }
+
       if (path === "/api/auth/register" && method === "POST") {
         if (!(await rateLimit(env, request, "register", 10))) return err("Too many requests", 429);
         const { email, username, password } = await readJson(request);
@@ -1264,23 +1328,49 @@ async function dispatch(request, env) {
         const owned = await env.DB.prepare("SELECT * FROM listings WHERE id=? AND user_id=?").bind(id, user.sub).first();
         if (!owned) return err("Not found", 404);
 
-        // crosspost — publish a copy of this listing to chosen platform(s)
+        // crosspost — save a paste-ready kit for each chosen platform. This is
+        // a DRAFT, not a publish: nothing in this worker can push to Depop,
+        // Poshmark or eBay (every non-storefront row above is api:"deep"), so
+        // the response says exactly that rather than implying queued work.
         if (sub === "crosspost" && method === "POST") {
-          const { platforms } = await readJson(request);
+          const body = await readJson(request);
+          const platforms = body.platforms;
           // A non-array `platforms` used to either throw (object -> 500) or be
           // walked char-by-char (string) and answer 200 with results: [].
           if (!Array.isArray(platforms) || !platforms.length)
             return err("platforms must be a non-empty array of platform ids");
           const unknown = platforms.filter((pid) => !MARKETPLACES.some((m) => m.id === pid));
           if (unknown.length) return err(`unknown platform id(s): ${unknown.join(", ")}`);
+          // The browser already built one kit per platform — keep that text.
+          // Storing owned.description instead meant the row held something
+          // that was never going to be pasted. `copy` is optional so older
+          // callers keep working unchanged.
+          const copy = (body.copy && typeof body.copy === "object" && !Array.isArray(body.copy)) ? body.copy : {};
           const results = [];
-          for (const pid of platforms) {
-            await env.DB.prepare("INSERT INTO listing_platforms (listing_id, platform, status, listing_copy) VALUES (?,?,?,?)")
-              .bind(id, pid, "ready", col(owned.description)).run();
-            results.push({ platform: pid, status: "ready", note: "queued for publish — link this platform's account to push live" });
+          // Idempotent in SQL: there is no UNIQUE(listing_id, platform) in the
+          // deployed table and no migration for listing_platforms anywhere in
+          // this repo, so the old plain INSERT appended a fresh row on every
+          // press — the busiest live listing reached 21 depop rows and 24
+          // poshmark rows, hidden from the UI only by a Map() dedupe.
+          for (const pid of [...new Set(platforms)]) {
+            const text = (typeof copy[pid] === "string" && copy[pid].trim()) ? copy[pid] : col(owned.description);
+            await env.DB.prepare(
+              "INSERT INTO listing_platforms (listing_id, platform, status, listing_copy) " +
+              "SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM listing_platforms WHERE listing_id=? AND platform=?)"
+            ).bind(id, pid, "ready", text, id, pid).run();
+            results.push({
+              platform: pid,
+              status: "ready",
+              note: "saved as a draft here — copy the kit and paste it on that shop yourself",
+            });
           }
-          await env.DB.prepare("UPDATE listings SET platforms=? WHERE id=?").bind(JSON.stringify(platforms), id).run();
-          return json({ results });
+          // Union with what was already there. Overwriting dropped any
+          // platform ticked on an earlier press.
+          let prev = [];
+          try { const p = JSON.parse(owned.platforms); if (Array.isArray(p)) prev = p; } catch { prev = []; }
+          const merged = [...new Set([...prev, ...platforms])];
+          await env.DB.prepare("UPDATE listings SET platforms=? WHERE id=?").bind(JSON.stringify(merged), id).run();
+          return json({ results, saved: results.length, note: "drafts only — no shop is posted to automatically" });
         }
         if (sub === "platforms" && method === "GET") {
           const r = await env.DB.prepare("SELECT * FROM listing_platforms WHERE listing_id=?").bind(id).all();

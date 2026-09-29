@@ -10,3 +10,9 @@
 # anyone with the old link still land somewhere sensible.
 /app   /   301
 /app/  /   301
+
+# The eBay OAuth redirect URI. No eBay flow exists to start, so this can only
+# be reached by hand — but it used to land on the 404 page, because nothing
+# under /api/ on this static project is routed anywhere. Send it to the worker
+# so it answers honestly instead of looking like a broken link.
+/api/ebay/oauth/callback   https://fashionistas-api.fashionistas1979.workers.dev/api/ebay/oauth/callback   302
