@@ -953,7 +953,9 @@ async function dispatch(request, env) {
         const category = (u.searchParams.get("category") || "").trim().slice(0, 80);
         const sortKey = u.searchParams.get("sort") || "new";
         const orderBy = MARKET_SORTS[sortKey] || MARKET_SORTS.new;
-        const where = ["l.status = 'active'"];
+        // Shoppers only see listings with a photo; a photo-less card reads as junk
+        // (sellers still see every listing in their own closet).
+        const where = ["l.status = 'active'", "l.photo_url IS NOT NULL", "l.photo_url != ''"];
         const binds = [];
         if (q) { where.push("(l.title LIKE ? OR l.description LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
         // Category arrives three ways: a full path ("Women's Clothing/Tops & Shirts"),
