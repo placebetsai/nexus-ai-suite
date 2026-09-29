@@ -277,9 +277,11 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       `GET /api/hosts/serve?host=…&path=…` from `createstuff-api`, which resolves it against the
       **same `app_hosts` row the button writes** — one source of truth, no second copy of
       anybody's site.
-      **Live proof 79/79** across three suites that each create *and* delete their own project
-      and their own hostname: `/tmp/domain_proof.sh` **33/33**, `/tmp/domain_proof_v2.sh`
-      **27/27**, `/tmp/domain_ui_proof.mjs` **19/19** (real Chrome). Covered: the DNS record
+      **Live proof 82/82** across three suites that each create *and* delete their own project
+      and their own hostname: `/tmp/domain_proof.sh` **36/36**, `/tmp/domain_proof_v2.sh`
+      **27/27**, `/tmp/domain_ui_proof.mjs` **19/19** (real Chrome). Both API suites were run
+      **twice**, and the second run is what matters — the first pass only ever passed from a
+      clean machine. Covered: the DNS record
       read back from the Cloudflare API (a proxied record is flattened on the wire, so `dig`
       can never show it), `initializing → pending → active` with the address serving in
       between, the bytes belonging to that exact project, `..` traversal refused, a **second
@@ -296,6 +298,13 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       created.
       Timing is told straight: **serving at ~75 s, `active` at ~150 s** — the badge says
       *Attached — warming up*, never "live", until a real 200 comes back from that address.
+      **Two proof-harness defects the re-run exposed, both fixed:** ① the ownership check
+      registered its second account with a *fixed* `name`, and `POST /api/auth/register` maps
+      `name` to a **username** — unique — so the second run got **409** and the check failed as
+      a confusing **401**. It now asserts register 201 / login 200 / token present as three
+      separate checks before ever making the ownership call. ② Cleanup read the `fashionistas.ai`
+      zone with `CF_API_TOKEN`, which returns **error 10000 Authentication error** there;
+      `CF_DNS_TOKEN` is the credential that can list and delete records on that zone.
 - [ ] **A domain the user already owns** (their own apex, e.g. `myshop.com`) — **not started**.
       Distinct from the address above: that one is on our zone. This needs the user to point a
       record at us and a Pages attach against a zone we do not hold.

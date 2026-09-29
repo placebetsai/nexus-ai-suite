@@ -467,9 +467,10 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
   `app_hosts` row** the button wrote — one source of truth, no second copy of anybody's site.
   A proxied record is flattened to A records on the wire, so the CNAME is read back through the
   Cloudflare API, never `dig`.
-  **Proof 79/79** — `/tmp/domain_proof.sh` **33/33**, `/tmp/domain_proof_v2.sh` **27/27**,
+  **Proof 82/82** — `/tmp/domain_proof.sh` **36/36**, `/tmp/domain_proof_v2.sh` **27/27**,
   `/tmp/domain_ui_proof.mjs` **19/19** (real Chrome, screenshot `/tmp/domain_ui.png`). Each suite
-  creates *and* deletes its own project and its own hostname. Measured lifecycle: DNS `created`
+  creates *and* deletes its own project and its own hostname, and **both API suites were run
+  twice** — a first pass from a clean machine proves much less than a re-run. Measured lifecycle: DNS `created`
   immediately → address **200 at ~75 s** → Pages **`active` at ~150 s** → release → gone once the
   60 s edge window lapses (re-checked at 95 s). Also covered: a **second real account → 403 with
   no DNS record written**, `app`/`sites`/`www`/`api`/`mail` → **422**, duplicate → **409**, no
@@ -483,6 +484,14 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
   evidence was overwritten a second later by the host-list refresh, so the person pressing the
   button never saw whether the record was created — `lzCheckHosts()` now runs *before* the result
   is written.
+  **Two proof-harness defects, found only by running the suites a second time:** (3) the ownership
+  check registered its second account with a *fixed* `name`, and `POST /api/auth/register` maps
+  `name` to a **username** — unique — so run #2 got **409** and the check failed as a misleading
+  **401**. It now asserts register 201 / login 200 / token present separately before calling.
+  (4) Cleanup read the `fashionistas.ai` zone with `CF_API_TOKEN`, which returns **error 10000
+  Authentication error** there; `CF_DNS_TOKEN` is the credential that can list and delete records
+  on that zone. **Credentials gotcha worth remembering:** `CF_API_TOKEN` (account A) can *list
+  zones* across all of them but **cannot touch DNS records** — use `CF_DNS_TOKEN`.
   **Told straight in the UI:** the badge reads *Attached — warming up* and the evidence says the
   address answers within about two minutes, until step D gets a real 200 from that exact URL.
   **Gotchas:** `wrangler secret list` on `app-host` printed nothing on the first attempts and
