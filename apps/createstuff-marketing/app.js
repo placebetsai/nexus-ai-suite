@@ -2260,6 +2260,9 @@ async function csAddEnv() {
 }
 
 async function csDeleteEnv(key) {
+  // Without this the URL became `/api/projects//env/KEY` whenever no app was
+  // selected — a guaranteed 404 the owner sees as a silent nothing-happened.
+  if (!currentProjectId) { showToast('Choose an app above first'); return; }
   try {
     await api(`/api/projects/${currentProjectId}/env/${encodeURIComponent(key)}`, { method: 'DELETE' });
     showToast(`Removed ${key}`);
@@ -2476,19 +2479,37 @@ function csWireAutomations() {
 
 window.loadAutomations = csLoadAutomations;
 
+// One dropped request must not leave the Files card dead: fetch the project
+// list with a single retry before giving up. On a fresh page load there is no
+// earlier list to fall back on, so the caller's catch still has to wire the
+// card and explain itself rather than leaving it blank.
+async function fetchProjects() {
+  let lastErr = null;
+  for (let i = 0; i < 2; i++) {
+    try { return csProjectList(await api('/api/projects')); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
 async function loadFilesPage() {
   try {
-    projects = csProjectList(await api('/api/projects')); // always refresh: builds add projects
+    projects = await fetchProjects();   // always refresh: builds add projects
     const sel = document.getElementById('files-project');
     if (!sel) return;
     sel.innerHTML = projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
     csWireEnv();                       // buttons exist whether or not there are projects
     csWireAutomations();               // …same for the automations card below it
     if (projects.length) {
-      currentProjectId = projects[0].id;
+      // Keep the app the owner already had open. Reopening this page used to
+      // jump back to projects[0] every single time, which threw away the
+      // selection — and, with an empty fetch, could leave no selection at all.
+      const stillThere = projects.find(p => String(p.id) === String(currentProjectId));
+      currentProjectId = stillThere ? stillThere.id : projects[0].id;
       sel.value = currentProjectId;
       sel.onchange = () => {
         // project ids are UUID strings — parseInt() would turn them into NaN
+        if (!sel.value) return;         // never let an empty id reach a URL
         currentProjectId = sel.value;
         loadProjectFiles();
         csLoadEnv();                   // the variables belong to the app just chosen
@@ -2497,6 +2518,7 @@ async function loadFilesPage() {
       csLoadEnv();
       csLoadAutomations();
     } else {
+      currentProjectId = null;         // nothing to choose — say so, don't guess
       csLoadEnv();                     // explains "choose an app above" instead of sitting empty
       csLoadAutomations();
     }
@@ -2515,7 +2537,15 @@ async function loadFilesPage() {
     if (es) es.onclick = saveCurrentFile;
     await loadProjectFiles();
   } catch (e) {
-    showToast('Could not load your files');
+    // A failed refresh must not leave the card blank and mute: put the buttons
+    // back and let the card describe its own state instead of sitting empty.
+    showToast('Could not load your apps — check your connection and try again');
+    const sel = document.getElementById('files-project');
+    if (sel && !sel.options.length) sel.innerHTML = '';
+    csWireEnv();
+    csWireAutomations();
+    csLoadEnv();
+    csLoadAutomations();
   }
 }
 

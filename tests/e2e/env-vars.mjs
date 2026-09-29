@@ -69,6 +69,16 @@ t('Environment card is on the page', true);
 
 // Pick a project that actually has a published index.html, so the injection
 // assertion at the end tests a real page instead of a 404.
+//
+// `#env-card` goes visible the instant the page is shown — which is BEFORE
+// loadFilesPage()'s project fetch resolves. Reading `sel.options` (or firing
+// `change` on it) at that moment sees an empty select, and every later
+// assertion then measures whatever app the page happened to land on instead of
+// the one under test. Wait for the select to be genuinely ready first.
+await page.waitForFunction(() => {
+  const s = document.getElementById('files-project');
+  return !!s && s.options.length > 0 && typeof s.onchange === 'function' && !!s.value;
+}, null, { timeout: 30000 });
 const pick = await page.evaluate(async () => {
   const sel = document.getElementById('files-project');
   if (!sel) return null;
@@ -145,12 +155,29 @@ await page.reload({ waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1800);
 await page.click('[data-page="files"]');
 await page.waitForSelector('#env-card', { state: 'visible', timeout: 15000 });
+// Same readiness gate as above: firing `change` into an unpopulated select is
+// dropped without error, which silently pointed the whole tail of this suite at
+// a different app than the one the variable was written to.
+await page.waitForFunction(() => {
+  const s = document.getElementById('files-project');
+  return !!s && s.options.length > 0 && typeof s.onchange === 'function' && !!s.value;
+}, null, { timeout: 30000 });
 await page.evaluate((id) => {
   const sel = document.getElementById('files-project');
   if (!sel) return;
   sel.value = id;
   sel.dispatchEvent(new Event('change'));
 }, pick);
+await page.waitForFunction((id) => {
+  const s = document.getElementById('files-project');
+  return !!s && s.value === String(id);
+}, pick, { timeout: 15000 }).catch(() => {});
+const selected = await page.evaluate(() => {
+  const s = document.getElementById('files-project');
+  return s ? s.value : null;
+});
+t('the app under test is the one selected after reload',
+  selected === String(pick), `selected=${JSON.stringify(selected)} pick=${JSON.stringify(pick)}`);
 await page.waitForSelector(`.env-row[data-env-key="${KEY}"]`, { timeout: 20000 }).catch(() => {});
 t('variable survives a reload', (await rowFor(KEY).count()) === 1);
 if ((await rowFor(KEY).count()) === 1) {

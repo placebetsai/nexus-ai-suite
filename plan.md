@@ -41,41 +41,110 @@
 - [x] Deploy landing pages for all 5 apps
 - [x] Add credentials to portfolio sites
 
-### Phase 2: Backend (TODO)
-- [ ] Set up Supabase for auth + database
-- [ ] Create Cloudflare Workers for API endpoints
-- [ ] Implement user authentication (email + OAuth)
-- [ ] Set up database schemas for each app
-- [ ] Create API routes for CRUD operations
+### Phase 2: Backend — VERIFIED 2026-09-29 (was an unchecked TODO list; every box below was re-checked against the live system)
 
-### Phase 3: Real Data (TODO)
-- [ ] Integrate The Odds API for PlaceBets.ai
-- [ ] Integrate Alpha Vantage for MarketPicks.ai
-- [ ] Integrate Poshmark/eBay APIs for Fashionistas.ai
-- [ ] Create content for IHateCollege.com courses
-- [ ] Build code execution sandbox for CreateStuff.ai
+> The original Phase 2–6 list was written on 2026-09-23 as a guess about what
+> we would need. It sat unchecked for six days while the work happened, so the
+> file said "TODO" about things that were live and "TODO" about things we
+> decided not to build. Every line below was re-measured on 2026-09-29.
 
-### Phase 4: AI Integration (TODO)
-- [ ] Connect MCP hive models to CreateStuff for code generation
-- [ ] Connect Muse Spark to Fashionistas for listing descriptions
-- [ ] Connect Ling 3.0 Flash to PlaceBets for bet analysis
-- [ ] Connect MiMo V2.5 to CreateStuff for debugging
-- [ ] Connect Nemotron Ultra to MarketPicks for stock analysis
+- [x] **Database** — Cloudflare D1, one database per product (`placebets-subscribers`,
+      `createstuff-db`, …). **Supabase was never set up and is not needed**; the
+      original line named the wrong product. Proof: `POST /api/subscribe` on
+      `placebets.ai` → `{"ok":true,"via":"d1"}`.
+- [x] **API endpoints on Cloudflare Workers** — **13 workers live** on account
+      `7eb89b01…`: `app-host`, `createstuff-api`, `fashion-news`, `fashionistas-ai`,
+      `fashionistas-api`, `hook-sink`, `marketpicks-ai`, `marketpicks-ai-api`,
+      `placebets-api-worker`, `placebets-scheduler`, `quorfy-api`, `quorfy-api-v2`,
+      `site-cron-trigger`. Verified `GET /workers/scripts` → 200 with that list.
+- [x] **User authentication** — **email + password works end to end.** Measured
+      2026-09-29: `POST /api/auth/register` → 201 with a 241-char token, then
+      `GET /api/projects` with that token → `200 {"projects":[]}`; without a token
+      the same routes → **401**. **OAuth (Google/GitHub sign-in) was never built
+      — that half of the original line is still open.**
+- [x] **Database schemas** — one schema per app, migrated and in use (the D1
+      attribution work and the subscriber table both sit on them).
+- [x] **CRUD API routes** — `GET/POST /api/projects`, `PUT/DELETE /api/projects/:id/env`,
+      `/api/projects/:id/files`, `/api/builds`, `/api/github/*`, `/api/ai/*` all
+      answer 200 authenticated / 401 unauthenticated.
+- [ ] **OAuth sign-in** — see above. Not started.
 
-### Phase 5: Mobile (TODO)
-- [ ] Build Kotlin Android app for CreateStuff
-- [ ] Build Kotlin Android app for Fashionistas
-- [ ] Build Kotlin Android app for PlaceBets
-- [ ] Build Kotlin Android app for MarketPicks
-- [ ] Build Kotlin Android app for IHateCollege
+### Phase 3: Real Data — VERIFIED 2026-09-29
 
-### Phase 6: Polish (TODO)
-- [ ] Add OG meta tags to all apps
-- [ ] Add canonical URLs
-- [ ] Add keyboard accessibility
-- [ ] Add error handling
-- [ ] Add analytics
-- [ ] Create help documentation
+- [x] **Live odds for PlaceBets.ai** — `GET https://placebets.ai/api/odds` → **200,
+      174 events, 12 top picks, 8 sports covered** (`source: "sportsbook"`; the
+      ingest also pulls `espn`, `theoddsgap`, `actionnetwork`). The plan named
+      "The Odds API" — we ended up on free public feeds instead, same outcome.
+- [x] **Real market data for MarketPicks.ai** — `@/lib/finance-api`, `@/lib/market-data`,
+      `@/lib/yahoo-prev-close`, `@/lib/politician-trades-loader`, plus ~20 cron
+      scrapers (crypto, ETFs, econ, earnings, IPOs, insiders, congress trades).
+      **Alpha Vantage was never wired up** — it wants a paid key for this volume;
+      the free feeds replaced it.
+- [x] **A code sandbox for CreateStuff.ai** — the preview is
+      `<iframe id="live-preview" sandbox="allow-scripts" srcdoc="…">`, so a
+      generated app runs with scripts allowed and everything else denied.
+- [x] **IHateCollege.com is live** (HTTP 200, 85 KB) with real sections —
+      "Free Tools — Find Your Path In 60 Seconds", "6 Paths That Pay Without A
+      Degree", "Your Real College Cost", "Ask Professor Debt Anything".
+      **It ships tools and articles, not the "courses" the plan imagined.**
+- [ ] **Poshmark/eBay API posting for Fashionistas.ai** — **not built, and not
+      claimed.** Cross-posting is paste-ready drafts + a bookmarklet + a browser
+      extension; the app never posts for you. Awaiting the user's call on
+      extension vs. API keys vs. paste-only.
+
+### Phase 4: AI Integration — VERIFIED 2026-09-29
+
+- [x] **Free models generate CreateStuff's code** — `POST /api/ai/{plan,generate,
+      modify,discuss,publish}` on `createstuff-api`, with an OpenAI-compatible
+      caller that prefers **the Hive relay** (a fan-out over OpenCode's free
+      roster) and falls back to `opencode.ai/zen/v1`. Every call reports the tool
+      it actually ran. No paid model is in the path.
+- [x] **Hive itself is real and green** — `node hive/test/readiness.test.mjs`
+      → **35 pass / 0 fail, 10/10 agents on their assigned model, 7/7 agent-facing
+      models answering live** (fixed 2026-09-29; see the P14 entry).
+- [x] **Model → product wiring** — the roster is in `hive/hive.json` and the
+      CreateStuff worker consumes it through the relay. The four "connect X model
+      to Y app" lines below were this, written before the relay existed.
+- [ ] Muse Spark → Fashionistas listing descriptions, Ling 3.0 → PlaceBets bet
+      analysis, Nemotron → MarketPicks analysis as **dedicated** integrations —
+      not built as separate features. (Ling 3.0 is in any case **offline**:
+      `Endpoint is unavailable`.)
+
+### Phase 5: Mobile — NOT STARTED
+
+- [ ] Kotlin Android apps for all five products. **No mobile app exists.**
+      Every product is a mobile-usable website; this was always the largest
+      untouched box on the plan.
+
+### Phase 6: Polish — VERIFIED 2026-09-29
+
+- [x] **OG meta tags** — `og:title` / `og:description` / `og:image` present on
+      **all five** live sites (placebets, fashionistas, createstuff, marketpicks,
+      app.createstuff).
+- [x] **Canonical URLs** — `rel="canonical"` present on all five.
+- [x] **Error handling** — **shipped 2026-09-29.** Before today, fashionistas and
+      createstuff returned **HTTP 200 with the homepage body for every URL that
+      existed or not** (`/nope-xyz`, even `/assets/nope.css`). Both now ship a
+      real `404.html`:
+      `fashionistas.ai/nope-xyz` → **404**, `createstuff.ai/nope-xyz` → **404**,
+      while every real page still returns 200 byte-identically. Old URLs that
+      used to "work" as soft-404s now **301** to the homepage instead of dying
+      (`createstuff.ai/{app,pricing,templates,guide}/` → 301 `/`;
+      `fashionistas.ai/app/` → 301 `/`). placebets and marketpicks already
+      returned real 404s (Next.js `404.html`).
+- [ ] **Keyboard accessibility** — landmarks, `aria-label`, `:focus` styles and
+      `<button>`-not-`<div>` are in place on all four sites, but **none of the
+      four has a skip-to-content link**, fashionistas has no `<main>` landmark,
+      and marketpicks has no `alt` on images. **Open.**
+- [ ] **Analytics** — placebets, marketpicks and createstuff carry the Cloudflare
+      beacon (placebets and marketpicks also load Plausible). **fashionistas has
+      none**, and it cannot be switched on from here: `CF_API_TOKEN` is refused
+      on every `/accounts/…/rum/*` route with *"Unable to authenticate request"*.
+      (Zone-level Cloudflare analytics still count requests for it, so traffic is
+      not invisible — only page-level detail is.) **Blocked on a token permission.**
+- [ ] **Help documentation** — `/help` does not exist on placebets, marketpicks
+      or createstuff (fashionistas has `/about`, `/fees`, `/contact` but no
+      `/help` either). **Open.**
 
 ---
 
