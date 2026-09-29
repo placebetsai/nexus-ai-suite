@@ -238,6 +238,91 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-29 — there was no command that ran the e2e suites.** `tests/e2e/` held
+  suites and no runner, so "the e2e tests" was not something you could do. **`node
+  tests/e2e/run.mjs`** now discovers them, runs each in its own child process, and reports
+  `PASS`/`FAIL`/`SKIP` with the suite's own tally. Contract is in the file header and the exit
+  code: **a suite missing credentials is `SKIP`, never a pass**; non-zero exit, crash or timeout
+  is `FAIL`; **`0`** = ≥1 suite really ran and nothing failed, **`1`** = something failed,
+  **`2`** = nothing ran. It derives each suite's required env vars by reading the suite itself
+  (`process.env.X` plus the documented `X=… node suite.mjs` header), so new suites need no edit
+  here. Flags: `--list --only <name> --with-walks --allow-skip --timeout <s>`.
+  **Proved both directions:** no credentials → `0 passed, 0 failed, 2 skipped`, **exit 2**;
+  with credentials → **`discuss-mode 27/27` + `env-vars 25/25`, 2 passed / 0 failed / 0 skipped,
+  exit 0**. Commit **`30165ad`**.
+- ✅ **RESOLVED 2026-09-29 — that runner's first run found four real bugs in shipped code.**
+  `env-vars` came back **19/24 plus a hard crash**, and neither was the test's imagination.
+  In `apps/createstuff-marketing/app.js`: **(1)** `csDeleteEnv` had **no guard**, so with no app
+  selected it sent `DELETE /api/projects//env/KEY` → **404 the owner experiences as nothing
+  happening** (now: *"Choose an app above first"*); **(2)** `loadFilesPage()` **reset the
+  selection to `projects[0]` every time you opened the page**, discarding the app you were
+  looking at (now: keeps a selection that still exists, falls back only when it is gone);
+  **(3)** `sel.onchange` wrote `currentProjectId = sel.value` **unchecked**, so an empty select
+  became an empty id and an empty id became `//` in every URL (now ignored); **(4)** one failed
+  `GET /api/projects` left the card blank and mute with nothing wired (now retries once, then
+  wires the card and lets it explain itself). The **test** was also wrong: `#env-card` goes
+  visible *before* the project fetch resolves, so its reselect `change` event was fired into an
+  unpopulated select and dropped silently — the rest of the suite was then measuring a different
+  app from the one it had written the variable to. It now waits for the select to be populated
+  **and** wired, waits for the reselect to take, and **asserts the app under test is selected**
+  — one *more* check than before. **19/24 + crash → 25/25 exit 0, run twice.** Commit `30165ad`.
+- ✅ **RESOLVED 2026-09-29 — fashionistas and createstuff returned HTTP 200 for every URL.**
+  Neither project shipped a `404.html`, so Cloudflare Pages served `index.html` for anything
+  unmatched: `fashionistas.ai/nope-xyz` → **200, 421,661 B, byte-identical to the homepage**,
+  `fashionistas.ai/assets/nope.css` → **200**, and on createstuff `/`, `/app/`, `/pricing/`,
+  `/templates/`, `/guide/` and `/nope-xyz/` were all **200 with the same `adae6034…` body**. A
+  deleted page, a stylesheet that never existed and a typo were indistinguishable from the front
+  page. Each app now ships a `404.html` in its own design language plus `_redirects` so
+  previously-working URLs **301** instead of dying. **After:** `fashionistas.ai/nope-xyz` →
+  **404 / 3,164 B**, `createstuff.ai/nope-xyz` → **404 / 5,563 B**, `createstuff.ai/{app,pricing,
+  templates,guide}/` → **301 → `/`**, `fashionistas.ai/app/` → **301 → `/`**, while `/` kept
+  `d680e1a6…` and `adae6034…` and every real subpage stayed 200. Sitemaps pruned of four createstuff
+  URLs that have not existed since the landing-page refresh and a duplicate `/app/`. Deployed to
+  `fashionistas-ai`, `createstuff-marketing`, `createstuff-app`. Commit **`9533581`**.
+- ✅ **RESOLVED 2026-09-29 — Hive readiness sat at 31/1 for days.** *"agents served by PRIMARY
+  model"* failed even though all ten agents acked, because acking and being served on your
+  assigned model are different things. **Root cause measured: two roster models are dead.**
+  `muse-spark-1.2-contributor-free` is **no longer returned by `opencode.models` at all**
+  (`Unexpected server error … ref_1ff12057`); `ling-3.0-flash-fin-free` answers **`Upstream
+  request failed: Endpoint is unavailable.`** (exit 1). They were pictor's, vogue's, curator's
+  and ledger's models, so all four silently ran elsewhere. The **briefs had drifted from
+  `hive.json`** too — `atlas.md` claimed `mimo-v2.5-free`, `sentinel.md` claimed `jev-1.13-free`,
+  neither exists. Roster now matches opencode's live eight (muse-1.2 → `longcat-2.5-preview-free`,
+  ling-3.0 kept but `endpoint-unavailable` and **assigned to nobody**), all ten agents and briefs
+  corrected, and readiness gained the two checks whose absence let it happen: **briefs must
+  declare the same model as `hive.json`** and **every agent-facing model must answer live**.
+  **Control run** (fix stashed) → `31 pass / 1 fail`, **7/10 on primary**, exit 1 → **fixed**
+  → `35 pass / 0 fail`, **10/10 on primary**, exit 0 → **re-run** → `35 / 0`, exit 0.
+  Wall clock **125.6 s → 23.4 s**. Commit **`79cc0d3`**.
+- ⚠️ **OPEN 2026-09-29 — PlaceBets' newsletter cannot send.** `POST /api/subscribe` → `200
+  {"ok":true,"via":"d1"}` and `GET /api/cron/daily-digest` → **200** with today's real digest,
+  so signups land and the content builds. The **send** half (`scripts/daily-digest.mjs`,
+  `scripts/send-welcomes.mjs` on a cron runner with `GMAIL_APP_PASSWORD`) has **no working
+  transport**: all four credential pairs → **`535-5.7.8 Username and Password not accepted`,
+  0/4 verified**. The FormSubmit welcome still works, so first contact is fine; **the daily
+  digest and the `welcomed_at` sweep are not going anywhere.** Fixing it needs a credential that
+  can only come from the owner — rotate a Gmail app password (Google Account → Security →
+  2-Step Verification → App passwords) or supply an SMTP/API key. **Nobody should claim the
+  digest ships until this row is closed.**
+- ⛔ **BLOCKED 2026-09-29 — fashionistas.ai has no client-side analytics.** The other three sites
+  carry the Cloudflare beacon (placebets and marketpicks also load Plausible). Turning it on for
+  fashionistas is refused from here: every `GET /accounts/7eb89b01…/rum/*` route →
+  **`Unable to authenticate request`**, i.e. `CF_API_TOKEN` lacks Web Analytics permission, and
+  copying another site's beacon token would file fashionistas' traffic under the wrong property.
+  **Zone-level Cloudflare analytics still count requests for it**, so traffic is not invisible —
+  only page-level detail is. Needs a token with Web Analytics permission.
+- ⚠️ **OPEN — `/help` does not exist on placebets, marketpicks or createstuff** (fashionistas has
+  `/about`, `/fees`, `/contact` but no `/help` either). See plan.md Phase 6.
+- ⚠️ **OPEN — no skip-to-content link on any of the four sites**; fashionistas has no `<main>`
+  landmark; marketpicks has no `alt` on images. Landmarks, `aria-label`, `:focus` styles and
+  `<button>`-not-`<div>` are present everywhere. See plan.md Phase 6.
+- ⚠️ **STILL NEEDS YOU — rotate the two Gmail app passwords.** `scripts/test-smtp.mjs` is scrubbed
+  (0 occurrences of either value; it reads `SMTP_COMBOS` / gitignored `scripts/.smtp-creds.json` /
+  `GMAIL_APP_PASSWORD`) and the live values were moved to the ignored file, but **they remain in
+  `Placebetsai-src` git history and only the Google account holder can rotate them.** Measured
+  today: **both are already dead** (`535-5.7.8`, 0/4 verified), so this is hygiene, not an
+  emergency. Commit `19bda0c`.
+
 - ✅ **RESOLVED 2026-09-28 — a personal Gmail address was published on every page of two sites.**
   **fashionistas.ai** printed it in the contact lede (*"we read every note at …"*), in 6 footers,
   in **3 meta descriptions** (so Google and social previews carried it), in privacy's *"Email us to
