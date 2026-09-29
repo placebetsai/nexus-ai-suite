@@ -239,11 +239,11 @@ unattributed here rather than guessed at.
 > That was a bug in my parser (`result.schedules` is nested one level deeper than I unwrapped).
 > The raw `/schedules` responses are recorded above and are authoritative.
 
-### 5.2 Two schedulers fail on *every single run*
+### 5.2 Two schedulers fail on *every single run* — **FIXED 2026-09-29**
 
 Root cause found by calling all 23 cron endpoints directly:
 
-| Endpoint | Status |
+| Endpoint | Control status (16:34–16:57Z) |
 |---|---|
 | `placebets.ai/api/cron/federation-health?quick=1` | **500** — `home: missing: World Cup and live cards, Latest prediction` |
 | `placebets.ai/api/cron/scrape-live-sportsbooks` | **401** `{"error":"Unauthorized"}` |
@@ -253,30 +253,139 @@ Root cause found by calling all 23 cron endpoints directly:
 Both schedulers collect their results and then `throw` if anything failed, so a single permanently
 failing endpoint turns **every** run into `scriptThrewException`. That is 191 failed cron runs/day.
 
-### 5.3 Duplicate cron work
+**Fixes and re-run (all measured live, go-ahead received):**
+
+| What was actually wrong | Fix | Re-run |
+|---|---|---|
+| `scrape-live-sportsbooks` is the one placebets cron route that checks `Authorization`; the scheduler sent only `accept`. The `placebetsai` Pages project has **no `CRON_SECRET`** secret (only `GEMINI_API_KEY` / `GROQ_API_KEY`), so the route's `dev-secret` fallback was the value in force — now stated in `cron/wrangler.scheduler.toml` and sent. It had **never once returned 200**. | auth header added | 401 without header (auth intact) → **200** with it |
+| `federation-health` wanted `"World Cup and live cards"` and `"Latest prediction"`, neither in the page (0 occurrences). A **second** failure was hidden behind it in the truncated body: the peer IPO check. | home phrases now match the rendered page; the peer failure was a real bug in `marketpicks-ai` (see below) | **200, 6/6 checks pass** |
+| `marketpicks /api/cron/housekeeping`: wanted `"Live Congress Tracker"` (0 occurrences) and `"One engine. Every market."` (split across a `<span>`, so the literal can never match), and rejected the bare word `placeholder` — which matched the `placeholder="…"` attribute on the search input, 4× on each page. It was failing the page for having a working search box. | phrases split/updated; reject list is now `Lorem ipsum` / `coming soon` / `fake data` | **200, 6/6 checks pass** |
+| `marketpicks /api/cron/earnings`: Nasdaq answered 200 with 15 items, none for the 9 tracked symbols, and the fallback's hardcoded dates are all in Jul/Aug 2026 — so 0 rows, and 0 rows meant `ok:false`. | `ok` now means *the feed answered and the writes ran*; `rowCount` stays 0 and honest with a `note` saying why. A dead/non-200 feed still 500s. | **200**, `rowCount 0`, `feedItems 6` |
+| **Root cause behind the peer failure:** `marketpicks.ai/api/stock/SPCX` served `source: "live-yahoo-fallback"`, `149.22`, `"Space Exploration Technologies Corp."`. The IPO watch basket is *designed* to carry price 0, so it fell into the Yahoo fallback, which looked SPCX up as a listed symbol and stamped an unrelated quote onto it. | route skips the fallback for private-watch tickers | `source private-watch`, `companyName "IPO watch basket"`, `price 0` |
+
+**The throw rule was the real bug.** A 5xx means the endpoint *ran* and reported a degraded upstream
+source — `freshness` returns 500 whenever Google News or GDELT yields nothing for a minute. That is
+the endpoint's health report, already in its own response and in D1 via `recordCronRun`. Both
+schedulers now throw only when a call **never reached the site** (status 0) or **the request itself
+was wrong and cannot self-heal** (4xx except 408/429) — the class that had been hiding the 401 all
+along. Worker-local federation/housekeeping checks assert wording we wrote, so they always count.
+
+**Re-run, exact control conditions:** placebets 16/16 HTTP 200 (0 failures), marketpicks 9/9 HTTP 200
+(0 failures), `site-cron-trigger` 5/5. `scrape-live-sportsbooks` returns 200 but `booksScraped: 0` —
+the scrapers find nothing, which is a separate problem from the auth that kept it from running, and
+is **not** claimed as working.
+
+**Second wave — the checks the first failure had been hiding (same day, after deploy).** Fixing a
+check that fails *loudly* always reveals the ones behind it, and in this codebase they were worse:
+
+| Check | What was actually wrong | Re-run |
+|---|---|---|
+| `placebets housekeeping` `home` (full mode only) | wanted `AI Signal Hive`, `Who wins?`, `Latest prediction` — **0 occurrences each** in the rendered page. Only ran on `mode=full`, so the control's `?quick=1` never reached it. | **PASS** after asserting `Bet Smarter` / `Odds Desk` / `Ask the Bookie` |
+| `placebets housekeeping` `deep predictor` | read **`json.factors`**. The route returns **`key_factors`** — `factors` has never existed on any response, so the check **could not pass even on a perfect answer**. It also probed a hardcoded `q=Lakers tonight`, which only has data on days the Lakers play. | **PASS**: now probes with the matchup the odds board just returned, and asserts `key_factors` |
+| `placebets housekeeping` `predictor fallback` | demanded **`suggestions`** *and* **`message`** — two fields no `/api/predict-deep` response has ever carried (it answers `follow_ups` + `answer`). **Could not pass, ever.** | **PASS**: asserts the real contract — an unknown query must be declined as `mode: honest_no_data` with a non-empty answer and follow-ups, i.e. *not hallucinated* |
+
+Measured sequence for `housekeeping` full mode, all live: **500** (home) → **500** (predictor ×2,
+after the home fix) → **200, 10/10 checks PASS**. `scrape-live-sportsbooks`' 401 and
+`federation-health`'s 500 were the same disease: a check written against text and field names that
+were never there.
+
+### 5.3 Duplicate cron work — **FIXED 2026-09-29**
 
 `site-cron-trigger` and `placebets-scheduler` both fire, every 15 minutes:
 `ingest-games`, `ingest-espn-sports`, `refresh-espn-odds`, `market-data`, `freshness`,
 `housekeeping`, `federation-health`, `grade-outcomes` — **8 endpoints run twice per cycle.**
 
-### 5.4 1.5 MB fetched every 15 minutes
+The overlap was larger than this first pass found. Of `site-cron-trigger`'s 17 endpoints, **13** were
+already owned by another worker with its own cron trigger: those 8, plus marketpicks
+`news`, `ipo`, `econ`, `earnings` (all in `marketpicks-ai-api`'s `ingestPaths`) and `freshness`.
+
+Its source was not in any repo — only deployed — which is why nobody could see the overlap. It is
+now `workers/site-cron-trigger/index.js`, which documents ownership per endpoint.
+
+**After: 17 → 4 endpoints per run.** `placebets-scheduler` owns 16 placebets jobs, `marketpicks-ai-api`
+owns 8 marketpicks ingest jobs + freshness + grading, and `site-cron-trigger` owns only
+`ingest-top-stories`, `daily-digest` (placebets) and `housekeeping`, `daily-digest` (marketpicks).
+Every endpoint now has exactly one owner. Where `site-cron-trigger` had been firing the *full* mode
+and the scheduler the *quick* mode, the scheduler alternates: quick every 15 minutes, full hourly.
+
+**What this does and does not save.** Cloudflare meters *incoming* requests against the Workers
+100,000/day quota, and cron invocations are unchanged (still 96/day each) — so this is **not** a
+Workers-quota saving and is not claimed as one. What it removes is the duplicated work behind those
+requests: duplicate upstream fetches (ESPN, TradingView, Google News, Nasdaq) against rate limits,
+duplicate self-generated HTTP traffic against two sites with a handful of visitors, and duplicate
+D1 reads against the 5M/day budget — the budget that was actually breached on 2026-09-27. D1 reads
+are not separately metered per endpoint here, so no number is claimed.
+
+### 5.4 1.5 MB fetched every 15 minutes — **FIXED 2026-09-29**
 
 `placebets-scheduler` calls `placebets.ai/api/odds?record=1` just to log picks.
 Measured response: **1,540,456 bytes**, 96×/day ≈ **144 MB/day**.
+
+Three call sites, not one — `record-picks`, `federation-health`'s odds check, and `daily-digest`
+(the last fired every 15 minutes by `site-cron-trigger`), plus `marketpicks`' own peer odds check.
+
+`/api/odds?light=1` omits the `events` board and reports `eventCount` instead.
+
+| | control | after |
+|---|---:|---:|
+| `?record=1&light=1` vs `?record=1` | 1,604,054 B | **60,925 B** (−96.2%) |
+| one full 16-job scheduler run | 1,590,662 B | **67,772 B** (−95.7%) |
+| one scheduler run × 96/day | ~152.7 MB/day | **~6.5 MB/day** |
+
+Public payload is untouched: without the param the response still carries all 369 events, verified
+before/after. `eventCount: 369`, `top: 12`, `source: sportsbook` with the param.
+
+**What this does and does not save.** Cloudflare does not meter response bytes on the free tier, so
+this is not a quota saving either — it is less CPU spent parsing a 1.5 MB JSON body on every call and
+materially shorter runs. The quota-relevant item in this section is 5.3, and the quota-relevant
+finding of the whole audit is §3 (wildcard DNS).
 
 ### 5.5 Bundle sizes
 
 `marketpicks-ai` worker bundle is **4.18 MB** (startup limit is 1 second; `app-host` for
 comparison is 30 KiB and starts in 2 ms).
 
+### 5.6 A Worker cannot fetch a sibling Worker over `workers.dev` — error 1042
+
+Discovered while verifying the de-duplicated trigger. A second session had added
+`federation-watch` (the site monitor, which cannot have its own cron trigger — the free plan's
+5 triggers are all taken) to `site-cron-trigger`'s endpoint list. It failed on **every run**:
+
+```
+{"url":"federation-watch.fashionistas1979.workers.dev/tick","status":404,"body":"error code: 1042\n"}
+```
+
+Three measurements separate the cause from the guesses:
+
+| From | To | Result |
+|---|---|---|
+| this laptop | `GET federation-watch…/tick` | **200** `{"ran":…,"failing":0}` |
+| `site-cron-trigger` (same account, same `fashionistas1979.workers.dev`) | same URL | **404** `error code: 1042` |
+| `site-cron-trigger` | `placebets.ai`, `marketpicks.ai` (custom domains) | **200 × 4** |
+
+So the target was healthy and public; only the *worker-to-worker* hop over the shared
+`workers.dev` subdomain was refused. The endpoint now goes through a **service binding**
+(`[[services]] binding = "FEDERATION_WATCH"`, in `workers/site-cron-trigger/wrangler.toml`), which
+calls it in-process instead of over the public network.
+
+**Control vs re-run:** `404 / error code: 1042` twice → re-run **5/5**, and the report now shows
+`via=FEDERATION_WATCH` for that entry alongside `via=https` for the four custom domains.
+
 ---
 
 ## 6. Ownership note
 
-`placebets-scheduler` lives in `Placebetsai-src/cron/worker.ts` (clean, pushed `19bda0c`).
-`marketpicks-ai-api` lives in `marketpicks-ai/cron/worker.ts` (shared repo).
-Both are **other sessions' areas** — findings 5.2–5.4 are reported here, not silently patched,
-so no one's uncommitted work gets overwritten.
+`placebets-scheduler` lives in `Placebetsai-src/cron/worker.ts`.
+`marketpicks-ai-api` lives in `marketpicks-ai/cron/worker.ts`.
+Both are **other sessions' areas**. Findings 5.2–5.4 were reported here first and patched only after
+an explicit go-ahead (2026-09-29), each with a control run captured *before* any change and a
+re-run after deploy. Commits: `Placebetsai-src 337441c`, `marketpicks-ai fb517ab`.
+`site-cron-trigger` had no source in any repo; it is now tracked at
+`workers/site-cron-trigger/`.
+
+Neither repo's other-session work was touched: `marketpicks-ai` still carries its uncommitted
+`tsconfig.tsbuildinfo` and `scripts/*/__pycache__/`, and `nexus-ai-suite` still carries
+`STATUS.html`, `extensions/crosslister/poshmark-post.js` and `workers/federation-watch/`.
 
 ## 7. Backups / rollback
 

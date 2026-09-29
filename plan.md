@@ -276,6 +276,41 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       status key plus a history entry **only on state change** (KV free tier is 1,000 writes/day and
       response caching already spends some of it).
 
+      **FIX 5 — the two cron schedulers threw on *every single run* (191 failed runs/day), and a
+      third worker was duplicating them from source that existed nowhere.** Full record in
+      `audit/CLOUDFLARE-FREE-TIER-AUDIT.md` §5.2–5.4 and TODO `P17`; patched 2026-09-29 only after
+      an explicit go-ahead, each with a control run captured before any change. Six root causes, all
+      measured: the scheduler sent **no `Authorization` header** to the one route that checks one
+      (401 — and it had *never* returned 200); four checks asserted wording, and the word
+      `placeholder`, that **0 occurrences / 4 occurrences of a search input** prove wrong; the real
+      peer failure was `marketpicks` stamping an unrelated Yahoo quote onto the price-0 IPO basket
+      ticker `SPCX`; and the **throw rule** treated a 5xx (an endpoint reporting a momentary
+      upstream source gap) as script breakage. **`site-cron-trigger` had no source in any repo** —
+      pulled from the API it turned out **13 of its 17 endpoints were already owned** by a
+      cron-bearing worker, now **17 → 4** with per-endpoint ownership recorded in
+      `workers/site-cron-trigger/`. `/api/odds?light=1` cut the logged board **1,604,054 → 60,925 B
+      (−96.2%)** and a whole scheduler run **1,590,662 → 67,772 B (−95.7%)**, public payload
+      verified unchanged. **Re-run under exact control conditions: placebets 16/16 HTTP 200,
+      marketpicks 9/9, trigger 4/4, 0 failures.** Stated plainly: this is **not** a Workers-quota
+      saving (the 100,000/day quota counts *inbound* requests and cron invocations are unchanged) —
+      it removes duplicated upstream fetches, self-generated traffic and D1 reads, which is the
+      budget that actually broke on 2026-09-27.
+
+      **FIX 5b — what fixing that exposed, measured the same day.** Every check that failed loudly
+      had others behind it, and those were worse: three of placebets' `housekeeping` (full mode
+      only) checks had **never once passed**. `home` wanted three phrases with **0 occurrences**
+      each; `deep predictor` read `json.factors` when the route returns **`key_factors`**, so it was
+      0 even on a perfect answer, and probed `q=Lakers tonight` (data only on days the Lakers play);
+      `predictor fallback` demanded **`suggestions` + `message`**, fields `/api/predict-deep` has
+      never returned — it answered `follow_ups` + `answer`. Measured live: `housekeeping` full
+      **500 → 500 → 200, 10/10 checks PASS**. The probe now uses a matchup the odds board just
+      returned, and the fallback check asserts the real contract: an unknown query must be declined
+      as `honest_no_data` rather than invented. **One architectural fact worth keeping: a Worker
+      cannot fetch a sibling Worker on the same `workers.dev` subdomain.** `site-cron-trigger`'s
+      call to `federation-watch/tick` returned `404 / error code: 1042` on every run while the same
+      URL returned 200 from a laptop and the same worker's four custom-domain endpoints returned
+      200 — fixed with a **service binding**, control 404 twice → re-run **5/5**.
+
 
 - [ ] **P1 A→Z Agent cockpit**: show the planner's plan as a card you can read and approve, run the
       steps with free agents in parallel with live per-agent status + 30 s watchdogs, then a browser

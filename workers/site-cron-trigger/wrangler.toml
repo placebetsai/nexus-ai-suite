@@ -1,0 +1,19 @@
+# Cross-site cron fan-out. Holds no secrets: it only calls public https
+# endpoints, one owner per endpoint (see index.js).
+name = "site-cron-trigger"
+main = "index.js"
+compatibility_date = "2026-06-27"
+workers_dev = true
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+# federation-watch lives on this same workers.dev subdomain, and a Worker
+# fetching a sibling Worker over workers.dev is rejected by Cloudflare with
+# `error code: 1042` (measured 2026-09-29: the identical URL returns 200 from a
+# laptop, while this Worker's other four endpoints — custom domains — all
+# return 200 from the same invocation). A service binding reaches it in-process
+# instead of over the public network.
+[[services]]
+binding = "FEDERATION_WATCH"
+service = "federation-watch"

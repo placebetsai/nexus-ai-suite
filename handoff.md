@@ -238,6 +238,74 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
 
 ## 8. KNOWN GAPS / OPEN ITEMS
 
+- ✅ **RESOLVED 2026-09-29 (cron cleanup — go-ahead received) — both cron schedulers threw on *every
+  single run*: 191 failed cron runs/day.** Control, called exactly as the schedulers call them
+  (16:34–16:57Z): `placebets.ai/api/cron/scrape-live-sportsbooks` **401**,
+  `placebets.ai/api/cron/federation-health` **500**, `marketpicks.ai/api/cron/earnings` **500
+  `rowCount:0`**, `marketpicks.ai/api/cron/housekeeping` **500** (2 failing checks). Six root causes,
+  not four: ① `scrape-live-sportsbooks` is the *only* placebets cron route that compares
+  `Authorization`, and the scheduler sent only `accept` — the `placebetsai` Pages project has no
+  `CRON_SECRET` secret (only `GEMINI_API_KEY`/`GROQ_API_KEY`), so `dev-secret` was the value in
+  force, now stated in `cron/wrangler.scheduler.toml` and sent. **It had never once returned 200.**
+  ② `federation-health` wanted `World Cup and live cards` / `Latest prediction` (**0 occurrences**
+  each) — and a *second* failure was hidden behind it in the truncated body. ③ marketpicks
+  `housekeeping` wanted `Live Congress Tracker` (**0**) and `One engine. Every market.` (split across
+  a `<span>` → the literal can never match), and rejected the bare word `placeholder`, which matched
+  the `placeholder="…"` attribute on the search input (4× per page) — **failing the page for having
+  a working search box**. ④ `earnings` — Nasdaq answered **200 with 15 items**, none for the 9
+  tracked symbols, and the fallback's hardcoded dates are all Jul/Aug 2026 → 0 rows → `ok:false`.
+  ⑤ **The actual cause of the peer failure:** `marketpicks.ai/api/stock/SPCX` served
+  `source "live-yahoo-fallback"`, `149.22`, `Space Exploration Technologies Corp.` — the IPO watch
+  basket is *designed* to carry price 0, so it fell into the Yahoo fallback, which looked SPCX up as
+  a listed symbol and **stamped an unrelated quote onto it**. ⑥ **The throw rule itself:** a 5xx
+  means the endpoint *ran* and reported a degraded upstream source (`freshness` 500s whenever Google
+  News or GDELT yields nothing for a minute) — that is the endpoint's health report, already in its
+  response and in D1 via `recordCronRun`, not a broken scheduler. Both schedulers now throw only on
+  **unreachable (status 0)** or a **4xx that cannot self-heal (not 408/429)** — the class that had
+  been hiding the 401 all along — while worker-local checks we wrote still always count.
+  **De-duplication:** `site-cron-trigger`'s source existed in **no repo**, only as deployed code, so
+  nobody could see that of its 17 endpoints **13 were already owned** by a cron-bearing worker. Pulled
+  from the API and now tracked at `workers/site-cron-trigger/` with per-endpoint ownership comments;
+  **17 → 4** (`ingest-top-stories`, `daily-digest` + marketpicks `housekeeping`, `daily-digest`),
+  with every endpoint having exactly one owner and the scheduler alternating quick-15min/full-hourly
+  where the trigger had been firing full mode on top of it. **1.5 MB payload:** `/api/odds?light=1`
+  omits the `events` board and reports `eventCount` — used by `record-picks`, both `federation-health`
+  odds checks and `daily-digest` (3 call sites, not the 1 the audit found). **RE-RUN under exact
+  control conditions: placebets 16/16 HTTP 200, 0 failures, 67,772 B per run (was 1,590,662 B,
+  −95.7%); marketpicks 9/9 HTTP 200, 0 failures; `site-cron-trigger` 4/4; housekeeping 6/6 checks;
+  federation-health 6/6 checks; `SPCX` → `private-watch` / `IPO watch basket` / price 0.**
+  `scrape-live-sportsbooks` answers 200 but `booksScraped: 0` — **explicitly not claimed as working**;
+  the scrapers finding nothing is a separate problem from the auth that stopped it running.
+  **Honest scope (audit §5.3–5.4):** neither the de-dup nor the byte cut is a *Workers-quota* saving —
+  the 100,000/day quota counts *inbound* requests and cron invocations are unchanged — they remove
+  duplicated upstream fetches, self-generated traffic and D1 reads (the budget actually breached on
+  2026-09-27). Commits `Placebetsai-src 337441c`, `marketpicks-ai fb517ab`.
+
+- ✅ **RESOLVED 2026-09-29 (cron cleanup, second wave — what the first fix exposed) — three more
+  checks that had never once passed, and a Worker that could not call another Worker.** Fixing a
+  check that fails loudly always reveals the ones behind it. **(1)** `placebets housekeeping` in
+  **full** mode only (the control had exercised `?quick=1`, which skips it) wanted
+  `AI Signal Hive` / `Who wins?` / `Latest prediction` — **0 occurrences each** in the rendered
+  home. **(2)** Its `deep predictor` check read **`json.factors`**; the route returns
+  **`key_factors`**, so `factors` was 0 on *every* response including perfect ones — **it could not
+  pass even when the predictor worked** — and it probed a hardcoded `q=Lakers tonight`, which only
+  has data on days the Lakers play. **(3)** Its `predictor fallback` check demanded **`suggestions`**
+  *and* **`message`**, two fields `/api/predict-deep` has never returned (it answers `follow_ups` +
+  `answer`) — **it could not pass, ever.** All three fixed against the endpoint's real contract; the
+  predictor probe now uses a matchup the odds board just returned. **Measured sequence, all live:
+  `housekeeping` full 500 (home) → 500 (predictor ×2) → 200, 10/10 checks PASS**, with quick mode
+  still 200 and `federation-health` still 6/6. **(4)** `site-cron-trigger` had been extended by
+  another session with `federation-watch/tick` (it cannot have its own cron — the free plan's 5
+  triggers are all used) and it failed **every** run with `404 / error code: 1042`. Three
+  measurements: from this laptop the URL is **200**; from `site-cron-trigger` — same account, same
+  `fashionistas1979.workers.dev` — it is **404/1042**; and that same worker's four **custom-domain**
+  endpoints are **200**. So the target was healthy and only the worker-to-worker hop over the shared
+  `workers.dev` subdomain was refused. Now reached through a **service binding**
+  (`[[services]] binding = "FEDERATION_WATCH"`), i.e. in-process rather than over the network.
+  **Control 404/1042 twice → re-run 5/5**, reported as `via=FEDERATION_WATCH` vs `via=https` for the
+  four custom domains. Final re-run under exact control conditions: placebets **16/16 HTTP 200,
+  0 failures, 71,387 B per run** (control 1,590,662 B), `site-cron-trigger` **5/5**.
+
 - ✅ **RESOLVED 2026-09-29 — CreateStuff's build cockpit was theatre, and its poll could not read
   the server.** Four defects in one path: **(1)** the chip bar listed **9** helpers while the
   generator writes 6 agent names / 5 stages — *Architect, Backend, Style, Git* are written by no
