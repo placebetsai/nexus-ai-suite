@@ -3,11 +3,15 @@ main = "src/index.js"
 compatibility_flags = ["global_fetch_strictly_public"]
 compatibility_date = "2026-09-23"
 
-# Watches the account-wide D1 read budget (5,000,000 rows/day shared by
-# MarketPicks, Fashionistas and CreateStuff). Runs on Cloudflare, not on the
-# laptop, so the pot is watched even when this machine is asleep.
+# Two triggers, dispatched apart by event.cron inside scheduled():
+#   */30 — the account-wide D1 read budget (5,000,000 rows/day shared by
+#          MarketPicks, Fashionistas and CreateStuff) and the stale-build
+#          watchdog. Both keep their original cadence.
+#   */5  — owner-scheduled jobs, so "every 5 minutes" is a real promise.
+# Runs on Cloudflare, not on the laptop, so the pot is watched even when this
+# machine is asleep.
 [triggers]
-crons = ["*/30 * * * *"]
+crons = ["*/30 * * * *", "*/5 * * * *"]
 
 [[d1_databases]]
 binding = "DB"

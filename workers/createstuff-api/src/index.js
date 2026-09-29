@@ -942,6 +942,162 @@ async function logAppRequest(env, projectId, request, status, ms, detail) {
   } catch { /* best-effort */ }
 }
 
+// ── outbound automations: webhooks + scheduled jobs ─────────────────────
+// Two things a small app needs to stop being a dead end: somewhere to POST when
+// a record arrives, and a clock that hits a URL on its own. Neither is
+// simulated — the requests really leave this worker.
+//
+// SSRF: wrangler.toml sets compatibility_flags = ["global_fetch_strictly_public"],
+// which makes fetch() REFUSE loopback, private and link-local targets outright,
+// so http://169.254.169.254/ or http://localhost/ cannot be reached even though
+// an owner can paste any address they like. On top of that we require an
+// http(s) scheme here, and every call carries a hard timeout.
+const OUTBOUND_TIMEOUT_MS = 10000;
+const HOOK_EVENTS = ["create", "update", "delete"];
+const AUTOMATIONS_MAX = 10;      // hooks and jobs, each, per project
+const HOOKS_FIRE_CAP = 10;       // never fan out further than this per event
+
+function safeOutboundUrl(raw) {
+  let u;
+  try { u = new URL(String(raw || "").trim()); } catch { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (!u.hostname) return null;
+  return u;
+}
+
+// Returns the HTTP status, or 0 meaning "never got an answer" (timeout, DNS
+// failure, or blocked by the public-only flag). 0 is a real result for a
+// last_status column — it distinguishes "declined" from "unreachable".
+async function postJSON(url, body, headers) {
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json", "User-Agent": "createstuff-automation" }, headers || {}),
+      body,
+      redirect: "follow",
+      signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
+    });
+    return r.status;
+  } catch { return 0; }
+}
+
+// Real signatures are what make a webhook safe to accept on the other end:
+// without one, any stranger who learns the URL can forge an event.
+async function deliverHook(hook, msg) {
+  const u = safeOutboundUrl(hook.url);
+  if (!u) return 0;
+  const body = JSON.stringify(msg);
+  const headers = {
+    "X-CreateStuff-Event": String(msg.event || ""),
+    "X-CreateStuff-Delivery": crypto.randomUUID(),
+  };
+  if (hook.secret) {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw", new TextEncoder().encode(hook.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+      headers["X-CreateStuff-Signature"] = "sha256=" +
+        [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch { /* a signature we cannot compute must not stop the delivery */ }
+  }
+  return postJSON(u, body, headers);
+}
+
+let autoPending = null;
+function ensureAutomation(env) {
+  if (!autoPending) {
+    autoPending = (async () => {
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS project_hooks (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           project_id INTEGER NOT NULL,
+           event TEXT NOT NULL,
+           url TEXT NOT NULL,
+           secret TEXT,
+           enabled INTEGER NOT NULL DEFAULT 1,
+           last_status INTEGER,
+           last_run_at TEXT,
+           created_at TEXT NOT NULL
+         )`
+      ).run();
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS project_jobs (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           project_id INTEGER NOT NULL,
+           name TEXT,
+           url TEXT NOT NULL,
+           every_minutes INTEGER NOT NULL DEFAULT 30,
+           enabled INTEGER NOT NULL DEFAULT 1,
+           last_status INTEGER,
+           last_run_at TEXT,
+           created_at TEXT NOT NULL
+         )`
+      ).run();
+    })().catch((e) => { autoPending = null; throw e; });
+  }
+  return autoPending;
+}
+
+// Called from the app's own mutation paths via ctx.waitUntil, so a slow or dead
+// receiver can never hold up — or fail — the request that triggered it.
+// Never throws: a broken webhook must not break the row it is announcing.
+async function fireHooks(env, projectId, event, data) {
+  try {
+    await ensureAutomation(env);
+    const r = await env.DB.prepare(
+      "SELECT id, url, secret FROM project_hooks WHERE project_id=? AND event=? AND enabled=1 LIMIT ?"
+    ).bind(projectId, event, HOOKS_FIRE_CAP).all();
+    const hooks = r.results || [];
+    if (!hooks.length) return;
+    const msg = { event, project_id: projectId, at: new Date().toISOString(), data };
+    await Promise.all(hooks.map(async (h) => {
+      const status = await deliverHook(h, msg);
+      try {
+        await env.DB.prepare("UPDATE project_hooks SET last_status=?, last_run_at=? WHERE id=?")
+          .bind(status, new Date().toISOString(), h.id).run();
+      } catch { /* recording the outcome is best-effort */ }
+    }));
+  } catch { /* never propagate */ }
+}
+
+// The cron tick for owner-scheduled jobs. Marks last_run_at EVEN WHEN the call
+// fails, so a dead endpoint is retried on the next interval instead of firing
+// hundreds of times a day forever.
+//
+// The join to projects is not decoration: a scheduled job fires with no request
+// around it, so unlike a webhook it would happily keep calling an endpoint on
+// behalf of an app that no longer exists. Orphans are removed first, then only
+// jobs belonging to a live project are considered.
+async function runDueJobs(env) {
+  try {
+    await ensureAutomation(env);
+    await env.DB.prepare(
+      "DELETE FROM project_jobs WHERE project_id NOT IN (SELECT id FROM projects)"
+    ).run().catch(() => {});
+    const r = await env.DB.prepare(
+      `SELECT j.id, j.project_id, j.name, j.url, j.every_minutes
+         FROM project_jobs j JOIN projects p ON p.id = j.project_id
+        WHERE j.enabled=1 LIMIT 200`
+    ).all();
+    const jobs = r.results || [];
+    if (!jobs.length) return;
+    const now = Date.now();
+    for (const j of jobs) {
+      const every = Math.max(5, Math.min(1440, Number(j.every_minutes) || 30));
+      const last = j.last_run_at ? Date.parse(j.last_run_at) : NaN;
+      if (Number.isFinite(last) && now - last < every * 60000) continue;
+      const u = safeOutboundUrl(j.url);
+      const status = u ? await postJSON(u, JSON.stringify({
+        job: j.name || u.hostname, project_id: j.project_id, at: new Date().toISOString(),
+      }), { "X-CreateStuff-Job": String(j.id) }) : 0;
+      try {
+        await env.DB.prepare("UPDATE project_jobs SET last_run_at=?, last_status=? WHERE id=?")
+          .bind(new Date().toISOString(), status, j.id).run();
+      } catch { /* best-effort */ }
+    }
+  } catch { /* never propagate */ }
+}
+
 async function saveFiles(env, projectId, files, buildId) {
   const now = new Date().toISOString();
   for (const f of files) {
@@ -1887,7 +2043,9 @@ async function serveAppFile(env, url, projectId, filePath) {
 
 // Returns a Response when the path belongs to an app, else null so the main
 // router keeps handling /api/*.
-async function handleAppRequest(request, env, url) {
+// `defer` lets a route hand back work that must outlive the response (the
+// webhook deliveries). It is optional so the function still stands alone.
+async function handleAppRequest(request, env, url, defer) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "app") return null;
   const projectId = parseInt(parts[1], 10);
@@ -1907,6 +2065,13 @@ async function handleAppRequest(request, env, url) {
     if (filePath === "favicon.ico" || filePath === "icon.svg") return faviconResponse();
     return serveAppFile(env, url, projectId, filePath || "index.html");
   }
+
+  // The project must still exist. Without this a deleted app went on accepting
+  // writes: rows landed in app_data with nobody left to read them and its auth
+  // routes kept minting sessions. One indexed primary-key read, on the API side
+  // only — serveAppFile already 404s for a project whose files are gone.
+  const stillThere = await env.DB.prepare("SELECT id FROM projects WHERE id=?").bind(projectId).first();
+  if (!stillThere) return err("Not found", 404);
 
   await ensureAppTables(env);
   const seg = parts.slice(3); // api/...
@@ -2120,6 +2285,7 @@ async function handleAppRequest(request, env, url) {
     const id = r.meta.last_row_id;
     // Write landed => drop the cached list so the next GET re-queries D1.
     await cacheDrop(env, appListKey(projectId, col));
+    if (defer) defer(() => fireHooks(env, projectId, "create", { collection: col, item: { id, ...b } }));
     return json({ item: { id, ...b, owner_id: sess ? sess.uid : null } }, 201);
   }
 
@@ -2160,6 +2326,7 @@ async function handleAppRequest(request, env, url) {
     await env.DB.prepare("UPDATE app_data SET payload=?, updated_at=? WHERE id=? AND project_id=?")
       .bind(JSON.stringify(merged), new Date().toISOString(), rowId, projectId).run();
     await cacheDrop(env, appListKey(projectId, col));
+    if (defer) defer(() => fireHooks(env, projectId, "update", { collection: col, item: { id: rowId, ...merged } }));
     return json({ item: { id: rowId, ...merged, owner_id: x.owner_id } });
   }
 
@@ -2170,6 +2337,7 @@ async function handleAppRequest(request, env, url) {
     if (x.owner_id && Number(x.owner_id) !== Number(sess.uid)) return err("Forbidden: not the owner", 403);
     await env.DB.prepare("DELETE FROM app_data WHERE id=? AND project_id=?").bind(rowId, projectId).run();
     await cacheDrop(env, appListKey(projectId, col));
+    if (defer) defer(() => fireHooks(env, projectId, "delete", { collection: col, id: rowId }));
     return json({ ok: true, id: rowId });
   }
 
@@ -2366,9 +2534,22 @@ async function failStaleBuilds(env) {
 }
 
 export default {
-  async scheduled(_event, env, _ctx) {
-    await refreshD1Budget(env);
-    await failStaleBuilds(env);
+  async scheduled(event, env, _ctx) {
+    // Two triggers, one handler: Cloudflare passes the expression that matched
+    // in event.cron. Each does only its own work, so the D1 budget watcher and
+    // the stale-build watchdog keep their original 30-minute cadence (neither
+    // was designed for every five minutes) while owner-scheduled jobs get their
+    // own faster tick — and neither set runs twice at minute 30, when both
+    // expressions match at once. An unknown/manual trigger does everything
+    // rather than silently doing nothing.
+    const cron = (event && event.cron) || "";
+    if (!cron || cron === "*/30 * * * *") {
+      await refreshD1Budget(env);
+      await failStaleBuilds(env);
+    }
+    if (!cron || cron === "*/5 * * * *") {
+      await runDueJobs(env);
+    }
   },
 
   async fetch(request, env, ctx) {
@@ -2463,8 +2644,16 @@ export default {
       // Wrapped rather than awaited straight through, so a crash inside an app's
       // own handler is RECORDED instead of only becoming an opaque 500.
       const appT0 = Date.now();
+      // Work that must outlive the response — the webhook deliveries — handed
+      // back from inside handleAppRequest so that function needs no ctx of its
+      // own. Swallowed on purpose: a delivery must never surface to the user.
+      const defer = (fn) => {
+        if (ctx && typeof ctx.waitUntil === "function") {
+          ctx.waitUntil(Promise.resolve().then(fn).catch(() => {}));
+        }
+      };
       let appResp = null, appThrown = null;
-      try { appResp = await handleAppRequest(request, env, url); }
+      try { appResp = await handleAppRequest(request, env, url, defer); }
       catch (e) { appThrown = e; }
       if (appResp || appThrown) {
         const am = url.pathname.match(/^\/app\/(\d+)(?:\/|$)/);
@@ -2941,13 +3130,41 @@ export default {
           });
         }
 
-        await env.DB.prepare("DELETE FROM project_files WHERE project_id=?").bind(id).run();
-        await env.DB.prepare("DELETE FROM builds WHERE project_id=?").bind(id).run();
-        await env.DB.prepare("DELETE FROM projects WHERE id=?").bind(id).run();
-        await cacheDrop(env, projectsListKey(user.sub));
-        await cacheDrop(env, filesListKey(id));
-        await cacheDrop(env, buildsListKey(id));
-        return json({ ok: true });
+        // ONLY the bare /api/projects/:id form removes a project. This branch
+        // used to key off the prefix alone, so DELETE /api/projects/165/hooks/7
+        // — a request to delete ONE webhook — parsed id=165, wiped every file
+        // and build, deleted the project row and answered {"ok":true}. Same
+        // shape as C9 (a file deletion that destroyed a project), caught
+        // 2026-09-28 while proving the webhook routes: deleting a hook quietly
+        // deleted the app.
+        if (parts.length === 4) {
+          // Everything this app owns goes with it. Without these lines a
+          // deleted project left its rows behind forever: the next request 404s
+          // but the data stays. Worse, project_jobs are driven by cron with no
+          // request around them, so a deleted app's scheduled jobs would keep
+          // calling outside URLs indefinitely — this cascade is what stops that.
+          // Best-effort per table (a table this deployment has never created
+          // yet must not be able to abort the deletion). Names are literals,
+          // never request input.
+          for (const t of [
+            "project_files", "builds", "build_files", "app_data", "app_logs",
+            "app_sessions", "app_users", "project_env", "project_hooks", "project_jobs",
+          ]) {
+            await env.DB.prepare(`DELETE FROM ${t} WHERE project_id=?`).bind(id).run()
+              .catch(() => {});
+          }
+          await env.DB.prepare("DELETE FROM projects WHERE id=?").bind(id).run();
+          await cacheDrop(env, projectsListKey(user.sub));
+          await cacheDrop(env, filesListKey(id));
+          await cacheDrop(env, buildsListKey(id));
+          return json({ ok: true });
+        }
+
+        // A deeper DELETE is somebody else's route. /hooks and /jobs are
+        // handled by the automations block further down and must get their
+        // turn: returning 404 here would hide those routes entirely, and NOT
+        // returning would fall into the cascade above and destroy the project.
+        if (parts[4] !== "hooks" && parts[4] !== "jobs") return err("Not found", 404);
       }
 
       // files — app.js reads f.path in one caller and f.file_path in another
@@ -3158,6 +3375,115 @@ export default {
       // back to one") and pointed at a route this Worker never had: every press
       // answered 404 and the panel printed "Could not load earlier versions."
       // The button, the list and the way back all exist now.
+      // ── AUTOMATIONS: webhooks out, jobs on a clock ──
+      // What "integrations" means in practice for a small app: post somewhere
+      // when a record arrives, and hit a URL on a timer. Owner-only, and every
+      // outbound call is bounded (see postJSON / safeOutboundUrl).
+      const autoM = path.match(/^\/api\/projects\/(\d+)\/(hooks|jobs)(?:\/(\d+))?(?:\/(test))?$/);
+      if (autoM) {
+        const pid = parseInt(autoM[1], 10);
+        const kind = autoM[2];
+        const itemId = autoM[3] ? parseInt(autoM[3], 10) : null;
+        const isTest = autoM[4] === "test";
+        const own = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+          .bind(pid, user.sub).first();
+        if (!own) return err("Not found", 404);
+        await ensureAutomation(env);
+        // Derived from a fixed two-way choice above, never from raw input.
+        const table = kind === "hooks" ? "project_hooks" : "project_jobs";
+
+        if (method === "GET" && !itemId) {
+          const r = await env.DB.prepare(
+            `SELECT * FROM ${table} WHERE project_id=? ORDER BY id DESC LIMIT 50`
+          ).bind(pid).all();
+          // The signing secret is shown ONCE, when it is created (the POST
+          // below returns the row verbatim) and never listed again — it is what
+          // makes the other end trust the payload, so it does not sit in a
+          // response anyone can re-request.
+          const items = (r.results || []).map((x) => {
+            const o = Object.assign({}, x);
+            delete o.secret;
+            return o;
+          });
+          return json({ items, events: HOOK_EVENTS, max: AUTOMATIONS_MAX });
+        }
+
+        if (method === "POST" && !itemId && !isTest) {
+          const b = await request.json().catch(() => null);
+          if (!b || typeof b !== "object" || Array.isArray(b)) return err("Body must be an object", 422);
+          const u = safeOutboundUrl(b.url);
+          if (!u) return err("That is not a web address we can call — it needs http:// or https://", 422);
+          const cnt = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE project_id=?`)
+            .bind(pid).first();
+          if (Number(cnt && cnt.n) >= AUTOMATIONS_MAX) {
+            return err(`This app already has ${AUTOMATIONS_MAX} ${kind}`, 409);
+          }
+          const now = new Date().toISOString();
+          let ins;
+          if (kind === "hooks") {
+            const ev = String(b.event || "create");
+            if (!HOOK_EVENTS.includes(ev)) return err(`event must be one of: ${HOOK_EVENTS.join(", ")}`, 422);
+            const secret = (crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "")).slice(0, 64);
+            ins = await env.DB.prepare(
+              "INSERT INTO project_hooks (project_id, event, url, secret, enabled, created_at) VALUES (?,?,?,?,1,?)"
+            ).bind(pid, ev, u.toString(), secret, now).run();
+          } else {
+            const every = Math.max(5, Math.min(1440, parseInt(b.every_minutes, 10) || 30));
+            ins = await env.DB.prepare(
+              "INSERT INTO project_jobs (project_id, name, url, every_minutes, enabled, created_at) VALUES (?,?,?,?,1,?)"
+            ).bind(pid, String(b.name || "").slice(0, 80) || u.hostname, u.toString(), every, now).run();
+          }
+          const row = await env.DB.prepare(`SELECT * FROM ${table} WHERE id=?`).bind(ins.meta.last_row_id).first();
+          return json({ item: row }, 201);
+        }
+
+        if (method === "DELETE" && itemId) {
+          const row = await env.DB.prepare(`SELECT id FROM ${table} WHERE id=? AND project_id=?`)
+            .bind(itemId, pid).first();
+          if (!row) return err("Not found", 404);
+          await env.DB.prepare(`DELETE FROM ${table} WHERE id=? AND project_id=?`).bind(itemId, pid).run();
+          return json({ ok: true, id: itemId });
+        }
+
+        // Send one right now so the owner can see it arrive before trusting it.
+        if (method === "POST" && itemId && isTest) {
+          const row = await env.DB.prepare(`SELECT * FROM ${table} WHERE id=? AND project_id=?`)
+            .bind(itemId, pid).first();
+          if (!row) return err("Not found", 404);
+          const u = safeOutboundUrl(row.url);
+          if (!u) return err("That address cannot be reached", 422);
+          const status = kind === "hooks"
+            ? await deliverHook(row, { event: row.event, project_id: pid, at: new Date().toISOString(), data: { test: true } })
+            : await postJSON(u, JSON.stringify({
+                job: row.name || u.hostname, project_id: pid, at: new Date().toISOString(), test: true,
+              }), { "X-CreateStuff-Job": String(row.id) });
+          await env.DB.prepare(`UPDATE ${table} SET last_status=?, last_run_at=? WHERE id=?`)
+            .bind(status, new Date().toISOString(), itemId).run();
+          const ok = status >= 200 && status < 400;
+          return json({
+            ok,
+            status,
+            url: u.toString(),
+            // Plain language, and deliberately not "reachable": anything other
+            // than 0 is an HTTP answer from SOMETHING — Cloudflare's edge
+            // refuses private/internal addresses with 403 and reports an
+            // unreachable origin as 530 — so calling that reachable would tell
+            // the owner their endpoint worked when it never saw the request.
+            note: ok
+              ? "Delivered."
+              : status === 0
+                ? "No reply at all — the address did not answer."
+                : status === 403
+                  ? "Refused. Calls to private or internal addresses are blocked."
+                  : (status === 530 || status === 521 || status === 522 || status === 523 || status === 524 || status === 502 || status === 504)
+                    ? "Could not reach that address."
+                    : `The address replied ${status}.`,
+          });
+        }
+
+        return err("Not found", 404);
+      }
+
       // ── ACTIVITY / LOGS: GET /api/projects/:id/logs ──
       // The other half of monitoring: not "did my build work" but "what is my
       // app doing right now, and what is failing". Returns the most recent

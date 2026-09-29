@@ -1,0 +1,20 @@
+name = "hook-sink"
+main = "src/index.js"
+compatibility_flags = ["global_fetch_strictly_public"]
+compatibility_date = "2026-09-23"
+
+# TEST HARNESS ONLY.
+# A deliberately dumb public endpoint that records whatever is POSTed to it, so
+# the CreateStuff webhook / scheduled-job feature can be proved end to end from
+# the outside instead of being asserted from inside the same worker that sends
+# the bytes. It has no value to anyone else: POST /log appends, GET /dump is
+# locked behind a random KEY, and the table is pruned opportunistically on write.
+# NOT in [vars]: this unlocks reading back recorded deliveries, so it is a
+# Worker secret (`wrangler secret put KEY`), never a line in git.
+# Deliberately no [triggers] either — the account is at the free plan's
+# 5-cron-trigger ceiling, so a demo table does not get to spend one.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "createstuff-db"
+database_id = "cc9ab7ed-b343-4883-bf76-07f8493cba9e"

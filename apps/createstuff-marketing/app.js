@@ -2296,6 +2296,186 @@ function csWireEnv() {
 // ============ V2: FILES, ZIP, GITHUB PUSH ============
 let currentProjectId = null;
 
+// ============ AUTOMATIONS: webhooks out, jobs on a clock ============
+// Same shape as csLoadEnv/csWireEnv above: one loader, one wire function, and
+// the same "choose an app above" empty state so the card never sits blank.
+
+function csAutoStatus(s) {
+  if (s === null || s === undefined) return { cls: 'none', text: 'not sent yet' };
+  const n = Number(s);
+  if (n === 0) return { cls: 'bad', text: 'no reply' };
+  if (n >= 200 && n < 400) return { cls: 'ok', text: n + ' delivered' };
+  if (n === 403) return { cls: 'bad', text: '403 refused' };
+  return { cls: 'bad', text: n + ' failed' };
+}
+
+function csWhenLabel(ev) {
+  return ev === 'create' ? 'on add' : ev === 'update' ? 'on change' : 'on remove';
+}
+
+const CS_TIP_TEST_HOOK = 'Sends one message to that address right now so you can see it arrive.';
+const CS_TIP_DEL_HOOK = 'Stops this trigger. Nothing else is touched.';
+const CS_TIP_TEST_JOB = 'Runs this job once, right now, instead of waiting for its schedule.';
+const CS_TIP_DEL_JOB = 'Removes this timed job.';
+
+async function csLoadAutomations() {
+  const hooksEl = document.getElementById('hook-list');
+  const jobsEl = document.getElementById('job-list');
+  if (!hooksEl || !jobsEl) return;
+  const empty = currentProjectId
+    ? '<div class="auto-empty">Nothing set up for this app yet.</div>'
+    : '<div class="auto-empty">Choose an app above to see its automations.</div>';
+  if (!currentProjectId) { hooksEl.innerHTML = empty; jobsEl.innerHTML = empty; return; }
+  try {
+    const [h, j] = await Promise.all([
+      api(`/api/projects/${currentProjectId}/hooks`),
+      api(`/api/projects/${currentProjectId}/jobs`),
+    ]);
+    const hooks = (h && h.items) || [];
+    const jobs = (j && j.items) || [];
+    hooksEl.innerHTML = hooks.length ? hooks.map((x) => {
+      const st = csAutoStatus(x.last_status);
+      return `<div class="auto-row" data-hook-id="${x.id}">
+        <span class="auto-tag">${csWhenLabel(x.event)}</span>
+        <span class="auto-url">${escapeHtml(x.url)}</span>
+        <span class="auto-sent ${st.cls}">${st.text}</span>
+        <button type="button" class="auto-mini auto-test" data-tip="${CS_TIP_TEST_HOOK}" title="${CS_TIP_TEST_HOOK}">Send one now</button>
+        <button type="button" class="auto-mini auto-del" data-tip="${CS_TIP_DEL_HOOK}" title="${CS_TIP_DEL_HOOK}">Remove</button>
+      </div>`;
+    }).join('') : empty;
+
+    jobsEl.innerHTML = jobs.length ? jobs.map((x) => {
+      const st = csAutoStatus(x.last_status);
+      const every = Number(x.every_minutes) || 30;
+      const when = every % 60 === 0 && every >= 60
+        ? (every / 60 === 1 ? 'hourly' : 'every ' + (every / 60) + ' hours')
+        : 'every ' + every + ' min';
+      return `<div class="auto-row" data-job-id="${x.id}">
+        <span class="auto-tag">${escapeHtml(x.name || 'job')} · ${when}</span>
+        <span class="auto-url">${escapeHtml(x.url)}</span>
+        <span class="auto-sent ${st.cls}">${st.text}</span>
+        <button type="button" class="auto-mini auto-test" data-tip="${CS_TIP_TEST_JOB}" title="${CS_TIP_TEST_JOB}">Run now</button>
+        <button type="button" class="auto-mini auto-del" data-tip="${CS_TIP_DEL_JOB}" title="${CS_TIP_DEL_JOB}">Remove</button>
+      </div>`;
+    }).join('') : empty;
+  } catch (e) {
+    const m = `<div class="auto-empty">${escapeHtml(String((e && e.message) || e))}</div>`;
+    hooksEl.innerHTML = m;
+    jobsEl.innerHTML = m;
+  }
+}
+
+function csShowHookSecret(secret) {
+  const el = document.getElementById('hook-secret');
+  if (!el) return;
+  if (!secret) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.style.display = 'block';
+  el.textContent = 'Copy this now — it is only shown once. Give it to the service that '
+    + 'receives these calls so it can check the signature: ' + secret;
+}
+
+async function csAddHook() {
+  const urlEl = document.getElementById('hook-url');
+  const evEl = document.getElementById('hook-event');
+  if (!urlEl || !evEl) return;
+  if (!currentProjectId) { showToast('Choose an app first'); return; }
+  const url = urlEl.value.trim();
+  if (!url) { showToast('Type the web address to call'); urlEl.focus(); return; }
+  try {
+    const r = await api(`/api/projects/${currentProjectId}/hooks`, {
+      method: 'POST',
+      body: JSON.stringify({ event: evEl.value, url }),
+    });
+    urlEl.value = '';
+    // The signing secret is returned exactly once, by design.
+    csShowHookSecret(r && r.item && r.item.secret);
+    showToast('Trigger added');
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+async function csTestHook(id) {
+  try {
+    const r = await api(`/api/projects/${currentProjectId}/hooks/${id}/test`, { method: 'POST' });
+    if (r && r.ok) showToast('Delivered — ' + (r.status || 'sent'));
+    else showToast('Not delivered: ' + ((r && r.note) || ('status ' + (r && r.status))));
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+async function csDelHook(id) {
+  try {
+    await api(`/api/projects/${currentProjectId}/hooks/${id}`, { method: 'DELETE' });
+    csShowHookSecret(null);
+    showToast('Trigger removed');
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+async function csAddJob() {
+  const urlEl = document.getElementById('job-url');
+  const nameEl = document.getElementById('job-name');
+  const everyEl = document.getElementById('job-every');
+  if (!urlEl || !everyEl) return;
+  if (!currentProjectId) { showToast('Choose an app first'); return; }
+  const url = urlEl.value.trim();
+  if (!url) { showToast('Type the web address to call'); urlEl.focus(); return; }
+  try {
+    await api(`/api/projects/${currentProjectId}/jobs`, {
+      method: 'POST',
+      body: JSON.stringify({ name: (nameEl && nameEl.value.trim()) || '', url, every_minutes: Number(everyEl.value) }),
+    });
+    urlEl.value = '';
+    if (nameEl) nameEl.value = '';
+    showToast('Job added');
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+async function csTestJob(id) {
+  try {
+    const r = await api(`/api/projects/${currentProjectId}/jobs/${id}/test`, { method: 'POST' });
+    if (r && r.ok) showToast('Ran it — ' + (r.status || 'sent'));
+    else showToast('Did not run: ' + ((r && r.note) || ('status ' + (r && r.status))));
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+async function csDelJob(id) {
+  try {
+    await api(`/api/projects/${currentProjectId}/jobs/${id}`, { method: 'DELETE' });
+    showToast('Job removed');
+    csLoadAutomations();
+  } catch (e) { showToast(String((e && e.message) || e)); }
+}
+
+function csWireAutomations() {
+  const hookAdd = document.getElementById('hook-add');
+  const jobAdd = document.getElementById('job-add');
+  if (hookAdd) hookAdd.onclick = csAddHook;
+  if (jobAdd) jobAdd.onclick = csAddJob;
+  const hookUrl = document.getElementById('hook-url');
+  const jobUrl = document.getElementById('job-url');
+  if (hookUrl) hookUrl.onkeydown = (e) => { if (e.key === 'Enter') csAddHook(); };
+  if (jobUrl) jobUrl.onkeydown = (e) => { if (e.key === 'Enter') csAddJob(); };
+
+  const bind = (listId, testFn, delFn, attr) => {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    list.onclick = (e) => {
+      const row = e.target.closest && e.target.closest('.auto-row');
+      if (!row || !row.dataset[attr]) return;
+      const id = row.dataset[attr];
+      if (e.target.closest('.auto-test')) testFn(id);
+      else if (e.target.closest('.auto-del')) delFn(id);
+    };
+  };
+  bind('hook-list', csTestHook, csDelHook, 'hookId');
+  bind('job-list', csTestJob, csDelJob, 'jobId');
+}
+
+window.loadAutomations = csLoadAutomations;
+
 async function loadFilesPage() {
   try {
     projects = csProjectList(await api('/api/projects')); // always refresh: builds add projects
@@ -2303,6 +2483,7 @@ async function loadFilesPage() {
     if (!sel) return;
     sel.innerHTML = projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
     csWireEnv();                       // buttons exist whether or not there are projects
+    csWireAutomations();               // …same for the automations card below it
     if (projects.length) {
       currentProjectId = projects[0].id;
       sel.value = currentProjectId;
@@ -2311,10 +2492,13 @@ async function loadFilesPage() {
         currentProjectId = sel.value;
         loadProjectFiles();
         csLoadEnv();                   // the variables belong to the app just chosen
+        csLoadAutomations();           // …and so do its triggers and jobs
       };
       csLoadEnv();
+      csLoadAutomations();
     } else {
       csLoadEnv();                     // explains "choose an app above" instead of sitting empty
+      csLoadAutomations();
     }
     const zip = document.getElementById('download-zip');
     if (zip) zip.onclick = downloadProjectZip;

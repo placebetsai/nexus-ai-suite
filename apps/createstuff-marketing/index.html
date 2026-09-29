@@ -391,6 +391,23 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   .env-add input#env-key{flex:0 1 210px}
   .env-list{display:flex;flex-direction:column;gap:.35rem;max-height:220px;overflow:auto}
   .env-list .env-empty{font-size:.78rem;color:var(--text3);padding:.4rem 0}
+  .auto-block{margin-top:.9rem;border-top:1px solid var(--border);padding-top:.8rem}
+  .auto-block:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .auto-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.45rem}
+  .auto-head b{font-size:.86rem}
+  .auto-list{display:flex;flex-direction:column;gap:.35rem;max-height:200px;overflow:auto;margin-top:.5rem}
+  .auto-row{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;background:var(--bg2);border:1px solid var(--border);border-radius:.5rem;font-size:.78rem}
+  .auto-row .auto-tag{font-size:.7rem;padding:.08rem .42rem;border-radius:.999rem;border:1px solid var(--border);white-space:nowrap;color:var(--text2)}
+  .auto-row .auto-url{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+  .auto-row .auto-sent{font-size:.7rem;white-space:nowrap}
+  .auto-row .auto-sent.ok{color:#16a34a}
+  .auto-row .auto-sent.bad{color:#dc2626}
+  .auto-row .auto-sent.none{color:var(--text3)}
+  .auto-row .auto-mini{font-size:.72rem;padding:.16rem .45rem;border-radius:.4rem;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer}
+  .auto-row .auto-mini:hover{border-color:var(--primary);color:var(--primary)}
+  .auto-empty{font-size:.78rem;color:var(--text3);padding:.4rem 0}
+  .auto-note{font-size:.74rem;color:var(--text3);margin:.5rem 0 0;line-height:1.5}
+  .auto-secret{font-size:.72rem;word-break:break-all;background:var(--bg2);border:1px dashed var(--border);padding:.45rem .55rem;border-radius:.5rem;margin:.5rem 0 0;color:var(--text2)}
   .env-row{display:flex;align-items:center;gap:.5rem;padding:.4rem .55rem;background:var(--bg);border:1px solid var(--border);border-radius:8px}
   .env-row .env-k{font-family:var(--font-mono);font-size:.78rem;font-weight:600;flex:0 1 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .env-row .env-v{font-family:var(--font-mono);font-size:.78rem;color:var(--text3);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1012,6 +1029,49 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
         <div id="env-list" class="env-list" data-tip="Every variable saved for this app. Press the eye to show a value, the bin to remove it." title="Every variable saved for this app. Press the eye to show a value, the bin to remove it."></div>
         <p class="env-warn" data-tip="Why this matters." title="Why this matters.">A published app is a public page, so anyone can read these by opening their browser's developer tools. Use them for a base address, a brand name or a key that only works from your own domain — never a password, and never anything that spends money.</p>
       </div>
+
+      <div class="card" id="auto-card" style="margin-top:1rem" data-tip="Two ways your app can act on its own: send a note somewhere when a record changes, or visit an address on a timer." title="Two ways your app can act on its own: send a note somewhere when a record changes, or visit an address on a timer.">
+        <h3><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.4rem"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z"/></svg>Automations</h3>
+        <p class="env-lead" data-tip="What this section is for." title="What this section is for.">Let the app do work without you watching it. Everything here sends a real request — nothing is a demo.</p>
+
+        <div class="auto-block">
+          <div class="auto-head">
+            <b data-tip="Fires each time somebody adds, changes or removes a record in this app." title="Fires each time somebody adds, changes or removes a record in this app.">Tell another service when a record changes</b>
+          </div>
+          <div class="env-add">
+            <select id="hook-event" class="filter-select" data-tip="Which change should trigger the call." title="Which change should trigger the call.">
+              <option value="create">When a record is added</option>
+              <option value="update">When a record is changed</option>
+              <option value="delete">When a record is removed</option>
+            </select>
+            <input type="url" id="hook-url" placeholder="https://example.com/your-endpoint" autocomplete="off" spellcheck="false" data-tip="The web address that should be called. It must start with https:// or http://." title="The web address that should be called. It must start with https:// or http://.">
+            <button id="hook-add" class="btn-small" data-tip="Saves this trigger for the app chosen above." title="Saves this trigger for the app chosen above.">Add</button>
+          </div>
+          <div id="hook-list" class="auto-list" data-tip="Every trigger saved for this app. Press Send one now to try it, or the bin to remove it." title="Every trigger saved for this app. Press Send one now to try it, or the bin to remove it."></div>
+          <p class="auto-secret" id="hook-secret" style="display:none" data-tip="Give this to the receiving service so it can check the message really came from you. It is shown once — copy it now." title="Give this to the receiving service so it can check the message really came from you. It is shown once — copy it now."></p>
+          <p class="auto-note" data-tip="How the message is signed." title="How the message is signed.">Each call carries a signature header (<code>X-CreateStuff-Signature</code>) so the other side can confirm it is genuine, plus <code>X-CreateStuff-Event</code> and a unique <code>X-CreateStuff-Delivery</code> id.</p>
+        </div>
+
+        <div class="auto-block">
+          <div class="auto-head">
+            <b data-tip="A job that visits your address by itself, so a nightly cleanup or a feed refresh does not need you." title="A job that visits your address by itself, so a nightly cleanup or a feed refresh does not need you.">Visit an address on a timer</b>
+          </div>
+          <div class="env-add">
+            <input type="text" id="job-name" placeholder="name" autocomplete="off" data-tip="A short label so you know which job ran." title="A short label so you know which job ran.">
+            <input type="url" id="job-url" placeholder="https://example.com/do-the-thing" autocomplete="off" spellcheck="false" data-tip="The web address the job should call each time it runs." title="The web address the job should call each time it runs.">
+            <select id="job-every" class="filter-select" data-tip="How often it runs. The quickest is every 5 minutes." title="How often it runs. The quickest is every 5 minutes.">
+              <option value="5">every 5 minutes</option>
+              <option value="10">every 10 minutes</option>
+              <option value="15">every 15 minutes</option>
+              <option value="30">every 30 minutes</option>
+              <option value="60">every hour</option>
+            </select>
+            <button id="job-add" class="btn-small" data-tip="Saves this job for the app chosen above." title="Saves this job for the app chosen above.">Add</button>
+          </div>
+          <div id="job-list" class="auto-list" data-tip="Every timed job saved for this app. Press Run now to try one, or the bin to remove it." title="Every timed job saved for this app. Press Run now to try one, or the bin to remove it."></div>
+          <p class="auto-note" data-tip="How the clock works." title="How the clock works.">Jobs run on their own schedule — you can close this page. A job stops if you delete its app.</p>
+        </div>
+      </div>
     </div>
 
     <!-- DEPLOY -->
@@ -1228,6 +1288,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }catch(e){}
 })();
 </script>
-<script src="/app.js?v=3bb023be292d"></script>
+<script src="/app.js?v=c498c7cd25aa"></script>
 </body>
 </html>
