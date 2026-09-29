@@ -886,6 +886,62 @@ async function snapshotBuildFiles(env, projectId, buildId, files) {
   }
 }
 
+// ── per-app request log ─────────────────────────────────────────────────
+// Nothing was recorded about what a generated app actually did. If a form
+// stopped saving, the owner had no record of the failing call — no status, no
+// timing, no message — and neither did we. This is the same reason Replit and
+// Base44 put logs beside every deployment: it is the difference between "it
+// broke" and "POST /api/players came back 422 in 90ms".
+let appLogsPending = null;
+function ensureAppLogs(env) {
+  if (!appLogsPending) {
+    appLogsPending = env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS app_logs (
+         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+         project_id  INTEGER NOT NULL,
+         method      TEXT,
+         path        TEXT,
+         status      INTEGER,
+         duration_ms INTEGER,
+         detail      TEXT,
+         created_at  TEXT NOT NULL
+       )`
+    ).run().then(() => env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_app_logs_project ON app_logs (project_id, id DESC)"
+    ).run()).catch((e) => { appLogsPending = null; throw e; });
+  }
+  return appLogsPending;
+}
+
+const APP_LOG_KEEP = 500; // rows retained per project
+
+// Never throws: a broken log must not break the request it is describing.
+async function logAppRequest(env, projectId, request, status, ms, detail) {
+  try {
+    await ensureAppLogs(env);
+    const u = new URL(request.url);
+    await env.DB.prepare(
+      "INSERT INTO app_logs (project_id, method, path, status, duration_ms, detail, created_at) VALUES (?,?,?,?,?,?,?)"
+    ).bind(
+      projectId,
+      request.method,
+      (u.pathname.replace(`/app/${projectId}`, "") || "/").slice(0, 300),
+      typeof status === "number" ? status : 0,
+      Math.max(0, Math.round(ms || 0)),
+      detail ? String(detail).slice(0, 500) : null,
+      new Date().toISOString()
+    ).run();
+    // Retention on a probabilistic tick: roughly one prune per 15 inserts keeps
+    // the table bounded without paying a DELETE on every single request.
+    if (Math.random() < 0.066) {
+      await env.DB.prepare(
+        "DELETE FROM app_logs WHERE project_id=? AND id NOT IN " +
+        "(SELECT id FROM app_logs WHERE project_id=? ORDER BY id DESC LIMIT ?)"
+      ).bind(projectId, projectId, APP_LOG_KEEP).run();
+    }
+  } catch { /* best-effort */ }
+}
+
 async function saveFiles(env, projectId, files, buildId) {
   const now = new Date().toISOString();
   for (const f of files) {
@@ -2404,8 +2460,32 @@ export default {
       }
 
       // per-project app backend + static app files (public: the app's own users)
-      const appResp = await handleAppRequest(request, env, url);
-      if (appResp) return appResp;
+      // Wrapped rather than awaited straight through, so a crash inside an app's
+      // own handler is RECORDED instead of only becoming an opaque 500.
+      const appT0 = Date.now();
+      let appResp = null, appThrown = null;
+      try { appResp = await handleAppRequest(request, env, url); }
+      catch (e) { appThrown = e; }
+      if (appResp || appThrown) {
+        const am = url.pathname.match(/^\/app\/(\d+)(?:\/|$)/);
+        if (am && ctx && typeof ctx.waitUntil === "function") {
+          const pid = parseInt(am[1], 10);
+          // API calls plus anything that went wrong — a 404 on a static asset is
+          // precisely the signal a broken page needs. waitUntil is safe here
+          // (unlike for whole builds): this insert takes ~10ms, far inside the
+          // ~30s ceiling that made waitUntil unusable for runGenerate.
+          if (url.pathname.includes("/api/") || (appResp && appResp.status >= 400) || appThrown) {
+            ctx.waitUntil(logAppRequest(
+              env, pid, request,
+              appResp ? appResp.status : 500,
+              Date.now() - appT0,
+              appThrown ? String((appThrown && appThrown.message) || appThrown) : null
+            ));
+          }
+        }
+        if (appResp) return appResp;
+        if (appThrown) throw appThrown;
+      }
 
       // ── published site files (authenticated: app.js sends the bearer) ──
       if (path.startsWith("/published/")) {
@@ -3078,6 +3158,38 @@ export default {
       // back to one") and pointed at a route this Worker never had: every press
       // answered 404 and the panel printed "Could not load earlier versions."
       // The button, the list and the way back all exist now.
+      // ── ACTIVITY / LOGS: GET /api/projects/:id/logs ──
+      // The other half of monitoring: not "did my build work" but "what is my
+      // app doing right now, and what is failing". Returns the most recent
+      // traffic plus a rollup, so the panel can show a health line without
+      // shipping every row to the browser.
+      const logsOf = path.match(/^\/api\/projects\/(\d+)\/logs$/);
+      if (logsOf && method === "GET") {
+        const pid = parseInt(logsOf[1], 10);
+        const own = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+          .bind(pid, user.sub).first();
+        if (!own) return err("Not found", 404);
+        await ensureAppLogs(env).catch(() => {});
+        const want = parseInt(url.searchParams.get("limit") || "100", 10);
+        const limit = Math.min(500, Math.max(1, Number.isFinite(want) ? want : 100));
+        const r = await env.DB.prepare(
+          "SELECT id, method, path, status, duration_ms, detail, created_at FROM app_logs " +
+          "WHERE project_id=? ORDER BY id DESC LIMIT ?"
+        ).bind(pid, limit).all();
+        const items = r.results || [];
+        const summary = { returned: items.length, ok: 0, client_error: 0, server_error: 0, avg_ms: 0, errors: 0 };
+        let sum = 0;
+        for (const it of items) {
+          const s = Number(it.status) || 0;
+          if (s >= 500) { summary.server_error++; summary.errors++; }
+          else if (s >= 400) { summary.client_error++; summary.errors++; }
+          else summary.ok++;
+          sum += Number(it.duration_ms) || 0;
+        }
+        summary.avg_ms = items.length ? Math.round(sum / items.length) : 0;
+        return json({ items, summary, keep: APP_LOG_KEEP });
+      }
+
       const versionsOf = path.match(/^\/api\/builds\/(\d+)\/versions$/);
       if (versionsOf && method === "GET") {
         const row = await env.DB.prepare("SELECT id, project_id FROM builds WHERE id=?").bind(+versionsOf[1]).first();

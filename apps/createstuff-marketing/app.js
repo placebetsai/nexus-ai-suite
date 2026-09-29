@@ -1712,8 +1712,10 @@ function csPreviewPanel(build) {
     <div style="display:flex;gap:.5rem;padding:.5rem;background:var(--bg2);border-top:1px solid var(--border)">
       <button onclick="deployBuild('${id}')" class="btn-primary" style="flex:1;padding:.5rem" data-tip="Puts this app on a web address other people can visit." title="Puts this app on a web address other people can visit."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg> Put online</button>
       <button onclick="loadVersions('${id}')" style="flex:1;padding:.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer" data-tip="Earlier versions of this app, so you can go back to one." title="Earlier versions of this app, so you can go back to one."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7.5A2.5 2.5 0 0 0 5 5.5v13A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V8z"/><path d="M14 3v5h5"/></svg> Version history</button>
+      <button onclick="loadActivity('${id}', ${Number(build.project_id) || 0})" style="flex:1;padding:.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer" data-tip="Every request your app has handled — what it did, how long it took, and what is failing." title="Every request your app has handled — what it did, how long it took, and what is failing."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Activity</button>
     </div>
     <div id="versions-panel" style="display:none;padding:.75rem;background:var(--bg2);border-top:1px solid var(--border);max-height:150px;overflow:auto"></div>
+    <div id="activity-panel" style="display:none;padding:.75rem;background:var(--bg2);border-top:1px solid var(--border);max-height:190px;overflow:auto"></div>
   `;
 }
 
@@ -1755,7 +1757,9 @@ async function csShowLastBuild() {
       if (seq !== csPreviewSeq || currentPage !== 'builder') return;
       if (frame.querySelector('#live-preview') && frame.dataset.csBuild === String(b.id)) return;
       frame.dataset.csBuild = String(b.id);
-      frame.innerHTML = csPreviewPanel({ id: b.id, generated_code: html });
+      // project_id travels with the panel: Activity needs to know WHICH app's
+      // traffic to show, and without it the button had nothing to ask for.
+      frame.innerHTML = csPreviewPanel({ id: b.id, project_id: p.id, generated_code: html });
       return;
     }
   } catch { /* nothing built yet — the empty preview stands */ }
@@ -2019,6 +2023,65 @@ window.loadVersions = async function(buildId) {
     `).join('');
   } catch (err) {
     panel.innerHTML = `<p style="font-size:.8rem;color:var(--red)">Could not load earlier versions — ${escapeHtml(err && err.message ? err.message : 'try again')}</p>`;
+  }
+};
+
+// ── ACTIVITY: what the app has actually been doing ──
+// Version history answers "what did I ship"; this answers "is it working".
+// Before this there was no status code, no timing and no message anywhere to
+// look at — for the owner, or for us — when a form stopped saving.
+window.loadActivity = async function(buildId, projectId) {
+  const panel = document.getElementById('activity-panel');
+  if (!panel) return;
+  const pid0 = Number(projectId) || Number(currentProjectId) || 0;
+  panel.style.display = 'block';
+  panel.innerHTML = '<p style="font-size:.8rem;color:var(--text2)">Loading activity…</p>';
+  try {
+    let pid = pid0;
+    // The panel is also built from a build id alone (after going back to a
+    // version, for instance), where no project id travelled with it. Ask the
+    // server which app that build belongs to rather than showing an empty state
+    // for an app that plainly has traffic.
+    if (!pid && Number(buildId)) {
+      try {
+        const b = await apiDirect(`/api/builds/${buildId}`);
+        pid = Number(b && b.project_id) || 0;
+      } catch { /* falls through to the empty state below */ }
+    }
+    if (!pid) {
+      panel.innerHTML = '<p style="font-size:.8rem;color:var(--text2)">Choose an app above to see its activity.</p>';
+      return;
+    }
+    const r = await api(`/api/projects/${pid}/logs?limit=50`);
+    const items = (r && r.items) || [];
+    const s = (r && r.summary) || {};
+    const head = `
+      <div style="font-size:.78rem;color:var(--text2);margin-bottom:.5rem;display:flex;gap:.9rem;flex-wrap:wrap">
+        <span><b style="color:var(--text)">${Number(s.returned || 0)}</b> recent requests</span>
+        <span style="color:${s.server_error ? 'var(--red)' : 'var(--text3)'}"><b>${Number(s.server_error || 0)}</b> server errors</span>
+        <span style="color:${s.client_error ? '#e0a33e' : 'var(--text3)'}"><b>${Number(s.client_error || 0)}</b> rejected</span>
+        <span>average <b style="color:var(--text)">${Number(s.avg_ms || 0)}ms</b></span>
+      </div>`;
+    if (!items.length) {
+      panel.innerHTML = head + '<p style="font-size:.8rem;color:var(--text2)">No activity yet — use your app and it will show up here.</p>';
+      return;
+    }
+    // Green under 400, amber for something the caller did wrong, red for
+    // something WE did wrong — the one distinction that decides whether the
+    // owner should change their form or report a bug.
+    const col = (st) => st >= 500 ? 'var(--red)' : st >= 400 ? '#e0a33e' : '#4ade80';
+    panel.innerHTML = head + items.map(it => `
+      <div style="display:flex;gap:.6rem;align-items:center;font-size:.76rem;padding:.22rem 0;border-bottom:1px solid var(--border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+        <span style="color:var(--text3);flex-shrink:0;width:5.2rem">${new Date(it.created_at).toLocaleTimeString()}</span>
+        <span style="width:3.6rem;flex-shrink:0;color:var(--text2)">${escapeHtml(it.method || '')}</span>
+        <span style="color:${col(Number(it.status) || 0)};width:2.4rem;flex-shrink:0">${Number(it.status) || 0}</span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(it.path || '')}</span>
+        <span style="color:var(--text3);flex-shrink:0">${Number(it.duration_ms) || 0}ms</span>
+      </div>
+      ${it.detail ? `<div style="font-size:.72rem;color:var(--red);padding:.1rem 0 .3rem 4.6rem;word-break:break-word">${escapeHtml(it.detail)}</div>` : ''}
+    `).join('');
+  } catch (err) {
+    panel.innerHTML = `<p style="font-size:.8rem;color:var(--red)">Could not load activity — ${escapeHtml(err && err.message ? err.message : 'try again')}</p>`;
   }
 };
 
