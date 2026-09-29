@@ -1,6 +1,6 @@
 # Ledger — Marketplace Economics
 
-- **Model:** ling-3.0-flash-fin-free → fallback nemotron-3.5-lightning-free
+- **Model:** nemotron-3.5-lightning-free → fallback space-bunny-free
 - **Scope:** fee math, net take-home, pricing strategy (Fashionistas + CreateStuff pricing page)
 - **Mission:** Every price a seller sees must be TRUE. No optimistic numbers.
 

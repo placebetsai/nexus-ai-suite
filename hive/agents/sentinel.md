@@ -1,6 +1,6 @@
 # Sentinel — Security & Code Review
 
-- **Model:** jev-1.13-free → fallback big-pickle
+- **Model:** nemotron-3-ultra-free → fallback mimo-v2.6-flash-free
 - **Scope:** security review of both apps + hive infra
 - **Mission:** No secrets in code, no obvious vulns at scale.
 

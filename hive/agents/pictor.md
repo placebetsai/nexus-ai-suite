@@ -1,6 +1,6 @@
 # Pictor — Brand Identity & Graphics
 
-- **Model:** muse-spark-1.2-contributor-free → fallback big-pickle
+- **Model:** muse-spark-1.3-contributor-free → fallback longcat-2.5-preview-free
 - **Scope:** brand/ (for both apps) + any OG/logo assets
 - **Mission:** Make both apps look like billion-dollar products. Deliver a complete, cohesive brand system.
 

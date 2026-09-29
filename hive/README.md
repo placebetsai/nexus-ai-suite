@@ -31,14 +31,27 @@ fell through to the default model. The swarm was one model answering ten times.
 opencode/space-bunny-free
 opencode/mimo-v2.6-flash-free
 opencode/muse-spark-1.3-contributor-free
-opencode/ling-3.0-flash-fin-free
+opencode/ling-3.0-flash-fin-free      <- listed by opencode, ENDPOINT DOWN 2026-09-29, no agent uses it
 opencode/nemotron-3.5-lightning-free
-opencode/muse-spark-1.2-contributor-free
+opencode/longcat-2.5-preview-free
 opencode/nemotron-3-ultra-free
 opencode/big-pickle
 ```
 
-Verified by running `opencode run --model opencode/<id>` against each one — 8/8 ACKed.
+**Roster corrected 2026-09-29.** Two entries were dead and had been silently
+falling back for days:
+
+| Was | Problem | Now |
+|---|---|---|
+| `muse-spark-1.2-contributor-free` | no longer returned by `opencode.models` at all → `Unexpected server error` on every call | replaced by `longcat-2.5-preview-free` |
+| `ling-3.0-flash-fin-free` | `Upstream request failed: Endpoint is unavailable.` (exit 1) | still listed (opencode still advertises it) but **no agent is assigned to it** |
+
+Both caused the exact failure the readiness test exists to catch: the call
+"worked" because the **fallback** answered, so readiness reported 10/10 acked
+while only 7/10 were on their assigned model.
+
+`node hive/test/readiness.test.mjs` now probes every model an agent can
+request and fails if any of them is unreachable.
 
 ## The 10 agents
 
@@ -46,13 +59,13 @@ Verified by running `opencode run --model opencode/<id>` against each one — 8/
 |---|---|---|
 | **Atlas** | mimo-v2.6-flash-free | Full-stack lead (both apps) |
 | **Vogue** | muse-spark-1.3-contributor-free | Fashionistas: AI item-ID, AR, cross-listing |
-| **Pictor** | muse-spark-1.2-contributor-free | Brand, design system, SVG, OG assets |
+| **Pictor** | muse-spark-1.3-contributor-free | Brand, design system, SVG, OG assets |
 | **Forge** | nemotron-3-ultra-free | CreateStuff engine, editor, build pipeline |
 | **Nexus** | nemotron-3.5-lightning-free | Architecture, wrangler, D1 schema, deploy |
 | **Mnemonic** | space-bunny-free | QA: test suites, contract tests, a11y |
 | **Sentinel** | nemotron-3-ultra-free | Security + code review |
-| **Curator** | ling-3.0-flash-fin-free | Memory, handoff sync, changelogs |
-| **Ledger** | ling-3.0-flash-fin-free | Marketplace fee math, unit economics |
+| **Curator** | big-pickle | Memory, handoff sync, changelogs |
+| **Ledger** | nemotron-3.5-lightning-free | Marketplace fee math, unit economics |
 | **Scribe** | space-bunny-free | SEO, meta/OG/JSON-LD, copy |
 
 Each has a brief in [`agents/`](./agents/) and an automatic fallback model, so a single

@@ -1,6 +1,6 @@
 # Forge — CreateStuff Engine
 
-- **Model:** nemotron-3-ultra-free → fallback big-pickle
+- **Model:** nemotron-3-ultra-free → fallback nemotron-3.5-lightning-free
 - **Scope:** apps/createstuff
 - **Mission:** A better, cheaper Replit. Research-backed wedge: Replit Core costs $20–25/mo and burns $5–20/day in effort credits. CreateStuff = an agent hive that builds for FREE with self-fallback. No credit meters.
 

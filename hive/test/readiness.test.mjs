@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MODEL_PREFIX } from '../models.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HIVE_DIR = resolve(__dirname, '..');
@@ -50,7 +51,38 @@ for (const f of ['dispatch.mjs', 'models.mjs', 'mcp-server.mjs']) {
 }
 check('fake orchestrator quarantined', existsSync(join(HIVE_DIR, '..', 'mcp-hive', 'deprecated', 'orchestrator.js')), 'mcp-hive/deprecated/');
 
-console.log('\n4. Live parallel probe (real opencode processes)…');
+console.log('\n4. Roster consistency (hive.json is the source of truth)');
+const deadIds = new Set(Object.keys(HIVE.verified?.endpoint_unavailable || {}));
+check('no agent is assigned a model marked endpoint-unavailable',
+  !HIVE.agents.some((a) => deadIds.has(a.model) || deadIds.has(a.fallback)),
+  HIVE.agents.filter((a) => deadIds.has(a.model) || deadIds.has(a.fallback)).map((a) => a.id).join(', ') || 'none');
+
+let briefMismatch = [];
+HIVE.agents.forEach((a) => {
+  const p = join(HIVE_DIR, 'agents', `${a.id}.md`);
+  if (!existsSync(p)) return;
+  const line = (readFileSync(p, 'utf8').match(/^- \*\*Model:\*\*.*$/m) || [''])[0];
+  const want = `- **Model:** ${a.model} → fallback ${a.fallback}`;
+  if (line !== want) briefMismatch.push(`${a.id}: "${line}" != "${want}"`);
+});
+check('every brief declares the same model as hive.json', briefMismatch.length === 0, briefMismatch.join(' | ') || '10/10 match');
+
+console.log('\n5. Model liveness — every model an agent can request must answer');
+const requested = [...new Set(HIVE.agents.flatMap((a) => [a.model, a.fallback]))].sort();
+console.log(`   probing ${requested.length} models in parallel: ${requested.join(', ')}`);
+const { runModel } = await import(resolve(HIVE_DIR, 'dispatch.mjs'));
+const probeTimeout = HIVE.dispatch?.probe_timeout_ms || 180000;
+const probes = await Promise.all(requested.map(async (id) => {
+  const full = MODEL_PREFIX + id;
+  let r = await runModel(full, 'Reply with exactly: OK', probeTimeout);
+  if (!r.ok) r = await runModel(full, 'Reply with exactly: OK', probeTimeout); // one retry, flakes happen
+  return { id, ok: r.ok, error: r.error };
+}));
+const dead = probes.filter((p) => !p.ok);
+for (const p of probes) console.log(`   ${p.ok ? 'OK  ' : 'DEAD'} ${p.id}${p.ok ? '' : '  ' + String(p.error).slice(0, 120)}`);
+check('every agent-facing model answers', dead.length === 0, dead.length ? 'dead: ' + dead.map((d) => d.id).join(', ') : `${probes.length}/${probes.length} live`);
+
+console.log('\n6. Live parallel probe (real opencode processes)…');
 const result = await new Promise((res) => {
   const child = spawn('node', [join(HIVE_DIR, 'dispatch.mjs')], { cwd: HIVE_DIR, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '';

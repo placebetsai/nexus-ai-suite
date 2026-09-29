@@ -28,13 +28,15 @@ const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const OPENCODE = process.env.OPENCODE_BIN || "/home/billionaremaker/.opencode/bin/opencode";
 
 // Order matters: fast/direct first, CLI-backed models after.
+// Roster corrected 2026-09-29: muse-spark-1.2 was dropped by opencode (dead),
+// ling-3.0-flash-fin answers "Endpoint is unavailable" — both replaced/removed
+// so callers never land on a model that cannot serve them.
 export const FREE_MODELS = [
   "space-bunny-free",
   "mimo-v2.6-flash-free",
   "nemotron-3.5-lightning-free",
   "nemotron-3-ultra-free",
-  "ling-3.0-flash-fin-free",
-  "muse-spark-1.2-contributor-free",
+  "longcat-2.5-preview-free",
   "muse-spark-1.3-contributor-free",
   "big-pickle",
 ];

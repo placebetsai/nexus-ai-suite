@@ -1,9 +1,9 @@
 {
-  "ts": "2026-09-26T19:54:26.255Z",
-  "wall_ms": 28013,
+  "ts": "2026-09-29T12:34:10.673Z",
+  "wall_ms": 99095,
   "total": 10,
   "ok": 10,
-  "primary_ok": 9,
+  "primary_ok": 10,
   "ready": true,
   "results": [
     {
@@ -13,13 +13,13 @@
       "model": "opencode/mimo-v2.6-flash-free",
       "requested": "opencode/mimo-v2.6-flash-free",
       "degraded": false,
-      "ms": 25973,
+      "ms": 20261,
       "output": "Atlas READY · scope: apps/fashionistas, apps/createstuff",
       "attempts": [
         {
           "model": "opencode/mimo-v2.6-flash-free",
           "ok": true,
-          "ms": 25973
+          "ms": 20261
         }
       ]
     },
@@ -30,13 +30,13 @@
       "model": "opencode/muse-spark-1.3-contributor-free",
       "requested": "opencode/muse-spark-1.3-contributor-free",
       "degraded": false,
-      "ms": 21709,
+      "ms": 17686,
       "output": "Vogue READY · scope: apps/fashionistas",
       "attempts": [
         {
           "model": "opencode/muse-spark-1.3-contributor-free",
           "ok": true,
-          "ms": 21709
+          "ms": 17686
         }
       ]
     },
@@ -44,22 +44,16 @@
       "agent": "pictor",
       "name": "Pictor",
       "ok": true,
-      "model": "opencode/big-pickle",
-      "requested": "opencode/muse-spark-1.2-contributor-free",
-      "degraded": true,
-      "ms": 14094,
+      "model": "opencode/muse-spark-1.3-contributor-free",
+      "requested": "opencode/muse-spark-1.3-contributor-free",
+      "degraded": false,
+      "ms": 23526,
       "output": "Pictor READY · scope: brand/fashionistas, brand/createstuff",
       "attempts": [
         {
-          "model": "opencode/muse-spark-1.2-contributor-free",
-          "ok": false,
-          "ms": 13907,
-          "error": "exit 1: Error: {\n  \"name\": \"UnknownError\",\n  \"data\": {\n    \"message\": \"Unexpected server error. Check server logs for details.\",\n    \"ref\": \"err_a4aa19ff\"\n  }\n}"
-        },
-        {
-          "model": "opencode/big-pickle",
+          "model": "opencode/muse-spark-1.3-contributor-free",
           "ok": true,
-          "ms": 14094
+          "ms": 23526
         }
       ]
     },
@@ -70,13 +64,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 24466,
+      "ms": 19763,
       "output": "Forge READY · scope: apps/createstuff",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 24466
+          "ms": 19763
         }
       ]
     },
@@ -87,13 +81,13 @@
       "model": "opencode/nemotron-3.5-lightning-free",
       "requested": "opencode/nemotron-3.5-lightning-free",
       "degraded": false,
-      "ms": 23906,
+      "ms": 98694,
       "output": "Nexus READY · scope: infra",
       "attempts": [
         {
           "model": "opencode/nemotron-3.5-lightning-free",
           "ok": true,
-          "ms": 23906
+          "ms": 98694
         }
       ]
     },
@@ -104,13 +98,13 @@
       "model": "opencode/space-bunny-free",
       "requested": "opencode/space-bunny-free",
       "degraded": false,
-      "ms": 23714,
+      "ms": 20159,
       "output": "Mnemonic READY · scope: qa",
       "attempts": [
         {
           "model": "opencode/space-bunny-free",
           "ok": true,
-          "ms": 23714
+          "ms": 20159
         }
       ]
     },
@@ -121,13 +115,13 @@
       "model": "opencode/nemotron-3-ultra-free",
       "requested": "opencode/nemotron-3-ultra-free",
       "degraded": false,
-      "ms": 24499,
+      "ms": 22307,
       "output": "Sentinel READY · scope: qa",
       "attempts": [
         {
           "model": "opencode/nemotron-3-ultra-free",
           "ok": true,
-          "ms": 24499
+          "ms": 22307
         }
       ]
     },
@@ -135,16 +129,16 @@
       "agent": "curator",
       "name": "Curator",
       "ok": true,
-      "model": "opencode/ling-3.0-flash-fin-free",
-      "requested": "opencode/ling-3.0-flash-fin-free",
+      "model": "opencode/big-pickle",
+      "requested": "opencode/big-pickle",
       "degraded": false,
-      "ms": 23570,
+      "ms": 19729,
       "output": "Curator READY · scope: memory",
       "attempts": [
         {
-          "model": "opencode/ling-3.0-flash-fin-free",
+          "model": "opencode/big-pickle",
           "ok": true,
-          "ms": 23570
+          "ms": 19729
         }
       ]
     },
@@ -152,16 +146,16 @@
       "agent": "ledger",
       "name": "Ledger",
       "ok": true,
-      "model": "opencode/ling-3.0-flash-fin-free",
-      "requested": "opencode/ling-3.0-flash-fin-free",
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "requested": "opencode/nemotron-3.5-lightning-free",
       "degraded": false,
-      "ms": 22769,
+      "ms": 99068,
       "output": "Ledger READY · scope: apps/fashionistas, qa",
       "attempts": [
         {
-          "model": "opencode/ling-3.0-flash-fin-free",
+          "model": "opencode/nemotron-3.5-lightning-free",
           "ok": true,
-          "ms": 22769
+          "ms": 99068
         }
       ]
     },
@@ -172,13 +166,13 @@
       "model": "opencode/space-bunny-free",
       "requested": "opencode/space-bunny-free",
       "degraded": false,
-      "ms": 23408,
+      "ms": 16271,
       "output": "Scribe READY · scope: seo, brand/fashionistas, brand/createstuff",
       "attempts": [
         {
           "model": "opencode/space-bunny-free",
           "ok": true,
-          "ms": 23408
+          "ms": 16271
         }
       ]
     }

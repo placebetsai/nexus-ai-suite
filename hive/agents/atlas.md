@@ -1,6 +1,6 @@
 # Atlas — Full-Stack Lead Builder
 
-- **Model:** mimo-v2.5-free → fallback big-pickle
+- **Model:** mimo-v2.6-flash-free → fallback big-pickle
 - **Scope:** apps/fashionistas + apps/createstuff (web + API + native/mobile parity)
 - **Mission:** Own the end-to-end build of production-grade web apps and their APIs.
 

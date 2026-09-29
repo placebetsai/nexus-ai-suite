@@ -5,19 +5,23 @@
   "provider": "opencode",
   "model_prefix": "opencode/",
   "verified": {
-    "last_probe": "2026-09-24",
+    "last_probe": "2026-09-29",
     "free_models_total": 8,
-    "agents_acked": 8,
+    "agents_acked": 10,
     "probe_method": "opencode run --model opencode/<id>",
-    "note": "Model IDs are the EXACT ids returned by opencode.models. The old 'opencode-zen/' prefix caused 100% silent fallback."
+    "note": "Model IDs are the EXACT ids returned by opencode.models. The old 'opencode-zen/' prefix caused 100% silent fallback.",
+    "endpoint_unavailable": {
+      "ling-3.0-flash-fin-free": "2026-09-29 opencode run -> exit 1 'Upstream request failed: Endpoint is unavailable.' Listed by opencode.models but not serving. No agent may request it.",
+      "muse-spark-1.2-contributor-free": "2026-09-29 removed: no longer returned by opencode.models at all (roster dropped it). Was pictor's primary and vogue's fallback."
+    }
   },
   "free_models": [
     { "id": "space-bunny-free", "cost": 0, "variants": ["low", "medium", "high", "xhigh", "max"] },
     { "id": "mimo-v2.6-flash-free", "cost": 0, "variants": [] },
     { "id": "muse-spark-1.3-contributor-free", "cost": 0, "variants": ["minimal", "low", "medium", "high", "xhigh"] },
-    { "id": "ling-3.0-flash-fin-free", "cost": 0, "variants": [] },
+    { "id": "ling-3.0-flash-fin-free", "cost": 0, "variants": [], "status": "endpoint-unavailable", "unused_by_agents": true },
     { "id": "nemotron-3.5-lightning-free", "cost": 0, "variants": [] },
-    { "id": "muse-spark-1.2-contributor-free", "cost": 0, "variants": ["minimal", "low", "medium", "high", "xhigh"] },
+    { "id": "longcat-2.5-preview-free", "cost": 0, "variants": [] },
     { "id": "nemotron-3-ultra-free", "cost": 0, "variants": [] },
     { "id": "big-pickle", "cost": 0, "variants": [] }
   ],
@@ -37,7 +41,7 @@
       "name": "Vogue",
       "role": "Fashionistas domain specialist: AI item-ID, AR try-on, cross-listing engine, seller admin",
       "model": "muse-spark-1.3-contributor-free",
-      "fallback": "muse-spark-1.2-contributor-free",
+      "fallback": "longcat-2.5-preview-free",
       "free": true,
       "workstreams": ["apps/fashionistas"],
       "status": "provisioned"
@@ -46,8 +50,8 @@
       "id": "pictor",
       "name": "Pictor",
       "role": "Brand identity: logos, design systems, SVG graphics, OG assets (both apps)",
-      "model": "muse-spark-1.2-contributor-free",
-      "fallback": "big-pickle",
+      "model": "muse-spark-1.3-contributor-free",
+      "fallback": "longcat-2.5-preview-free",
       "free": true,
       "workstreams": ["brand/fashionistas", "brand/createstuff"],
       "status": "provisioned"
@@ -96,8 +100,8 @@
       "id": "curator",
       "name": "Curator",
       "role": "Federation memory: docs, handoff sync, changelogs, cross-agent knowledge",
-      "model": "ling-3.0-flash-fin-free",
-      "fallback": "big-pickle",
+      "model": "big-pickle",
+      "fallback": "mimo-v2.6-flash-free",
       "free": true,
       "workstreams": ["memory"],
       "status": "provisioned"
@@ -106,8 +110,8 @@
       "id": "ledger",
       "name": "Ledger",
       "role": "Marketplace economics: fee math, net take-home, pricing strategy, unit economics",
-      "model": "ling-3.0-flash-fin-free",
-      "fallback": "nemotron-3.5-lightning-free",
+      "model": "nemotron-3.5-lightning-free",
+      "fallback": "space-bunny-free",
       "free": true,
       "workstreams": ["apps/fashionistas", "qa"],
       "status": "provisioned"

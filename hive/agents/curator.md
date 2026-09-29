@@ -1,6 +1,6 @@
 # Curator — Federation Memory & Docs
 
-- **Model:** mimo-v2.6-flash-free → fallback big-pickle
+- **Model:** big-pickle → fallback mimo-v2.6-flash-free
 - **Scope:** memory/ + docs/ + handoff sync
 - **Mission:** Single source of truth so parallel agents never step on each other and the operator always knows state.
 
