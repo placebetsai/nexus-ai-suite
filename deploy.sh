@@ -97,9 +97,15 @@ verify_pages(){
   local url="https://${proj}.pages.dev"
   local local_file="" local_sha="" local_bytes=0
   local attempt code bytes sha body="$WORK/live.html" ok=0 reason=""
+  local verify_path="/"
 
   if [[ -f "$dir/index.html" ]]; then local_file="$dir/index.html"
   elif [[ -f "$dir/index.htm" ]]; then local_file="$dir/index.htm"
+  elif [[ -f "$dir/about.html" ]]; then
+    # A next-on-pages export serves / from _worker.js and ships no index.html,
+    # so falling through to the no-local-file branch would fail closed on every
+    # placebets deploy. Compare a page that really exists instead.
+    local_file="$dir/about.html"; verify_path="/about"
   fi
   if [[ -n "$local_file" ]]; then
     local_sha=$(sha256sum "$local_file" | cut -d' ' -f1)
@@ -111,23 +117,23 @@ verify_pages(){
 
   for attempt in 1 2 3; do
     rm -f "$body"
-    code=$(fetch "$url/" "$body")
+    code=$(fetch "$url$verify_path" "$body")
     bytes=0
     if [[ -f "$body" ]]; then bytes=$(wc -c <"$body"); fi
     sha=""
     if [[ "$bytes" -gt 0 ]]; then sha=$(sha256sum "$body" | cut -d' ' -f1); fi
-    echo ">> VERIFY attempt $attempt: GET $url/ -> HTTP $code, $bytes bytes sha256=$sha"
+    echo ">> VERIFY attempt $attempt: GET $url$verify_path -> HTTP $code, $bytes bytes sha256=$sha"
     if [[ "$code" == 200 && "$bytes" -gt 0 ]]; then
       if [[ -z "$local_sha" ]]; then
-        reason="HTTP 200, $bytes bytes at $url/ (no local index.html or index.htm to compare)"
+        reason="HTTP 200, $bytes bytes at $url$verify_path (no local index.html or index.htm to compare)"
       elif [[ "$sha" == "$local_sha" ]]; then
-        ok=1; reason="HTTP 200, $bytes bytes at $url/, sha256 matches $local_file ($local_bytes bytes)"
+        ok=1; reason="HTTP 200, $bytes bytes at $url$verify_path, sha256 matches $local_file ($local_bytes bytes)"
         break
       else
         reason="HTTP 200 but CONTENT MISMATCH: local $local_file sha256=$local_sha ($local_bytes bytes) vs live sha256=$sha ($bytes bytes)"
       fi
     else
-      reason="GET $url/ -> HTTP $code, $bytes bytes"
+      reason="GET $url$verify_path -> HTTP $code, $bytes bytes"
     fi
     if (( attempt < 3 )); then sleep 2; fi
   done
@@ -251,7 +257,12 @@ case "$ACTION" in
     [[ -d "$DIR" ]] || fail "pages source directory not found: $DIR (nothing was sent to wrangler)"
     bust_assets "$DIR"
     echo ">> Deploying Pages project '$PROJ' from '$DIR'"
-    if [[ "$PROJ" == createstuff* || "$PROJ" == app-createstuff* ]]; then
+    # placebetsai / placebets-ai-v2 / purlaw live ONLY on the second account
+    # (2765cb27…). Measured 2026-09-29: `placebetsai` comes back from
+    # CS_API_TOKEN and returns nothing from CF_API_TOKEN, so sending it with the
+    # account-A token can only fail. `marketpicks-ai` exists on BOTH accounts and
+    # is deliberately left on the default branch.
+    if [[ "$PROJ" == createstuff* || "$PROJ" == app-createstuff* || "$PROJ" == placebets* || "$PROJ" == purlaw ]]; then
       CLOUDFLARE_API_TOKEN="$CS_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CS_ACCOUNT_ID" \
         deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main
       verify_pages "$PROJ" "$DIR"

@@ -264,12 +264,28 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
   **Not proven:** that mail to `info@placebets.ai` lands in an inbox — Cloudflare Email Routing MX
   + SPF are live on the domain (`route1/2/3.mx.cloudflare.net`) but no token in this environment can
   read that zone's routing rules, so receipt is **untested**.
-- ⚠️ **OPEN 2026-09-28 — 4 of placebets' 17 navbar links cannot be clicked.** `Tools`, `Tourneys`,
-  `Receipts` and `Contact` render at **x ≥ 1446 on a 1440 px viewport** with **no scrollable
-  ancestor**, so `overflow-x: hidden` clips them; **2 stay offscreen even at 1920 px**. Found while
-  proving the email change and **verified byte-identical on the previous production build
-  `98099151.placebetsai.pages.dev`**, so `e7eed5e` did not cause it. Needs a nav layout change plus
-  a visual re-verify — not touched. (See TODO row **P16**.)
+- ✅ **RESOLVED 2026-09-29 — 4 of placebets' 17 navbar links could not be clicked.** Root cause was
+  measured, not guessed: `.desktop-links` carried 16 links (1214px) + the odds toggle (74px) + the
+  search box (184px) + 17 gaps (379px) = **1851px inside a 1015px box with no `overflow` set
+  anywhere**, so the excess was painted past the viewport instead of scrolling — which is why every
+  clipped link reported `scrollableAncestor=NONE`. Fixed in `Placebetsai-src` (`app/globals.css`,
+  `components/Navbar.js`): `overflow-x: auto` on the strip as the guarantee, tighter spacing, the
+  search collapsed to an icon, and header + sport tabs widened 1200px → 1300px (the smallest width
+  that fits with nothing to scroll).
+  **Proof `/tmp/p16_nav_proof.mjs` 29/29, run twice on live `placebets.ai` and once on origin
+  `placebetsai.pages.dev`.** Every link is judged independently and passes only when
+  `elementFromPoint` at its centre returns that link, so "inside the viewport but clipped by the
+  strip" does not slip through. **Control: the same script on the pre-fix build `98099151` fails**
+  — 4 unreachable @1440, 2 @1920, **5 @1366 and @1280 (worse than the original report)**, all with
+  no scroll ancestor — so a green run means something.
+  **Result: `overflow=0` at 1280/1366/1440/1920**; narrower widths scroll and stay clickable. The
+  search field was proven separately (collapsed → opens at 132px inside the nav, takes focus, types,
+  collapses on blur, submit opens the search). Screenshot `/tmp/p16_final_1440.png`.
+  Two `deploy.sh` defects surfaced and were fixed on the way: it sent Pages projects to the wrong
+  Cloudflare account (`placebetsai` exists only under `2765cb27…`, so the account-A token could never
+  have deployed it), and its verifier required a local `index.html`, which a next-on-pages export
+  does not have because `/` is served by `_worker.js` — it now compares `about.html` instead of
+  failing closed.
 - ⚠️ **OPEN 2026-09-28 — two Gmail SMTP app passwords are committed in plaintext** in
   `Placebetsai-src/scripts/test-smtp.mjs` (lines 3–4, tracked since `1e64d32`). Contained: the repo
   is **private** and the file is never built into `.vercel/output/static`, so nothing is exposed
@@ -446,6 +462,15 @@ The agent's register step returned **201**, but it never sent `Authorization: Be
     A failed `vercel build` **wipes `.vercel/output/{functions,static}`** — they are gitignored, so
     always rebuild before deploying. Ships from branch **`live-source`** (`origin/live-source`),
     not `main` (`main` is a separate static landing page).
+  - **Placebets build gotcha (hit 2026-09-29):** `next-on-pages` declares **`vercel` as a peer
+    dependency** (`>=30 <=47.0.4`), and the documented build command runs with
+    `npm_config_legacy_peer_deps=true` — which is exactly what stops npm from installing peers. Any
+    `npm install` then prunes the un-saved `vercel` **and** the `@vercel/next` builder it had pulled
+    in, so `vercel build` dies with `ENOENT … node_modules/@vercel/next/dist/server-launcher.js`
+    **after already wiping `.vercel/output/static`**, leaving the repo with no build output at all.
+    Fixed by declaring **both** `vercel` and `@vercel/next` in `devDependencies`, so no install can
+    prune them again; live was unaffected throughout because the Pages deployment is separate.
+    `Placebetsai-src` ships from branch `main`.
   - **Re-check after a clean hour:** GraphQL
     `d1AnalyticsAdaptiveGroups` grouped by `databaseId`+`datetimeFifteenMinutes` (this costs nothing)
     — marketpicks baseline was **~35–60k/hour ≈ 1.2M/day**.
