@@ -535,6 +535,9 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   .cs-live-panel__btn{ flex:1; justify-content:center }
   .cs-live-panel__btn--close{ width:auto; padding:0 1rem; border-radius:999px }
 }
+/* Skip link — the first thing Tab reaches. Off-screen until focused. */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:500;background:#12121a;color:#f7f3ee;padding:12px 18px;border-radius:0 0 12px 0;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.22);font-family:inherit}
+.skip-link:focus,.skip-link:focus-visible{left:0}
 </style>
 <!--SEO-START-->
 <meta name="description" content="Describe what you want. CreateStuff writes the code, shows it live and puts it on a free web address. Bring in any GitHub project.">
@@ -575,6 +578,9 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
 
   <div class="cs-landing">
 
+    <!-- First thing Tab reaches on the public landing page. -->
+    <a class="skip-link" href="#top">Skip to content</a>
+
     <div class="cs-nav-wrap">
       <nav class="cs-nav" aria-label="Primary">
         <a class="cs-brand" href="#top" data-cs-scroll data-tip="Back to the top of this page." title="Back to the top of this page.">
@@ -593,7 +599,7 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
     </div>
 
     <!-- HERO -->
-    <section class="cs-hero" id="top">
+    <section class="cs-hero" id="top" tabindex="-1">
       <div class="cs-hero-copy">
         <span class="cs-eyebrow" style="--d:.05s"><b aria-hidden="true"></b> AI app builder</span>
 
@@ -815,6 +821,9 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
 
 <!-- APP -->
 <div id="app" class="app" style="display:none">
+  <!-- The app region is display:none until sign-in, so this link only
+       becomes reachable when the app is what is on screen. -->
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <aside id="sidebar" class="sidebar">
     <div class="sidebar-header"><span class="logo-icon-sm" aria-hidden="true"><svg viewBox="0 0 64 64" width="30" height="30"><defs><linearGradient id="csg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset=".55" stop-color="#7c3aed"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs><rect width="64" height="64" rx="18" fill="url(#csg2)"/><g fill="none" stroke="#fff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M23 22 14 32l9 10"/><path d="M41 22l9 10-9 10"/><path d="M36 17 28 47"/></g></svg></span><span class="sidebar-brand">CreateStuff</span></div>
     <nav class="sidebar-nav">
@@ -844,7 +853,7 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
     <button id="mobile-logout" class="btn-icon" aria-label="Sign out" data-tip="Sign out and close your session on this device." title="Sign out and close your session on this device."><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.5"/><path d="M16 16.5 20.5 12 16 7.5M20 12H9.5"/></svg></button>
   </header>
 
-  <main id="main-content" class="main-content">
+  <main id="main-content" class="main-content" tabindex="-1">
 
     <!-- DASHBOARD -->
     <div id="page-dashboard" class="page active">

@@ -22,9 +22,15 @@
   .nf-links a:hover{border-color:var(--accent);text-decoration:none}
   .nf-links span{display:block;font-weight:500;font-size:.9rem;color:var(--mut);margin-top:4px}
   .nf-back{margin-top:24px}
+
+/* Skip link — first thing Tab reaches; off-screen until focused. */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:400;background:#12121a;color:#f7f3ee;padding:12px 16px;border-radius:0 0 12px 0;font-weight:700;font-size:15px;text-decoration:none;border:1px solid rgba(255,255,255,.22)}
+.skip-link:focus,.skip-link:focus-visible{left:0}
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+
 <div class="wrap">
 <header class="topnav">
 <a class="brand" href="/">fashionistas<span>.ai</span></a>
@@ -36,7 +42,7 @@
 <a href="/">App</a>
 </nav>
 </header>
-<main class="nf">
+<main class="nf" id="main-content" tabindex="-1">
 <div class="nf-code">Error 404</div>
 <h1>We could not find that page</h1>
 <p class="lede">The address you followed does not exist here — it may have been mistyped, or the page may have moved. Nothing was lost, and nothing was charged.</p>

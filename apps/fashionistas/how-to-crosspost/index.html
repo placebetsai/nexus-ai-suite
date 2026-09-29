@@ -30,10 +30,16 @@
 .kbd{font-family:ui-monospace,monospace;font-size:.9em;background:#faf7f3;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
 .faq dt{font-weight:700;margin-top:14px}
 .faq dd{margin:4px 0 0;color:var(--mut)}
+
+/* Skip link — first thing Tab reaches; off-screen until focused. */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:400;background:#12121a;color:#f7f3ee;padding:12px 16px;border-radius:0 0 12px 0;font-weight:700;font-size:15px;text-decoration:none;border:1px solid rgba(255,255,255,.22)}
+.skip-link:focus,.skip-link:focus-visible{left:0}
 </style>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Cross-post one listing to six resale shops with fashionistas.ai","step":[{"@type":"HowToStep","name":"Snap the item","text":"Take or upload a photo in fashionistas.ai. The AI writes the type, brand, color, condition, category and a price range."},{"@type":"HowToStep","name":"Pick your shops","text":"Open Multilist, choose the item and tick Depop, eBay, Poshmark, Mercari, Vinted or Grailed."},{"@type":"HowToStep","name":"Fill each shop","text":"Press Copy for Fashionistas Fill, open the shop's sell page and click the Fashionistas Fill bookmark."},{"@type":"HowToStep","name":"Check and post","text":"Pick the shop's category, size and condition, then press the shop's own Post button."}]}</script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+
 <div class="wrap">
 <header class="topnav">
 <a class="brand" href="/" data-tip="Open the fashionistas.ai app." title="Open the fashionistas.ai app.">fashionistas<span>.ai</span></a>
@@ -45,6 +51,7 @@
 <a href="/" data-tip="Open the fashionistas.ai app." title="Open the fashionistas.ai app.">App</a>
 </nav>
 </header>
+<main id="main-content" tabindex="-1">
 <span class="badge">Guide</span>
 <h1>Write it once. Post it to six shops.</h1>
 <p class="lede">Snap one photo. fashionistas.ai writes the listing, then fills it into Depop, eBay, Poshmark, Mercari, Vinted and Grailed for you. You check it and press Post yourself. We never post for you and never ask for your shop passwords.</p>
@@ -96,6 +103,7 @@
 <p style="margin-bottom:0"><a class="btn btn-accent" href="/" data-tip="Open the fashionistas.ai app." title="Open the fashionistas.ai app.">Open fashionistas.ai</a></p>
 </div>
 
+</main>
 <footer class="site-footer">
 <nav aria-label="Footer">
 <a href="/" data-tip="Open the fashionistas.ai app." title="Open the fashionistas.ai app.">Home</a>

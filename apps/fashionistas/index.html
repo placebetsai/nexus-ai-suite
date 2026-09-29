@@ -1119,11 +1119,21 @@ textarea.input{font-family:inherit}
 #tip-bubble.on{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){#tip-bubble{transition:none!important;transform:none!important}}
 @media (hover:none){#tip-bubble{display:none}}
+
+/* ===================================================================
+   SKIP LINK
+   The first thing a keyboard press of Tab reaches. It sits off-screen
+   until it takes focus, then pins to the top-left so a keyboard user
+   can jump straight past the navigation to the page itself.
+   =================================================================== */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:500;background:#12121a;color:#f7f3ee;padding:12px 18px;border-radius:0 0 12px 0;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.22)}
+.skip-link:focus,.skip-link:focus-visible{left:0}
 </style>
 <noscript><style>.reveal{opacity:1!important;transform:none!important}</style></noscript>
 </head>
 <body>
-<div class="wrap">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<main class="wrap" id="main-content" tabindex="-1">
 
  <!-- ================= AUTH ================= -->
  <section id="view-auth" class="hidden">
@@ -1323,7 +1333,7 @@ textarea.input{font-family:inherit}
  <div id="screen"></div>
  </section>
 
-</div>
+</main>
 
 <!-- toast -->
 <div class="cam-modal hidden" id="cam-modal" role="dialog" aria-modal="true" aria-label="Camera">
@@ -2468,7 +2478,7 @@ function marketCard(m, i){
   const seller = (m.seller && (m.seller.username || m.seller.display_name)) || "Seller";
   const plats = shopNormalizePlatforms(m.platforms);
   const photo = m.photo_url
-    ? `<img loading="lazy" src="${escapeAttr(m.photo_url)}" onerror="this.remove()"><div class="badge"></div>`
+    ? `<img loading="lazy" src="${escapeAttr(m.photo_url)}" alt="" onerror="this.remove()"><div class="badge"></div>`
     : `<div class="ph"><span class="ph-ico">${catEmoji(m.category||"item")}</span></div>`;
   return `<div style="display:flex;flex-direction:column;gap:0">`
   + `<div class="gitem" style="--gi:${Number(i)||0};cursor:pointer" tabindex="0" role="button" onclick="openMarketItem(${Number(m.id)})" onkeydown="if(event.key==='Enter')openMarketItem(${Number(m.id)})" data-tip="Open this item to see details and buy.">`
@@ -2508,7 +2518,7 @@ async function openMarketItemNow(id){
   CURRENT.market = m;
   el.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="go('shop')" data-tip="Back to everything that is for sale.">Back to Shop</button>`
   + `<div class="card">`
-  + (m.photo_url ? `<img class="detail-img" src="${escapeAttr(m.photo_url)}" onerror="this.remove()"><div style="height:10px"></div>` : "")
+  + (m.photo_url ? `<img class="detail-img" src="${escapeAttr(m.photo_url)}" alt="Photo of ${escapeAttr(m.title||"Untitled item")}" onerror="this.remove()"><div style="height:10px"></div>` : "")
   + `<h3 style="margin:4px 0 2px">${escapeHtml(m.title||"Untitled")}</h3>`
   + `<h2 style="margin:4px 0">${money(m.price)}</h2>`
   + `<div style="margin:8px 0"><span class="pill">${escapeHtml(m.condition||"")}</span><span class="pill">${escapeHtml(m.size||"")}</span>${canonCat(m.category) ? `<span class="pill">${escapeHtml(canonCat(m.category))}</span>` : ""}</div>`
@@ -3589,7 +3599,7 @@ function liGrid(l, i){
    : "";
  const art = PH_ASSET[cat];
  const photo = l.photo_url
-   ? `<img loading="lazy" src="${l.photo_url}" onerror="this.remove()"><div class="badge"></div>`
+   ? `<img loading="lazy" src="${l.photo_url}" alt="" onerror="this.remove()"><div class="badge"></div>`
    : `<div class="ph${art?" has-img":""}">${art?`<img class="ph-img" src="${art}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()">`:""}<span class="ph-ico">${catEmoji(cat)}</span></div>`;
  return `<div class="gitem${sel?" is-sel":""}" style="--gi:${Number(i)||0}" data-id="${l.id}" onclick="${S.selMode?`closetToggleSel(${l.id},null)`:`openListing(${l.id})`}">
  ${box}${photo}
@@ -3924,7 +3934,7 @@ async function analyzeImage(b64, previewUrl){
 function aiResult(d, previewUrl){
  const cat = d.category || "Tops";
  return `<div class="card">
- ${previewUrl ? `<img class="img" style="max-height:240px;object-fit:contain;background:#f1ece4" src="${previewUrl}">` : ""}
+ ${previewUrl ? `<img class="img" style="max-height:240px;object-fit:contain;background:#f1ece4" src="${previewUrl}" alt="">` : ""}
  <h3 style="margin-top:12px">${escapeHtml(d.type||"Clothing item")}</h3>
  <div>
  <span class="pill">${escapeHtml(d.brand||"Unknown brand")}</span>
@@ -3999,7 +4009,7 @@ function renderListingForm(it){
  const wantCond = COND_OPTS.includes(it.condition) ? it.condition : COND_OPTS[2];
  $("#screen").innerHTML = `
  <div class="card">
- ${it._preview ? `<img class="img" style="max-height:230px;object-fit:contain;background:#f1ece4" src="${it._preview}">` : ""}
+ ${it._preview ? `<img class="img" style="max-height:230px;object-fit:contain;background:#f1ece4" src="${it._preview}" alt="${escapeAttr(it.title||"Photo for this listing")}">` : ""}
  <div id="form-ai" class="hidden"></div>
  <label>Title</label>
  <input class="input" id="f-title" value="${escapeAttr(it.title||"")}">
@@ -4136,7 +4146,7 @@ async function openListing(id){
  kineticTitle("This item"); $("#view-sub").textContent = "One piece from your clothes — edit it, check it, post it.";
  $("#screen").innerHTML = `
  <div class="card">
- ${l.photo_url ? `<img class="detail-img" src="${l.photo_url}" onerror="this.remove()"><div style="height:10px"></div>` : ""}
+ ${l.photo_url ? `<img class="detail-img" src="${l.photo_url}" alt="Photo of ${escapeAttr(l.title||"Untitled item")}" onerror="this.remove()"><div style="height:10px"></div>` : ""}
  <h3 style="margin:4px 0 2px">${escapeHtml(l.title||"Untitled")}</h3>
  <div class="mut">${escapeHtml(l.description||"")}</div>
  <div style="margin:10px 0"><span class="pill">${escapeHtml(l.category||"")}</span><span class="pill">${escapeHtml(l.size||"")}</span><span class="pill">${escapeHtml(l.condition||"")}</span></div>

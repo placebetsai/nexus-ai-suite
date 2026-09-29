@@ -19,8 +19,15 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/site.css">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"fashionistas.ai marketplace fee take-home calculator","url":"https://fashionistas.ai/fees/","applicationCategory":"FinanceApplication","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Compare approximate seller fee take-home across Depop, eBay, Poshmark, Mercari, Vinted and Grailed."}</script>
+<style>
+/* Skip link — first thing Tab reaches; off-screen until focused. */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:400;background:#12121a;color:#f7f3ee;padding:12px 16px;border-radius:0 0 12px 0;font-weight:700;font-size:15px;text-decoration:none;border:1px solid rgba(255,255,255,.22)}
+.skip-link:focus,.skip-link:focus-visible{left:0}
+</style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+
 <div class="wrap">
 <header class="topnav">
 <a class="brand" href="/">fashionistas<span>.ai</span></a>
@@ -32,6 +39,7 @@
 <a href="/">App</a>
 </nav>
 </header>
+<main id="main-content" tabindex="-1">
 <span class="badge">Fee take-home</span>
 <h1>What you keep after marketplace fees</h1>
 <p class="lede">Before you paste a fashionistas.ai draft into Depop, eBay, Poshmark, Mercari, Vinted or Grailed, check approximate seller take-home. Rates below mirror the fee concept in the app (platform % of sale price). Shipping and payment nuances vary by country — confirm on each shop before you price.</p>
@@ -57,6 +65,7 @@
 <p style="margin-bottom:0"><a class="btn btn-accent" href="/">Open fashionistas.ai</a> &nbsp; <a href="/contact/">Questions? Contact us</a></p>
 </div>
 
+</main>
 <footer class="site-footer">
 <nav aria-label="Footer">
 <a href="/">Home</a>

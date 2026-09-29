@@ -40,14 +40,21 @@ body.nf-page{margin:0;background:var(--nf-bg);color:var(--nf-text);font-family:'
 .nf-foot a{color:var(--nf-text-2);text-decoration:none}
 .nf-foot a:hover{color:var(--nf-violet-l)}
 @media (prefers-reduced-motion:reduce){.nf-card,.nf-btn-primary{transition:none}}
+
+/* Skip link — first thing Tab reaches; off-screen until focused. */
+.skip-link{position:fixed;left:-9999px;top:0;z-index:400;background:#12121a;color:#f7f3ee;padding:12px 16px;border-radius:0 0 12px 0;font-weight:700;font-size:15px;text-decoration:none;border:1px solid rgba(255,255,255,.22)}
+.skip-link:focus,.skip-link:focus-visible{left:0}
 </style>
 </head>
 <body class="nf-page">
+<a class="skip-link" href="#main-content">Skip to content</a>
+
 <div class="nf-wrap">
 <a class="nf-brand" href="/" data-tip="Go back to the CreateStuff homepage." title="Go back to the CreateStuff homepage.">
   <img src="assets/createstuff-app-icon-512.svg" alt="" width="34" height="34">
   <span>Create<i>Stuff</i></span><span class="nf-tld">.ai</span>
 </a>
+<main id="main-content" tabindex="-1">
 <div class="nf-code">ERROR 404</div>
 <h1 class="nf-title">We could not find that page</h1>
 <p class="nf-lede">The address you followed does not exist here — it may have been mistyped, or the link may be out of date. Your projects and your account are untouched. Pick somewhere below to carry on.</p>
@@ -61,6 +68,7 @@ body.nf-page{margin:0;background:var(--nf-bg);color:var(--nf-text);font-family:'
   <a class="nf-btn nf-btn-primary" href="/">Back to the homepage</a>
   <a class="nf-btn nf-btn-ghost" href="/#cs-signin" data-tip="Open the builder." title="Open the builder.">Open the builder</a>
 </div>
+</main>
 </div>
 <footer class="nf-foot">
 <nav aria-label="Footer">
