@@ -1,0 +1,12 @@
+# fashionistas.ai routing
+#
+# Before 2026-09-29 this project shipped no 404.html, so Cloudflare Pages fell
+# back to index.html for EVERY unmatched URL — /anything returned HTTP 200 with
+# the homepage in the body (a soft-404). Shipping 404.html fixed that, but it
+# also turned the aliases below into hard 404s.
+#
+# They are kept as real 301s so every URL that used to work keeps working:
+# /app/ was listed in the sitemap until 2026-09-29, so search engines and
+# anyone with the old link still land somewhere sensible.
+/app   /   301
+/app/  /   301

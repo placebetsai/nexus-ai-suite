@@ -1,0 +1,20 @@
+# createstuff.ai routing
+#
+# Before 2026-09-29 this project shipped no 404.html, so Cloudflare Pages fell
+# back to index.html for EVERY unmatched URL — /anything returned HTTP 200 with
+# the homepage in the body (a soft-404). Shipping 404.html fixed that.
+#
+# The sitemap used to advertise /app/, /pricing/, /templates/ and /guide/.
+# None of them were ever separate files: the 2026 landing-page refresh replaced
+# them with in-page sections (#cs-features, #cs-how, #cs-signin, #templates),
+# but the sitemap was never updated. Those four URLs 301 to the homepage —
+# which is exactly what they returned before — so no inbound link dies, while
+# anything genuinely unknown now returns a real 404.
+/app          /   301
+/app/         /   301
+/pricing      /   301
+/pricing/     /   301
+/templates    /   301
+/templates/   /   301
+/guide        /   301
+/guide/       /   301
