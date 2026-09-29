@@ -708,6 +708,21 @@ Base path: __ORIGIN__/app/__ID__/api
   GET    __ORIGIN__/app/__ID__/api/auth/me   header Authorization: Bearer <token> -> {"user"} or {"user":null}
   POST   __ORIGIN__/app/__ID__/api/auth/logout  header Authorization: Bearer <token>
 
+FILE STORAGE — for anything a user attaches (avatar, photo, receipt, PDF, resume):
+  POST   __ORIGIN__/app/__ID__/api/storage   multipart/form-data with the file in a field called "file"
+                                             OR JSON {name, content} where content is base64 or a data: URL
+                                             -> {"ok":true,"key","url","size","type"}
+  GET    __ORIGIN__/app/__ID__/api/storage/<key>        -> the file bytes (works in an <img src>)
+  DELETE __ORIGIN__/app/__ID__/api/storage/<key>  Authorization: Bearer <token>  -> {"ok":true}
+  Limit 10 MB per file. If the brief involves a file input, USE THIS — never
+  pretend to store the file and never keep it only in localStorage.
+  After a successful upload, save the returned "url" in your own collection (the
+  same POST as any other field) so the file survives a refresh:
+    <img id="avatar" alt="">   ->   const r = await fetch(API_BASE + "/storage", {method:"POST", body: formData});
+    const { url } = await r.json(); document.getElementById("avatar").src = url;
+    await fetch(API_BASE + "/profile", {method:"POST", headers: jsonHeaders(), body: JSON.stringify({avatar: url})});
+  Render stored files straight into <img src> / <a href> — the url is absolute.
+
 Define it once at the top of script.js as a single constant:
   const API_BASE = "__ORIGIN__/app/__ID__/api";
 and build every request from it. Never hardcode any other host.
@@ -723,6 +738,36 @@ RULES
 - Keep API paths absolute, built from API_BASE. Never a relative path, never another host.
 
 If the brief is purely presentational (a landing page with no user data and no accounts), you may skip the API entirely.`;
+
+// Browsers ask for a favicon on EVERY page served from this origin — and since
+// every generated app lives here, that is every page a user ever opens. It has
+// to be answered before the session gate, or the request 401s and prints a red
+// console error for a file nobody asked for. Same mark createstuff.ai ships.
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="0.55" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14.72" fill="url(#a)"/>
+  <path d="M23 22 14 32l9 10" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M41 22l9 10-9 10" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M36 17 28 47" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+</svg>`;
+
+// One icon handler, used by both the origin root and each app's own path.
+function faviconResponse() {
+  return new Response(FAVICON_SVG, {
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+    },
+  });
+}
 
 // ── short-TTL list cache ─────────────────────────────────────────────────
 // The collection LIST routes are the read hot path and every one of them costs
@@ -801,6 +846,46 @@ async function cacheDrop(env, key) {
 }
 
 // ── persistence ──────────────────────────────────────────────────────────
+
+// Replit's checkpoints exist because the live working copy is overwritten on
+// every save. Ours had the same hole: project_files held only the newest build,
+// so once a build finished the previous one was gone for good. This table keeps
+// a copy of exactly what each build produced, which is what makes rollback
+// possible at all.
+let buildFilesPending = null;
+function ensureBuildFiles(env) {
+  if (!buildFilesPending) {
+    buildFilesPending = env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS build_files (
+         build_id   INTEGER NOT NULL,
+         project_id INTEGER NOT NULL,
+         path       TEXT    NOT NULL,
+         content    TEXT    NOT NULL,
+         created_at TEXT    NOT NULL,
+         PRIMARY KEY (build_id, path)
+       )`
+    ).run().catch((e) => { buildFilesPending = null; throw e; });
+  }
+  return buildFilesPending;
+}
+
+// Best-effort by design: a build that cannot be snapshotted still succeeded, so
+// this must never turn a completed build into a failed one.
+async function snapshotBuildFiles(env, projectId, buildId, files) {
+  if (!buildId || !files || !files.length) return;
+  try {
+    await ensureBuildFiles(env);
+    const now = new Date().toISOString();
+    for (const f of files) {
+      await env.DB.prepare(
+        "INSERT OR REPLACE INTO build_files (build_id, project_id, path, content, created_at) VALUES (?,?,?,?,?)"
+      ).bind(buildId, projectId, f.path, String(f.content || ""), now).run();
+    }
+  } catch (e) {
+    console.error("[snapshot] " + String((e && e.message) || e));
+  }
+}
+
 async function saveFiles(env, projectId, files, buildId) {
   const now = new Date().toISOString();
   for (const f of files) {
@@ -817,6 +902,9 @@ async function saveFiles(env, projectId, files, buildId) {
   // POST /api/projects/:id/files route and the AI generate/modify writers, so a
   // cached file list can never outlive a successful write to project_files.
   await cacheDrop(env, filesListKey(projectId));
+  // And keep a copy of what this version looked like — the live rows above have
+  // just been overwritten, so this is the only record of them.
+  await snapshotBuildFiles(env, projectId, buildId, files);
 }
 
 async function loadFiles(env, projectId) {
@@ -1758,6 +1846,9 @@ async function handleAppRequest(request, env, url) {
     } catch {
       return err("Not found", 404); // malformed percent-encoding, not a file
     }
+    // A generated app ships no icon of its own, but the browser asks relative
+    // to the document anyway. Answer rather than 404 a file nobody requested.
+    if (filePath === "favicon.ico" || filePath === "icon.svg") return faviconResponse();
     return serveAppFile(env, url, projectId, filePath || "index.html");
   }
 
@@ -1817,6 +1908,127 @@ async function handleAppRequest(request, env, url) {
       return json({ ok: true });
     }
     return err("Unknown auth route", 404);
+  }
+
+  // ── file storage: /app/:id/api/storage ──
+  // Replit and Base44 both include file storage in every app; ours did not, so
+  // anything a user photographed or attached had nowhere to go. Objects live in
+  // R2 under an `app/<projectId>/` prefix, so one app can never read or delete
+  // another's files even if its keys were guessed.
+  if (seg[0] === "storage") {
+    if (!env.FILES) return err("File storage is not switched on for this app", 501);
+    const STORAGE_MAX_BYTES = 10 * 1024 * 1024;
+    const origin = new URL(request.url).origin;
+    const owner = sess ? sess.uid : null;
+    const nsKey = (k) => `app/${projectId}/${k}`;
+    // Keep the object key to a flat, URL-safe token. The stored filename is
+    // carried in metadata instead of in the path so no traversal is possible.
+    const safeName = (n) => String(n || "file")
+      .replace(/[^\w.\-]+/g, "_").replace(/^\.+/, "").slice(0, 80) || "file";
+    const EXT_TYPE = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+      webp: "image/webp", svg: "image/svg+xml", ico: "image/x-icon", bmp: "image/bmp",
+      pdf: "application/pdf", txt: "text/plain", csv: "text/csv", json: "application/json",
+      md: "text/markdown", mp3: "audio/mpeg", wav: "audio/wav", mp4: "video/mp4",
+      webm: "video/webm", zip: "application/zip",
+    };
+
+    // POST /api/storage — accept what a browser actually sends: a real
+    // <input type="file"> arrives as multipart/form-data, a canvas or a
+    // drag-and-drop handler usually sends base64 JSON. Both are supported.
+    if (method === "POST" && !seg[1]) {
+      if (!(await rateLimit(env, request, `app:${projectId}:upload`, 30, 60))) {
+        return err("Too many uploads — wait a minute", 429);
+      }
+      let bytes, name, type = "";
+      const ctype = request.headers.get("content-type") || "";
+      if (ctype.includes("multipart/form-data")) {
+        let fd;
+        try { fd = await request.formData(); } catch { return err("Could not read that upload", 422); }
+        const f = fd.get("file");
+        if (!f || typeof f.arrayBuffer !== "function") {
+          return err('Send the file in a form field called "file"', 422);
+        }
+        bytes = new Uint8Array(await f.arrayBuffer());
+        name = safeName(f.name || fd.get("name") || "file");
+        type = String(f.type || "").slice(0, 120);
+      } else {
+        const b = await readJson(request);
+        if (!b || typeof b !== "object" || Array.isArray(b)) return err("Body must be an object", 422);
+        const raw = String(b.content || "");
+        const m = raw.match(/^data:[^;,]*;base64,([\s\S]*)$/);
+        let bin;
+        try {
+          bin = atob((m ? m[1] : raw).replace(/\s+/g, ""));
+        } catch { return err("content must be base64 or a data: URL", 422); }
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        name = safeName(b.name);
+        type = String(b.type || "").slice(0, 120);
+      }
+      if (!bytes.length) return err("That file is empty", 422);
+      if (bytes.length > STORAGE_MAX_BYTES) {
+        return err(`Files are limited to ${STORAGE_MAX_BYTES / 1048576} MB`, 413);
+      }
+      if (!type) {
+        const ext = name.split(".").pop().toLowerCase();
+        type = EXT_TYPE[ext] || "application/octet-stream";
+      }
+      const key = `${owner ?? "anon"}/${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}-${name}`;
+      const now = new Date().toISOString();
+      await env.FILES.put(nsKey(key), bytes, {
+        httpMetadata: { contentType: type, cacheControl: "public, max-age=86400" },
+        customMetadata: { owner: String(owner ?? "anon"), size: String(bytes.length), name, uploaded_at: now },
+      });
+      return json({ ok: true, key, url: `${origin}/app/${projectId}/api/storage/${key}`,
+                    size: bytes.length, type, name, uploaded_at: now }, 201);
+    }
+
+    // GET /api/storage/<key> — public read, matching the read policy the
+    // collection routes already use (a guestbook must work while signed out).
+    // Keys carry 12 random hex characters, so they are not enumerable.
+    if (method === "GET" && seg[1]) {
+      const key = seg.slice(1).join("/");
+      let obj;
+      try { obj = await env.FILES.get(nsKey(key)); } catch { return err("Storage unavailable", 503); }
+      if (!obj) return err("Not found", 404);
+      const meta = (obj.httpMetadata || {});
+      const name = (obj.customMetadata || {}).name || key.split("/").pop() || "file";
+      const type = meta.contentType || "application/octet-stream";
+      const headers = {
+        "Content-Type": type,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Length": String(obj.size),
+        "Cache-Control": "public, max-age=86400",
+        // Served from the API origin, never from the app's own origin, and
+        // fenced off anyway: an HTML or SVG payload cannot execute there.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "Access-Control-Allow-Origin": "*",
+      };
+      if (/text\/html|svg|xhtml|xml/i.test(type)) {
+        headers["Content-Disposition"] = `attachment; filename="${name.replace(/["\\]/g, "_")}"`;
+      }
+      return new Response(obj.body, { headers });
+    }
+
+    // DELETE /api/storage/<key> — sign-in required; a signed-in user may remove
+    // their own file, or any anonymous one (otherwise anonymous uploads could
+    // never be cleaned up by anyone).
+    if (method === "DELETE" && seg[1]) {
+      if (!sess) return err("Sign in to delete files", 401);
+      const key = seg.slice(1).join("/");
+      let obj;
+      try { obj = await env.FILES.get(nsKey(key)); } catch { return err("Storage unavailable", 503); }
+      if (!obj) return err("Not found", 404);
+      const mine = (obj.customMetadata || {}).owner;
+      if (mine && mine !== "anon" && mine !== String(sess.uid)) {
+        return err("That file belongs to another user", 403);
+      }
+      await env.FILES.delete(nsKey(key));
+      return json({ ok: true, key });
+    }
+
+    return err("Unknown storage route", 404);
   }
 
   // ── CRUD: /app/:id/api/:collection[/:rowId] ──
@@ -2301,9 +2513,25 @@ export default {
         return json({ user: u || null });
       }
 
+      // Favicon / site icon: answered for every app on this origin BEFORE the
+      // session gate below. Measured before this existed: GET /favicon.ico ->
+      // 401 {"error":"Unauthorized"}, which printed two red console errors on
+      // every page a visitor opened, for a file nobody asked for.
+      if ((path === "/favicon.ico" || path === "/icon.svg") && (method === "GET" || method === "HEAD")) {
+        return faviconResponse();
+      }
+
       // ── everything below requires a session ────────────────────────
       const user = await requireUser(request, env);
-      if (!user) return err("Unauthorized", 401);
+      if (!user) {
+        // Every route defined below this gate is /api/*. So a path that is not
+        // /api/* is simply one we do not have, and a missing page is a 404
+        // whether or not you are signed in. Answering 401 here told every
+        // anonymous visitor — and every automatic favicon fetch — that they
+        // needed an account for a URL that does not exist.
+        if (!path.startsWith("/api/")) return err("Not found", 404);
+        return err("Unauthorized", 401);
+      }
 
       // GITHUB IMPORT — pull a repo and create a project with its files
       if (path === "/api/github/import" && method === "POST") {

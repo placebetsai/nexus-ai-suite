@@ -18,6 +18,13 @@ database_id = "cc9ab7ed-b343-4883-bf76-07f8493cba9e"
 binding = "KV"
 id = "e4f7f32a41494e4086e1ff6a1a901105"
 
+# File storage for generated apps (avatars, uploads, assets). The bucket was
+# created on 2026-09-22 but never bound, so no app could save a file — this is
+# the binding that makes /app/:id/api/storage real. 10 GB free tier.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "createstuff-files"
+
 # Not a secret (it is already public in marketpicks-ai/wrangler.toml), but the
 # analytics token itself is a Worker secret: `wrangler secret put
 # CF_ANALYTICS_TOKEN`. It is never written to this repository.
