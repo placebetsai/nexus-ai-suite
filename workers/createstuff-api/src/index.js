@@ -1617,6 +1617,29 @@ async function runDueJobs(env) {
   } catch { /* never propagate */ }
 }
 
+// Published pages are served through sites.createstuff.ai, whose edge caches
+// .js/.css for seven days while it never caches .html. Measured 2026-09-30 on
+// project 252: index.html came back cf-cache-status: DYNAMIC carrying the new
+// build's bytes, script.js came back cf-cache-status: HIT with age 4688 still
+// holding the PREVIOUS build — a fresh page wired to a stale script, which is
+// the pairing that killed it (appInit threw on script.js:244). The origin was
+// right the whole time: createstuff-api answered cache-control: no-cache with
+// the new bytes, so the staleness is purely what the edge chose to keep.
+//
+// The edge keys on the query string — measured with the same URL: script.js
+// with ?v= returned the new 7,234 bytes while the bare path returned the old
+// 10,300 — so stamping the page's OWN asset references with the publish time
+// makes every publish a cache miss for exactly the files that changed, with no
+// purge rights needed (the Pages project lives on an account this session has
+// no token for, so a purge was never an option).
+function stampAssetRefs(html, stamp) {
+  return String(html).replace(
+    /\b(src|href)=(["'])([^"']+?\.(?:m?js|css))(?:\?[^"']*)?\2/g,
+    (m, attr, q, url) =>
+      /^(?:https?:)?\/\//i.test(url) || url.startsWith("data:") ? m : `${attr}=${q}${url}?v=${stamp}${q}`
+  );
+}
+
 async function saveFiles(env, projectId, files, buildId) {
   const now = new Date().toISOString();
   for (const f of files) {
@@ -2132,6 +2155,90 @@ async function classifyWithModel(env, raw) {
   }
 }
 
+  // ── missing-element ────────────────────────────────────────────────────────
+// The check that should have caught the page this session published as
+// build 143 (2026-09-30): the HTML declared authForm, bookForm, logoutButton
+// while script.js wired #auth-form, #book-form, #logout-button, so every one
+// of the 23 lookups returned null, appInit threw "Cannot read properties of
+// null" on the first wiring line, no button on the page did anything — and
+// the verifier reported 0 flags, because no existing check ever compared the
+// script against the page it ships with.
+//
+// An id cannot appear out of thin air: if it is not declared in the HTML and
+// its string never occurs in the script (where templates and createElement
+// calls would carry it), nothing creates it and the lookup is guaranteed to
+// return null. Takes the whole file set, so it is passed `files` alongside the
+// script's own content. One aggregated flag, not one per id: the repair only
+// needs to be told the naming convention that drifted.
+function missingElements(content, allFiles) {
+  const files = allFiles || [];
+  const html = files.filter((f) => /\.html?$/i.test(f.path)).map((f) => f.content).join("\n");
+  missingElements.diag = { htmlBytes: html.length, idsHave: 0, lookups: 0, missing: 0, idHelper: false, why: "" };
+  if (!html || !content) { missingElements.diag.why = "no html or no content"; return []; }
+  const have = new Set([...html.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)].map((m) => m[1]));
+  missingElements.diag.idsHave = have.size;
+  if (!have.size) { missingElements.diag.why = "html has no id= attributes"; return []; }
+  // Ids the script CREATES itself — inside a template it injects, or an
+  // assignment to el.id — which is the only way an id can exist without being
+  // in the page. Deliberately NOT "any string literal in the script": the
+  // first draft of this used that and suppressed every lookup, because
+  // $('auth-form') obviously contains the literal "auth-form" (measured: that
+  // version reported 1 missing id where the page really had 23).
+  const made = new Set();
+  for (const m of content.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
+  for (const m of content.matchAll(/\.id\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
+  for (const m of content.matchAll(/setAttribute\(\s*["']id["']\s*,\s*["']([^"']+)["']\s*\)/g)) made.add(m[1]);
+  // Only treat $(x) as an id lookup when it is one: this script reaches for
+  // elements with getElementById (directly or through its $ wrapper), or the
+  // call names an explicit '#id'. $('.row') is a class selector and belongs to
+  // the selector-mismatch check, not here.
+  const idHelper = /\bgetElementById\b/.test(content);
+  missingElements.diag.idHelper = idHelper;
+  const seen = new Set();
+  const missing = [];
+  const near = (id) => {
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const n = norm(id);
+    for (const h of have) if (norm(h) === n && h !== id) return h;
+    return null;
+  };
+  const take = (id) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    if (have.has(id) || made.has(id)) return;
+    const h = near(id);
+    missing.push(h ? id + "->" + h : id);
+  };
+  // Only unguarded lookups are claimed, because only those can throw. A null
+  // the code defends — const x = $('x'), $('x') || fallback, $('x')?.go,
+  // if ($('x')) — fails quietly, and a heuristic that reports those as "the
+  // page dies here" would be saying something this session has not measured.
+  // Measured both ways: build 143's unguarded $('auth-form') threw and took
+  // appInit with it, while 251's const n = $('mainNav') || $('.main-nav')
+  // falls through and its page works. (Guarded-but-wrong ids — a control the
+  // script quietly skips — remain an untested gap, recorded as such.)
+  const guarded = (start, end) => {
+    const before = content.slice(Math.max(0, start - 12), start).replace(/\s+$/, "");
+    const after = content.slice(end, end + 6);
+    return /[=(]$/.test(before) || /^\s*(\|\||\?\.)/.test(after);
+  };
+  const ref = (id, start, end) => { if (!guarded(start, end)) take(id); };
+  if (idHelper) {
+    for (const m of content.matchAll(/\$\(\s*["'`]#?([^"'`)\s]+)["'`]\s*\)/g)) {
+      if (/^[.[\]]/.test(m[1])) continue; // .class or [attr] selector
+      ref(m[1], m.index, m.index + m[0].length);
+    }
+  }
+  for (const m of content.matchAll(/getElementById\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
+  for (const m of content.matchAll(/querySelector(?:All)?\(\s*["'`]#([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
+  missingElements.diag.lookups = seen.size;
+  missingElements.diag.missing = missing.length;
+  if (!missing.length) { missingElements.diag.why = "every lookup resolved"; return []; }
+  const shown = missing.slice(0, 4).join(", ");
+  return [`${missing.length} id(s), first: ${shown}`];
+}
+
+
 async function runGenerate(env, user, projectId, plan, mode, origin, buildId = null) {
   const started = Date.now();
   // The UI polls GET /api/builds/:id and appends every NEW entry it has not
@@ -2384,86 +2491,6 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   // that retry fails the build honestly instead of publishing a corpse; rule
   // warnings that survive are recorded as quality flags, because a name
   // heuristic must never be able to refuse a build that actually works.
-  // ── missing-element ────────────────────────────────────────────────────────
-// The check that should have caught the page this session published as
-// build 143 (2026-09-30): the HTML declared authForm, bookForm, logoutButton
-// while script.js wired #auth-form, #book-form, #logout-button, so every one
-// of the 23 lookups returned null, appInit threw "Cannot read properties of
-// null" on the first wiring line, no button on the page did anything — and
-// the verifier reported 0 flags, because no existing check ever compared the
-// script against the page it ships with.
-//
-// An id cannot appear out of thin air: if it is not declared in the HTML and
-// its string never occurs in the script (where templates and createElement
-// calls would carry it), nothing creates it and the lookup is guaranteed to
-// return null. Takes the whole file set, so it is passed `files` alongside the
-// script's own content. One aggregated flag, not one per id: the repair only
-// needs to be told the naming convention that drifted.
-function missingElements(content, allFiles) {
-  const files = allFiles || [];
-  const html = files.filter((f) => /\.html?$/i.test(f.path)).map((f) => f.content).join("\n");
-  missingElements.diag = { htmlBytes: html.length, idsHave: 0, lookups: 0, missing: 0, idHelper: false, why: "" };
-  if (!html || !content) { missingElements.diag.why = "no html or no content"; return []; }
-  const have = new Set([...html.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)].map((m) => m[1]));
-  missingElements.diag.idsHave = have.size;
-  if (!have.size) { missingElements.diag.why = "html has no id= attributes"; return []; }
-  // Ids the script CREATES itself — inside a template it injects, or an
-  // assignment to el.id — which is the only way an id can exist without being
-  // in the page. Deliberately NOT "any string literal in the script": the
-  // first draft of this used that and suppressed every lookup, because
-  // $('auth-form') obviously contains the literal "auth-form" (measured: that
-  // version reported 1 missing id where the page really had 23).
-  const made = new Set();
-  for (const m of content.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
-  for (const m of content.matchAll(/\.id\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
-  for (const m of content.matchAll(/setAttribute\(\s*["']id["']\s*,\s*["']([^"']+)["']\s*\)/g)) made.add(m[1]);
-  // Only treat $(x) as an id lookup when it is one: this script reaches for
-  // elements with getElementById (directly or through its $ wrapper), or the
-  // call names an explicit '#id'. $('.row') is a class selector and belongs to
-  // the selector-mismatch check, not here.
-  const idHelper = /\bgetElementById\b/.test(content);
-  const seen = new Set();
-  const missing = [];
-  const near = (id) => {
-    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
-    const n = norm(id);
-    for (const h of have) if (norm(h) === n && h !== id) return h;
-    return null;
-  };
-  const take = (id) => {
-    if (!id || seen.has(id)) return;
-    seen.add(id);
-    if (have.has(id) || made.has(id)) return;
-    const h = near(id);
-    missing.push(h ? id + "->" + h : id);
-  };
-  // Only unguarded lookups are claimed, because only those can throw. A null
-  // the code defends — const x = $('x'), $('x') || fallback, $('x')?.go,
-  // if ($('x')) — fails quietly, and a heuristic that reports those as "the
-  // page dies here" would be saying something this session has not measured.
-  // Measured both ways: build 143's unguarded $('auth-form') threw and took
-  // appInit with it, while 251's const n = $('mainNav') || $('.main-nav')
-  // falls through and its page works. (Guarded-but-wrong ids — a control the
-  // script quietly skips — remain an untested gap, recorded as such.)
-  const guarded = (start, end) => {
-    const before = content.slice(Math.max(0, start - 12), start).replace(/\s+$/, "");
-    const after = content.slice(end, end + 6);
-    return /[=(]$/.test(before) || /^\s*(\|\||\?\.)/.test(after);
-  };
-  const ref = (id, start, end) => { if (!guarded(start, end)) take(id); };
-  if (idHelper) {
-    for (const m of content.matchAll(/\$\(\s*["'`]#?([^"'`)\s]+)["'`]\s*\)/g)) {
-      if (/^[.[\]]/.test(m[1])) continue; // .class or [attr] selector
-      ref(m[1], m.index, m.index + m[0].length);
-    }
-  }
-  for (const m of content.matchAll(/getElementById\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
-  for (const m of content.matchAll(/querySelector(?:All)?\(\s*["'`]#([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
-  if (!missing.length) return [];
-  const shown = missing.slice(0, 4).join(", ");
-  return [`${missing.length} id(s), first: ${shown}`];
-}
-
 const JS_CHECKS = [
     [
       "unwired-handlers",
@@ -2520,6 +2547,21 @@ const JS_CHECKS = [
   const defectScore = (s) => (s.parse ? 1000 : 0) + s.warn.length;
   const parseT0 = Date.now();
   let problems = scanAll();
+  // Emitted even when clean. Silence is indistinguishable from "never ran",
+  // and that is exactly how build 144 shipped a page whose appInit threw
+  // while this gate reported 0 flags — the offline control flagged 15 ids on
+  // those same published files, so the line has to say what it actually saw.
+  const md = missingElements.diag || {};
+  await push(
+    "Test",
+    `Test tool: ${toolLine({ name: "script-health", endpoint: "inline", http: null, ms: Date.now() - parseT0 })} -> ` +
+      `${jsList().length} script(s) scanned | missing-element: html=${md.htmlBytes || 0}b ids=${md.idsHave || 0} lookups=${md.lookups || 0} missing=${md.missing || 0} idHelper=${md.idHelper ? 1 : 0}${md.why ? ` [${md.why}]` : ""} | ` +
+      (problems.length
+        ? `${problems.length} file(s) with defects: ${problems
+            .map((p) => `${p.f.path}=${p.parse ? "parse-broken" : p.warn.map((w) => w.flag).join(",")}`)
+            .join(" ; ")}`
+        : "0 defects")
+  );
 
   if (problems.length && Date.now() - started < 150000) {
     for (const p of problems.slice(0, 2)) {
@@ -3615,6 +3657,22 @@ export default {
         return json({ parser: "acorn", chars: code.length, error: jsSyntaxError(code) });
       }
 
+      // Temporary diagnostic: the shipped missing-element detector's verdict on
+      // caller-supplied bytes, from the real code in the real runtime. This
+      // exists because build 144's published page died on a kebab/camel id
+      // mismatch while production reported 0 flags — the offline control
+      // flagged 15 ids on those exact files, and a silence like that cannot
+      // tell "clean" apart from "never ran".
+      if (path === "/api/script-probe" && method === "POST") {
+        const b3 = await request.json().catch(() => ({}));
+        const files = [
+          { path: "index.html", content: String(b3.html || "").slice(0, 500000) },
+          { path: "script.js", content: String(b3.script || "").slice(0, 500000) },
+        ];
+        const flags = missingElements(files[1].content, files);
+        return json({ detector: "missing-element", chars: { html: files[0].content.length, script: files[1].content.length }, diag: missingElements.diag, flags });
+      }
+
       // per-project app backend + static app files (public: the app's own users)
       // Wrapped rather than awaited straight through, so a crash inside an app's
       // own handler is RECORDED instead of only becoming an opaque 500.
@@ -4307,6 +4365,27 @@ export default {
           return err("The project's index.html is missing or too small to be a real page. Build the site first.", 409);
         }
         const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
+        // Stamp this page's own js/css references with the publish time. Without
+        // it, the edge keeps serving the previous build's script.js (7-day
+        // cache) beside freshly published HTML — measured on 252, and it is
+        // what made a correctly-built page open dead. Idempotent: an existing
+        // ?v= is replaced, never stacked.
+        if (idx) {
+          const stamped = stampAssetRefs(idx.content, String(Date.now()).slice(-10));
+          if (stamped !== idx.content) {
+            const bidRow = await env.DB.prepare(
+              "SELECT build_id FROM project_files WHERE project_id=? AND build_id IS NOT NULL ORDER BY build_id DESC LIMIT 1"
+            ).bind(projectId).first();
+            await env.DB.prepare(
+              "DELETE FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
+            ).bind(projectId, idx.path, idx.path).run();
+            await env.DB.prepare(
+              "INSERT INTO project_files (project_id, build_id, path, file_path, content, updated_at) VALUES (?,?,?,?,?,?)"
+            ).bind(projectId, (bidRow && bidRow.build_id) || null, idx.path, idx.path, stamped, new Date().toISOString()).run();
+            await cacheDrop(env, filesListKey(projectId));
+            idx.content = stamped;
+          }
+        }
         const startFile = (idx ? idx.path : files[0].path).replace(/^\/+/, "");
         const publishUrl = `${PUBLISH_HOST}/${projectId}/${startFile}`;
         await env.DB.prepare(

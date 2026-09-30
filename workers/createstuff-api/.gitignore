@@ -1,0 +1,3 @@
+# The worker bundles acorn for its script-parse gate; the installed tree stays
+# out of git, package.json + package-lock.json declare the dependency.
+node_modules/

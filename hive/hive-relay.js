@@ -77,7 +77,13 @@ async function viaHttp(model, messages, maxTokens, deadline = Date.now() + 110_0
       signal: AbortSignal.timeout(Math.max(5_000, timeoutMs)),
     });
 
-  const r = await ask(maxTokens || 4000, Math.min(remaining(), 100_000));
+  // Per-attempt cap, not the job deadline: a full three-file answer needs more
+  // than the 100 s this used to allow — build 142 (2026-09-30) was cut off at
+  // exactly 100.0 s ("aborted due to timeout") while the model was still
+  // writing, after which every other backend answered 403 and the build fell
+  // back to the weaker direct model. 125 s still fits the job deadline the
+  // caller sends (130 s for a writer call), so failover keeps its margin.
+  const r = await ask(maxTokens || 4000, Math.min(remaining(), 125_000));
   const text = await r.text();
   if (!r.ok) throw new Error("http " + r.status + " " + text.slice(0, 140));
   const j = JSON.parse(text);

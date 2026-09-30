@@ -99,6 +99,40 @@
       caller that prefers **the Hive relay** (a fan-out over OpenCode's free
       roster) and falls back to `opencode.ai/zen/v1`. Every call reports the tool
       it actually ran. No paid model is in the path.
+- [x] **Generated apps a visitor can actually use — the gate that makes "done" mean done.**
+      **2026-09-30.** *Was:* five consecutive builds on the same brief produced pages
+      that opened and then did nothing while reporting `quality=clean` — 246 (3 stacked
+      `prompt()` dialogs, **no account ever created**, 4 console errors on a signed-out
+      load), 247 (`script.js` **did not parse** → `SyntaxError`, `appInit` undefined,
+      every form unwired — **published live**), 248 (`$` = `getElementById` called with
+      `'.class'` → the wiring threw inside `try{}catch{}`, so **sign-up, sign-in and
+      add-book had no handlers at all**, and `auth` never called `preventDefault()` so
+      the register click **navigated** instead of posting), 249
+      (`e=>authHandler(e,'login')` reaching `form.querySelector` → **`TypeError` on
+      every submit**), 250 (the Create-account tab only relabelled the form →
+      **`POST /auth/login 401`**, error element left empty, no account). *Shipped:* one
+      **SCRIPT-HEALTH GATE** after the missing-asset gate — bundled **acorn** parse as a
+      **hard fail**, plus five advisory checks (`unwiredHandlers`,
+      `submitNoPreventDefault`, `selectorMismatches`, `eventAsForm`, `unreachableMode`)
+      that perform **one focused single-file re-ask naming the defects** and then record
+      whatever remains as quality flags — advisory on purpose, because a name heuristic
+      must never be able to refuse a build that works. *Detector precision, measured by
+      extracting the shipped functions and running them over the 14 scripts this session
+      produced:* **every flag is a defect proven live, and the 7 healthy builds give 0
+      flags on all six checks.** *Live proof, control 250 vs treatment 251, same brief,
+      only the worker changed between them:* 251 → tab flips `authMode` to `signup` →
+      **`POST /auth/register 201`** → **`POST /reading-list 201`** → **reload →
+      `/auth/me 200` + `/reading-list?mine=1 200`** with the row still on screen, **0
+      console errors, no duplicate ids** at every step; the identical click sequence on
+      250 → **`POST /auth/login 401`**, no account. *Also measured and fixed:* the free
+      tier's **50-subrequest cap** killed a build mid-repair (`Too many subrequests by
+      single Worker invocation`) because the relay was polled on a flat 3 s cadence →
+      **backoff 2 s ×1.6 → 15 s** plus instrumentation nobody had (`polls=N` on every
+      relay call, `http-fetches=N of 50-subrequest cap` on every build): a 94.4 s writer
+      now takes **9 polls (flat cadence = 31)** and a whole build costs **23 HTTP
+      fetches**; and the missing-asset retry's **8k token cap**, too small for a full
+      stylesheet, is now **16k** with a log line saying what actually came back.
+      Deploys `ce24bfea` → `36777f72`.
 - [x] **Hive itself is real and green** — `node hive/test/readiness.test.mjs`
       → **35 pass / 0 fail, 10/10 agents on their assigned model, 7/7 agent-facing
       models answering live** (fixed 2026-09-29; see the P14 entry).
@@ -132,10 +166,31 @@
       (`createstuff.ai/{app,pricing,templates,guide}/` → 301 `/`;
       `fashionistas.ai/app/` → 301 `/`). placebets and marketpicks already
       returned real 404s (Next.js `404.html`).
-- [ ] **Keyboard accessibility** — landmarks, `aria-label`, `:focus` styles and
-      `<button>`-not-`<div>` are in place on all four sites, but **none of the
-      four has a skip-to-content link**, fashionistas has no `<main>` landmark,
-      and marketpicks has no `alt` on images. **Open.**
+- [x] **Keyboard accessibility** — **shipped and browser-verified 2026-09-29.**
+      *Was:* landmarks, `aria-label`, `:focus` styles and `<button>`-not-`<div>`
+      were in place on all four sites, but **none of the four had a
+      skip-to-content link**, fashionistas had no `<main>` landmark, and 6 real
+      fashionistas images had no `alt`. *Control (pre-fix, live):* all 4 skip
+      links MISSING, fashionistas `<main>` **0**, alt-less real images **6**,
+      createstuff anchor untargeted, marketpicks no skip link. *Shipped:* 4
+      home pages + 5 fashionistas subpages + fashionistas `404.html` +
+      `crosslister-privacy.html` + createstuff `404.html`; fashionistas home
+      `<div class="wrap">` → `<main class="wrap" id="main-content"
+      tabindex="-1">`; createstuff **two** skip links (landing → `#top`,
+      `#app` → `#main-content`) because `#app` is `display:none` pre-auth;
+      marketpicks **one** layout-level `<div id="main-content" tabIndex={-1}>`
+      instead of editing 34 pages; placebets `<main id="main-content"
+      tabIndex={-1}>` before `<OddsFormatProvider>`. *Real-browser proof, all
+      four sites:* fresh document → **Tab #1 = "Skip to content"**, computed
+      `left: -9999px → 0px`, **Enter → focus lands on the target and the hash
+      updates** (placebets `MAIN#main-content`, marketpicks `DIV#main-content`,
+      createstuff `SECTION#top`, fashionistas `MAIN#main-content`), screenshots
+      show no layout regression. *Live re-run:* every page 1 skip / 1 main /
+      1 target, both 404 pages carry the link, **alt-less 6 → 0**, **no
+      horizontal overflow anywhere**. Deploys `fashionistas-ai`,
+      `createstuff-marketing`, `placebetsai` (`7f5bd05a`), `marketpicks-ai`
+      (`23235420`); commits nexus `67c90aa`, Placebetsai-src `52c397e`,
+      marketpicks `bca776e`, all pushed.
 - [ ] **Analytics** — placebets, marketpicks and createstuff carry the Cloudflare
       beacon (placebets and marketpicks also load Plausible). **fashionistas has
       none**, and it cannot be switched on from here: `CF_API_TOKEN` is refused
@@ -311,6 +366,37 @@ Our free tier publishes real apps to real addresses with no credits — that sta
       URL returned 200 from a laptop and the same worker's four custom-domain endpoints returned
       200 — fixed with a **service binding**, control 404 twice → re-run **5/5**.
 
+      **FIX 5c — the health check itself was wrong, and that is why `failures: 1`
+      kept coming back.** With the throw rule fixed the scheduler stopped raising,
+      but some runs still reported a failure, so it was measured instead of
+      explained away. **Control, two independent measurements:** (1) latency over
+      the 24 h to 2026-09-29 20:00 UTC, read out of `cron_runs.checks_json` —
+      `predictor fallback` **p50 7,774 ms (3 of 9 runs pinned at the 10,000 ms
+      ceiling)**, `deep predictor` **p50 5,804 ms / 16,703 ms on direct calls**,
+      `odds api` **max 14,840 ms**, `mlb odds api` **max 10,000 ms**: the probe
+      ceiling was *below* the latency of the endpoints it probed; (2) three
+      direct full `housekeeping` calls on the pre-fix build → **HTTP 200 / 500 /
+      500, failures 0 / 3 / 3**, the three being `odds api`, `mlb odds api`,
+      `predictor fallback` — **all exactly 10,000 ms**, because an aborted probe
+      returns `status 0`, `json` is null and every field reads `n/a`. The
+      **scheduled 20:00:46Z full run recorded the same class of failure in D1**
+      (`ok=0`, `failures=1`) while the 20:04:47 full run was 10/10 — the
+      flakiness was the ceiling, not the endpoints. **Fixes:** `TIMEOUT_MS`
+      **10,000 → 30,000** (clears the measured maximum; worst case ~4 blocking
+      checks × 30 s, well inside the 15-minute interval, and the scheduler has no
+      per-job timeout); and the `deep predictor` assertion, which demanded
+      `structured → keyFactors>0 AND sources>0` when the route's *correct* answer
+      for an incomplete matchup is `RESEARCH_ONLY` / `confidence 0` /
+      `key_factors: []` with the reason in `missingData` (measured:
+      `["unsupported or unavailable tennis moneyline baseline"]`). **Re-run, same
+      three calls: HTTP 200 / 200 / 200, 10 checks each, failures 0 / 0 / 0** —
+      with `predictor fallback` at **12,001 / 10,765 / 11,147 ms**, i.e. every one
+      of those passes would have been a failure before. Deploy `57dd48d1`, commit
+      `e894eee`. `freshness` deliberately left at 10 s: its GDELT checks sit at
+      the cap **5/5 of the time** (dead upstream), so raising that ceiling would
+      only triple the wait for already non-blocking checks — an observation, not
+      a pass.
+
 
 - [ ] **P1 A→Z Agent cockpit**: show the planner's plan as a card you can read and approve, run the
       steps with free agents in parallel with live per-agent status + 30 s watchdogs, then a browser
@@ -477,3 +563,25 @@ Our free tier publishes real apps to real addresses with no credits — that sta
 
 **Order of work:** P0 cockpit → P0 checkpoints → P0 repo both ways → P0 backend → P1 discussion mode.
 Nothing in this list may be shown as working before it is proven live end to end.
+
+### 2026-09-30 — three defects that all presented as "the app doesn't work"
+- [x] **A model guess could veto a Build the user pressed.** `first connectt to my github lets
+      vibe code` missed the `\bconnect\b` rule (typo), so the model answered `not_build` and the
+      UI dead-ended at *"No site was built - the answer is above."* Model-sourced `not_build`
+      now fails **open** to a build (`model-not-build-overridden`); deterministic capability
+      rules still answer. Control = the user's screenshot; treatment = build 148 → 3 files,
+      38,919 chars, `repair=fixed-1`, published, **0 console errors**.
+- [x] **The verifier's silence was indistinguishable from a pass.** `missingElements` lived
+      inside `runGenerate` (proved by a 500 from `/api/script-probe`), and no line was written
+      when a check came back clean. Now at module scope, with an unconditional `script-health`
+      line (`ids/lookups/missing/why`) and `POST /api/script-probe`, which flags **build 144's
+      own published bytes with the same 15 ids** the offline control found.
+- [x] **A correctly-built page still opened dead.** The edge caches `.js` for 7 days and never
+      caches `.html`, so republishing produced fresh HTML wired to a stale script
+      (`cf-cache-status: HIT, age: 4688` vs origin `no-cache` + new bytes). Publish now stamps
+      the page's own asset references (`script.js?v=<publish time>`); the stamped URL was
+      measured serving the new bytes at `age: 0` with md5 identical to origin. 252, 251 and 255
+      re-verified in a browser at **0 console errors**; 246–250 also restamped.
+- [ ] Remaining: handset testing (no device emulation here), `/help`, createstuff map #3–#8,
+      the fashionistas analytics credential, `preview` 404, hostname detach — and no purge rights
+      for `createstuff-sites`, so pre-stamp visitors keep a cached `index.html` for up to 8 h.

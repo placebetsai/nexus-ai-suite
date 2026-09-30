@@ -546,13 +546,32 @@ function csSaveBuilds(o) { localStorage.setItem('cs_builds', JSON.stringify(o));
 
 // The preview iframe is srcdoc: <link href="styles.css"> would 404, so the
 // generated stylesheet and script get inlined into the document we render.
-function csInline(files) {
+//
+// `projectId` is optional. When it is given, the preview is handed the same
+// `window.__APP` the server injects into the served page, so an app that talks
+// to its own database works in the preview instead of only after publish —
+// otherwise the two would behave differently and "it worked in preview" would
+// be a lie.
+function csInline(files, projectId) {
   if (!Array.isArray(files) || !files.length) return '';
   const html = files.filter(f => /\.html?$/i.test(f.path))
     .sort((a, b) => String(b.content || '').length - String(a.content || '').length)[0]
     || files.find(f => String(f.content || '').includes('<html')) || files[0];
   let doc = String(html.content || '');
   if (!doc) return '';
+  const pid = parseInt(projectId, 10);
+  if (pid && !doc.includes('window.__APP=')) {
+    // The handle first (the helper reads window.__APP.api when it runs), then
+    // the helper itself by URL from the same worker a published page inlines it
+    // from — so preview and published run one copy of that code, not two.
+    const rt = `<script>window.__APP=${JSON.stringify({
+      projectId: pid,
+      api: `https://createstuff-api.fashionistas1979.workers.dev/app/${pid}/api`,
+      files: `https://createstuff-api.fashionistas1979.workers.dev/app/${pid}`,
+    })};</script><script src="https://createstuff-api.fashionistas1979.workers.dev/app/__sdk.js"></script>`;
+    if (/<\/head>/i.test(doc)) doc = doc.replace(/<\/head>/i, `${rt}</head>`);
+    else doc = rt + doc;
+  }
   const css = files.filter(f => /\.css$/i.test(f.path)).map(f => f.content).join('\n');
   const js = files.filter(f => /\.js$/i.test(f.path)).map(f => f.content).join('\n');
   // Put the app's own styles in the document unless they are already there.
@@ -667,7 +686,7 @@ async function csStartBuild(promptText, projectId, serverRow) {
       // lives in one browser is history you lose in every other one), and
       // without this link the panel could only ever show this tab's builds.
       if (r && r.buildId) b.server_build_id = r.buildId;
-      b.generated_code = csInline(files);
+      b.generated_code = csInline(files, b.project_id);
       const bytes = files.reduce((n, f) => n + String(f.content || '').length, 0);
       // The classifier answered instead of building. That is an answer, not a
       // failure — calling a correct refusal "Build failed" would teach the
@@ -1818,6 +1837,11 @@ function csPreviewPanel(build) {
   const id = String(build.id);
   return `
     <iframe id="live-preview" sandbox="allow-scripts" style="width:100%;height:100%;min-height:400px;border:none;border-radius:8px;background:#fff" srcdoc="${escapeHtml(build.generated_code)}"></iframe>
+    <div style="display:flex;gap:.5rem;align-items:center;padding:.5rem .65rem;background:var(--bg);border-top:1px solid var(--border);font-size:.78rem;color:var(--muted)">
+      <span aria-hidden="true" style="width:7px;height:7px;border-radius:50%;background:#37d39b;flex:none"></span>
+      <span>This app has its own storage and real sign-ins — what a visitor saves is still there tomorrow, on any device.</span>
+      <span data-tip="Saved items are kept on the server rather than in this browser, so they survive a refresh and show up on a phone too. Sign-in is a real email and password. If the brief has nothing to save, the app will not invent a login for it." title="Saved items are kept on the server rather than in this browser, so they survive a refresh and show up on a phone too. Sign-in is a real email and password." style="flex:none;cursor:help;border:1px solid var(--border);border-radius:50%;width:15px;height:15px;line-height:14px;text-align:center;font-size:.7rem;color:var(--muted)">?</span>
+    </div>
     <div style="display:flex;gap:.5rem;padding:.5rem;background:var(--bg2);border-top:1px solid var(--border)">
       <button onclick="deployBuild('${id}')" class="btn-primary" style="flex:1;padding:.5rem" data-tip="Puts this app on a web address other people can visit." title="Puts this app on a web address other people can visit."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg> Put online</button>
       <button onclick="loadVersions('${id}')" style="flex:1;padding:.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer" data-tip="Earlier versions of this app, so you can go back to one." title="Earlier versions of this app, so you can go back to one."><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7.5A2.5 2.5 0 0 0 5 5.5v13A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V8z"/><path d="M14 3v5h5"/></svg> Version history</button>
@@ -1858,7 +1882,7 @@ async function csShowLastBuild() {
       // the bare index.html, whose <link href="styles.css"> resolves against
       // whoever is serving the preview — which is this builder — so the app
       // would come up wearing the builder's stylesheet instead of its own.
-      const html = (b.files && b.files.length) ? csInline(b.files) : b.generated_code;
+      const html = (b.files && b.files.length) ? csInline(b.files, b.project_id) : b.generated_code;
       if (!html) continue;
       // setupBuilder() runs from init() and again when the page is shown, so
       // this can arrive twice; the second paint would swap the whole frame —
@@ -2243,7 +2267,7 @@ window.restoreVersion = async function(buildId) {
       let html = r.previewHtml || '';
       try {
         const b = await apiDirect(`/api/builds/${r.buildId}`);
-        if (b && b.files && b.files.length) html = csInline(b.files) || html;
+        if (b && b.files && b.files.length) html = csInline(b.files, b.project_id) || html;
       } catch { /* the stored preview still shows the version, one frame behind */ }
       frame.innerHTML = csPreviewPanel({ id: r.buildId, generated_code: html });
       loadVersions(r.buildId);

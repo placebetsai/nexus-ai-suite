@@ -18,7 +18,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 
 const src = fs.readFileSync(new URL('./app.js', import.meta.url), 'utf8');
-const m = src.match(/function csInline\(files\) \{[\s\S]*?\n\}/);
+const m = src.match(/function csInline\(files(, projectId)?\) \{[\s\S]*?\n\}/);
 assert.ok(m, 'csInline could not be located in app.js — the test is now testing nothing');
 
 // eslint-disable-next-line no-eval
@@ -84,4 +84,20 @@ assert.equal(csInline([]), '');
 assert.equal(csInline(null), '');
 assert.equal(csInline([{ path: 'a.txt', content: 'nothing to see' }]), 'nothing to see');
 
-console.log('csInline: 6 checks passed');
+// 7 ── the preview is handed the same window.__APP the server injects into the
+//      served page, so an app that talks to its own database behaves the same
+//      way before and after publish. Without a project id it must stay clean:
+//      there is no backend to point at.
+const withApp = csInline(build, 417);
+assert.ok(withApp.includes('window.__APP='), 'a preview with a project id must be given its backend handle');
+const handle = JSON.parse(withApp.match(/window\.__APP=(\{.*?\});/)[1]);
+assert.equal(handle.projectId, 417, 'the handle must name the right project');
+assert.equal(handle.api, 'https://createstuff-api.fashionistas1979.workers.dev/app/417/api',
+  'the handle must be an absolute API url — a relative one would hit the builder, not the backend');
+assert.ok(withApp.indexOf('window.__APP=') < withApp.indexOf('document.title'),
+  "the handle must be defined before the app's own script runs");
+assert.ok(!csInline(build).includes('window.__APP='),
+  'no project id, no handle — an app with no backend must not be told it has one');
+assert.equal(withApp.split('window.__APP=').length - 1, 1, 'the handle must appear exactly once');
+
+console.log('csInline: 12 checks passed');
