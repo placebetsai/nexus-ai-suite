@@ -4081,10 +4081,93 @@ export default {
           const mm = full.match(/^([\w.-]+)\/([\w.-]+)$/);
           if (!mm) return err("Use the owner/name form, for example placebetsai/Placebetsai", 422);
           const owner = mm[1], repo = mm[2];
+          // Declared here because both the one-file and the whole-app path
+          // below need them, and the whole-app path runs first.
+          const branch = String(b.branch || "").trim().slice(0, 250) || "main";
+          const message = String(b.message || "").trim().slice(0, 200);
+
+          // Replit's Git pane commits every changed file in one go ("stage and
+          // commit all changes"); Base44 only exports one way. Until now this
+          // route could send exactly ONE file per call, so sending a whole app
+          // meant as many pushes as it had files and that many commits behind
+          // it. `files` does it in a single commit using GitHub's Git Data API:
+          // one tree, one commit, one ref move — and it either lands whole or
+          // not at all, because nothing is written to the branch until the ref
+          // is moved at the end.
+          if (Array.isArray(b.files) && b.files.length) {
+            if (b.files.length > 60) return err("Send at most 60 files at a time", 413);
+            const entries = [];
+            let total = 0;
+            for (const f of b.files) {
+              const p = String((f && f.path) || "").trim().replace(/^\/+/, "").slice(0, 300);
+              const c = f && f.content != null ? String(f.content) : "";
+              if (!p || p.includes("..")) return err("One of those file paths is not valid", 422);
+              if (!c) return err("There is no code to send for " + p, 422);
+              total += c.length;
+              entries.push({ path: p, mode: "100644", type: "blob", content: c });
+            }
+            if (total > 4000000) return err("That is too much code to send at once (4 MB limit)", 413);
+
+            const refR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
+            if (refR.status === 409) return err("That repository has no branch named " + branch, 409);
+            let baseCommit = null;
+            if (refR.ok) {
+              const rj = await refR.json().catch(() => null);
+              baseCommit = (rj && rj.object && rj.object.sha) || null;
+            } else if (refR.status !== 404) {
+              throw ghStatusError(refR.status);
+            }
+
+            let baseTree = null;
+            if (baseCommit) {
+              const cR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/commits/${baseCommit}`);
+              if (!cR.ok) throw ghStatusError(cR.status);
+              const cj = await cR.json().catch(() => null);
+              baseTree = (cj && cj.tree && cj.tree.sha) || null;
+            }
+
+            const treeR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
+              method: "POST",
+              headers: { ...ghH, "Content-Type": "application/json" },
+              body: JSON.stringify({ ...(baseTree ? { base_tree: baseTree } : {}), tree: entries }),
+            });
+            if (!treeR.ok) throw ghStatusError(treeR.status);
+            const tj = await treeR.json().catch(() => null);
+            if (!tj || !tj.sha) throw new HttpError("GitHub built no tree for that push", 502);
+
+            const commitR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
+              method: "POST",
+              headers: { ...ghH, "Content-Type": "application/json" },
+              body: JSON.stringify({ message: message || "Update from CreateStuff", tree: tj.sha, ...(baseCommit ? { parents: [baseCommit] } : {}) }),
+            });
+            if (!commitR.ok) throw ghStatusError(commitR.status);
+            const commit = await commitR.json().catch(() => null);
+            if (!commit || !commit.sha) throw new HttpError("GitHub made no commit for that push", 502);
+
+            const refPatch = baseCommit
+              ? await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
+                  method: "PATCH",
+                  headers: { ...ghH, "Content-Type": "application/json" },
+                  body: JSON.stringify({ sha: commit.sha }),
+                })
+              : await ghFetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+                  method: "POST",
+                  headers: { ...ghH, "Content-Type": "application/json" },
+                  body: JSON.stringify({ ref: "refs/heads/" + branch, sha: commit.sha }),
+                });
+            if (refPatch.status === 409) return err("That repository has no branch named " + branch, 409);
+            if (!refPatch.ok) throw ghStatusError(refPatch.status);
+
+            return json({
+              html_url: `https://github.com/${owner}/${repo}/commit/${commit.sha}`,
+              sha: commit.sha, branch, repo: `${owner}/${repo}`,
+              files: entries.length, created: !baseCommit, mode: "many",
+            });
+          }
+
           const filePath = String(b.path || "index.html").trim().replace(/^\/+/, "").slice(0, 300);
           if (!filePath || filePath.includes("..")) return err("That file path is not valid", 422);
-          const branch = String(b.branch || "").trim().slice(0, 250) || "main";
-          const message = String(b.message || "").trim().slice(0, 200) || `Update ${filePath} from CreateStuff`;
+          const oneFileMessage = message || `Update ${filePath} from CreateStuff`;
           const content = String(b.content == null ? "" : b.content);
           if (!content) return err("There is no code to send", 422);
 
@@ -4113,7 +4196,7 @@ export default {
           const putR = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}`, {
             method: "PUT",
             headers: { ...ghH, "Content-Type": "application/json" },
-            body: JSON.stringify({ message, content: encoded, branch, ...(sha ? { sha } : {}) }),
+            body: JSON.stringify({ message: oneFileMessage, content: encoded, branch, ...(sha ? { sha } : {}) }),
           });
           if (putR.status === 409) return err("That repository has no branch named " + branch, 409);
           if (!putR.ok) throw ghStatusError(putR.status);

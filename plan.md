@@ -668,3 +668,42 @@ Nothing in this list may be shown as working before it is proven live end to end
       (`depop, ebay, poshmark, mercari, vinted, grailed` — the only shops in the extension);
       the other 15 of the 21 get ready-written kits + links, and **posting to them server-side is
       impossible without their credentials** (Q1, still waiting on the owner).
+
+### 2026-09-30 (later) — Replit parity: send the whole app, not one file
+
+- [x] **The complaint, checked instead of argued.** Owner: *"Replit and Base44 can do it — why
+      can't you?"* Searched before answering: **Replit** is two-way GitHub (import, Git pane,
+      *"stage and commit all changes"*, one-click push); **Base44** is **one-way** *"Export to
+      GitHub … a one-way connection"* and it sits on a paid plan. On the shops: **Depop's**
+      listing API is **partner-only** (`partnerapi.depop.com`), **Vinted has no public API**,
+      Poshmark/Mercari/Grailed publish none — which is why crosslisting tools scrape. So the
+      one honest parity gap on our side was this: **Replit commits every changed file in one go,
+      we could only send ONE file per push.**
+- [x] **CONTROL (live pre-fix worker):** `POST /api/github/push` with
+      `files:[{path,content}]` → **422 `{"error":"There is no code to send"}`**, and `gh`
+      read-back of `placebetsai/createstuff-e2e-probe` still `["README.md","index.html"]` —
+      nothing landed.
+- [x] **The fix** (`workers/createstuff-api/src/index.js`): `files` is now accepted — validated
+      (≤ 60 files, ≤ 4 MB, no `..` paths, no empty bodies) and written through GitHub's **Git
+      Data API**: one tree → one commit → one ref move, so the branch either changes once or not
+      at all. The single-file path is untouched.
+- [x] **Defect found by the treatment run, not by the gate:** the first deploy put the new block
+      *above* `const branch` / `const message`, so the whole-app path threw
+      `Cannot access 'branch' before initialization` → **500**. Hoisted both declarations, kept
+      `oneFileMessage` for the old path, re-deployed. (`node --check` had passed on both builds —
+      TDZ is not a syntax error, only the live call caught it.)
+- [x] **TREATMENT, server:** one call, **200 in 2.57 s**, commit **`2f37733730`** *"Send my
+      whole app from CreateStuff"* containing **exactly 3 files** (`README.md`, `src/app.js`,
+      `src/styles.css`) — one line of history, not three. Single-file regression: **200 in
+      1.29 s**, `index.html` blob updated.
+- [x] **TREATMENT, the button a person clicks** (`pushAllToGitHub`, `#github`, real Chrome,
+      signed in): *Send my whole app* → `POST /api/github/push → **200 (2,356 ms)**` → commit
+      **`93246c0bb4`** *"Whole app: 2 files, one save"* on a freshly created repo, **2 files**,
+      parent `498b77efcb` (the branch moved, it did not fork), contents byte-equal to what
+      project **259** holds; toast **"Sent 2 files to GitHub in one commit"**; **0 console
+      errors**; both `createstuff.ai` and `app.createstuff.ai` serve `app.js` sha
+      `e178a631a8e7ff84` == local.
+- [ ] Not proven: the 60-file / 4 MB rejections (routes written, never executed live), pushing
+      into a repo this account does not own, GitLab/Bitbucket. `createstuff-wholeapp-probe`
+      **stays on the account** — the `gh` token has `repo` but not `delete_repo`, so the DELETE
+      came back *"Must have admin rights to Repository."* Disclosed, not glossed.

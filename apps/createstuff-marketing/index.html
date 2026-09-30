@@ -997,9 +997,13 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
         </div>
         <div class="form-group"><label>Note (what changed)</label><input type="text" id="push-msg" value="Update from CreateStuff.ai" data-tip="A short note saying what changed, so you can find it again later." title="A short note saying what changed, so you can find it again later."></div>
         <div class="form-group"><label>The file's contents</label><textarea id="push-content" rows="6" placeholder="Paste it here, or fill it in from your latest app..."></textarea></div>
-        <div style="display:flex;gap:.5rem">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
           <button class="btn-secondary" onclick="fillPushFromBuild()" data-tip="Copies the code from your latest app into the box above." title="Copies the code from your latest app into the box above.">Copy in my latest app</button>
           <button class="btn-primary" onclick="pushToGitHub()" data-tip="Saves this file to your GitHub project." title="Saves this file to your GitHub project.">Send it to GitHub</button>
+        </div>
+        <div class="form-group" style="margin-top:.9rem"><label>Or send the whole app at once</label>
+          <button class="btn-primary" onclick="pushAllToGitHub()" data-tip="Saves every file of the app you have open to GitHub as one single save, so its history stays tidy." title="Saves every file of the app you have open to GitHub as one single save, so its history stays tidy.">Send my whole app</button>
+          <p style="color:var(--text2);font-size:.86rem;margin-top:.5rem">Uses the project name, branch and note above. Every file goes up as one save — you get one line in its history, not one per file.</p>
         </div>
       </div>
     </div>
@@ -1297,6 +1301,6 @@ html.cs-js .cs-hero-copy > *{animation:csFadeUp .85s var(--cs-ease) both;animati
   }catch(e){}
 })();
 </script>
-<script src="/app.js?v=53450a33a8ac"></script>
+<script src="/app.js?v=e178a631a8e7"></script>
 </body>
 </html>

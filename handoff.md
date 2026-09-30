@@ -1158,3 +1158,56 @@ helper answering on a real shop tab (same contract, different machine).
 `./deploy.sh pages fashionistas-ai apps/fashionistas` → deployment **`ee9bf8d5`** with
 **`environment=production`**; `fashionistas.ai` == `fashionistas-ai.pages.dev` == local
 (**429,890 B**, both containing the new text), `cf-cache-status: DYNAMIC`.
+
+### 10.9 createstuff — send the WHOLE app to GitHub in one save (Replit parity), 2026-09-30
+
+**The ask.** *"Replit and Base44 can do it — why the fuck can't you?"* Checked the claim first:
+**Replit** = two-way GitHub with *"stage and commit all changes"*; **Base44** = **one-way**
+export to GitHub on a **paid** plan; and on the shops **Depop's listing API is partner-only**,
+**Vinted has no public API** (Poshmark/Mercari/Grailed publish none). The real gap on our side:
+we could push exactly **one file per call**, so a whole app cost as many pushes — and as many
+lines of history — as it had files.
+
+**CONTROL (live pre-fix worker, 2026-09-30).** `POST /api/github/push` with
+`{"files":[{"path":"a.txt",…},{"path":"b.txt",…}]}` → **422 `{"error":"There is no code to
+send"}`**; `gh` read-back of `placebetsai/createstuff-e2e-probe` still
+`["README.md","index.html"]` — no file was created.
+
+**The fix** — `workers/createstuff-api/src/index.js`, same route, new `files` branch:
+
+- validated first: ≤ **60** files, ≤ **4 MB** total, no `..` in a path, no empty body
+  (each of those has its own message + status);
+- written through GitHub's **Git Data API** — one `POST /git/trees` (with `base_tree`), one
+  `POST /git/commits`, one `PATCH /git/refs/heads/<branch>` — so **the branch changes once or
+  not at all**; an empty repository gets `POST /git/refs` instead;
+- the single-file path is byte-for-byte the old behaviour (`oneFileMessage` keeps its default
+  `Update <file> from CreateStuff`).
+
+**Defect the treatment run caught** (and `node --check` could not: TDZ is not a syntax error):
+the first deployment put the new block above `const branch` / `const message` →
+`Cannot access 'branch' before initialization` → **500** on the very first whole-app push.
+Hoisted both above the block, re-deployed.
+
+**TREATMENT, server.** `POST /api/github/push` with 3 files → **200 in 2.57 s** → commit
+**`2f37733730`** *"Send my whole app from CreateStuff"* whose `files` array is exactly
+`["README.md","src/app.js","src/styles.css"]` — **one commit**. Single-file regression on the
+same deploy: **200 in 1.29 s**, `index.html` blob sha updated as before.
+
+**TREATMENT, the button (real Chrome, signed in, `#github`).** New **Send my whole app**
+button (`pushAllToGitHub`, `data-tip` + `title`: *"Saves every file of the app you have open to
+GitHub as one single save…"*) → `POST /api/github/push → **200 (2,356 ms)**` → commit
+**`93246c0bb4`** *"Whole app: 2 files, one save"* on a fresh repository: tree
+`README.md + index.html`, **2 files**, parent `498b77efcb`, contents byte-equal to what project
+**259** holds; toast **"Sent 2 files to GitHub in one commit"**; **0 console errors**. The
+button is on screen at `createstuff.ai/#github` (measured 191×41 px, below the fold).
+
+**Gates:** `node --check` on `index.js` and `app.js`; `apps/createstuff-marketing/cs-inline.test.mjs`
+pass, `workers/createstuff-api/versions.test.mjs` pass; worker deployment `/api/health → 200`;
+Pages `createstuff-app` + `createstuff-marketing` both verified and **both custom domains**
+(`createstuff.ai`, `app.createstuff.ai`) serve `app.js` **sha `e178a631a8e7ff84` == local**.
+
+**Disclosed, not glossed:** `createstuff-wholeapp-probe` **could not be deleted** — `gh` reports
+*"Must have admin rights to Repository."* (the token has `repo`, not `delete_repo`), so that
+probe repository stays on `placebetsai`. `createstuff-e2e-probe` was restored to `d40847eaf0`
+(`README.md + index.html`). Still unproven: the 60-file/4 MB rejections, a repo the account does
+not own, GitLab/Bitbucket.

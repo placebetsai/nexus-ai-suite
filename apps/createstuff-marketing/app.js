@@ -2874,6 +2874,46 @@ window.fillPushFromBuild = async function() {
   }
 };
 
+// Replit's Git pane has a "stage and commit all changes" button; Base44
+// exports one way. This is our version: every file of the chosen app goes up
+// in ONE commit, so the repository's history reads like a person saved their
+// work, not like sixteen separate uploads.
+window.pushAllToGitHub = async function() {
+  const repo = document.getElementById('push-repo').value.trim();
+  const branch = document.getElementById('push-branch').value.trim() || 'main';
+  const message = document.getElementById('push-msg').value.trim() || 'Update from CreateStuff.ai';
+  if (!repo) { showToast('Fill in the project name first'); return; }
+  if (!currentProjectId) { showToast('Choose an app first'); return; }
+  try {
+    const r = await api(`/api/projects/${currentProjectId}/files`);
+    const list = (r && r.files) || [];
+    const p = (f) => f.file_path || f.path || '';
+    const files = [];
+    for (const f of list) {
+      const path = p(f);
+      const content = f.content || '';
+      if (path && content) files.push({ path, content });
+    }
+    // What is on screen beats what is saved — the editor may hold work the
+    // server has not seen yet.
+    const ed = document.getElementById('editor-content');
+    if (ed && ed.value) {
+      const idx = files.findIndex((f) => /(^|\/)index\.html?$/i.test(f.path));
+      if (idx >= 0) files[idx].content = ed.value;
+      else files.push({ path: 'index.html', content: ed.value });
+    }
+    if (!files.length) { showToast('This app has no files to send yet'); return; }
+    const r2 = await api('/api/github/push', {
+      method: 'POST',
+      body: JSON.stringify({ repo, branch, message, files }),
+    });
+    showToast(`Sent ${r2.files} files to GitHub in one commit`);
+    if (r2.html_url) window.open(r2.html_url, '_blank');
+  } catch (e) {
+    showToast(String((e && e.message) || 'Push failed'));
+  }
+};
+
 window.pushToGitHub = async function() {
   const repo = document.getElementById('push-repo').value.trim();
   const path = document.getElementById('push-path').value.trim() || 'index.html';
