@@ -986,3 +986,52 @@ reverted. `STATUS.html` and `extensions/crosslister/poshmark-post.js` are other 
 uncommitted work and are never staged. Deploys this stretch: `c45c84f3` (refusal fix),
 `1941988c` (script-health + diag), `9b532a9a` (`script-probe` + `missingElements` to module
 scope), `1af309a7` (`stampAssetRefs`).
+
+### 10.6 fashionistas.ai — Multilist measured end to end; two defects fixed
+
+**What it does (measured by clicking it, not assumed).** Multilist does **not** post to the
+outside shops. `GET /api/marketplaces` returns **21** entries: **20 with `api:"deep"`** (guide +
+paste) and **1 with `api:"full"`** (fashionistas itself). The screen says so plainly — *"You post
+yourself on every shop."* The guide half genuinely works: pick an item →
+`GET /api/listings/120/platforms → 200 (278 ms)` → 21 fee-labelled checkboxes → Select all →
+`POST /api/listings/120/crosspost → 200 in ~2.05 s` → **21 saved drafts**, one per shop, each
+carrying TITLE / PRICE / META / FIELDS / TONE / DESCRIPTION / TAGS plus a real *Open listing page*
+deep link (eBay, Depop, Poshmark, Mercari, Vinted, Grailed, Etsy hrefs verified). eBay's optional
+API path is honestly switched off: `{"ok":true,"available":false,"connected":false,"env":"sandbox",
+"message":"eBay posting is not switched on for this site yet.","nextStep":"You do not need it —
+copy the kit and paste it on eBay yourself."}`.
+
+**Defect 1 — the eBay connection panel could never load (CORS preflight).**
+*Control (pre-fix, browser):* console `Request header field cache-control is not allowed by
+Access-Control-Allow-Headers in preflight response` + `net::ERR_FAILED` on `/api/ebay/status`,
+while the very same URL answered **200 with a correct ACAO from curl**.
+*Cause (measured in source):* `apps/fashionistas/index.html:2654` sends
+`headers: {"cache-control":"no-store"}`, and the worker's `Access-Control-Allow-Headers` listed
+only `Content-Type, Authorization`.
+*Fix:* `workers/fashionistas-api/src/index.js` now allows `Cache-Control` too.
+*Treatment:* a live OPTIONS preflight with the browser's exact header pair → **200**,
+`access-control-allow-headers: Content-Type, Authorization, Cache-Control`; in the page
+`GET /api/ebay/status → 200 (22 ms)` and **0 CORS errors** on two separate runs.
+
+**Defect 2 — every kit shipped a hashtag no marketplace can resolve.**
+*Control (pre-fix, same item — "White Handbag", category `Bags & Luggage/Handbags`):* all **19**
+TAGS lines read `#Bags&Luggage/Handbags`.
+*Cause:* `xlKitTags()` only removed spaces from the category *path*.
+*Fix:* take the path's leaf, lowercase it, keep letters and digits, drop it if outside 3–24 chars
+(the same word feeds eBay's comma keywords).
+*Treatment (two independent runs):* 21 kits, 19 TAGS lines, **`badTags: 0`** — every line is
+`#handbags`, Depop's is `#vintage #thrift #y2k #resale #rework #preloved #handbags`,
+`POST /crosspost → 200` in **2,047 ms** then **2,091 ms**, **0 console errors**.
+
+**Deploy trap, recorded because it cost time and looks like success.** `wrangler pages deploy .`
+with **no `--branch`** created deployment `7f112964` with **`environment=preview`**: the
+deployment URL and `master.fashionistas-ai.pages.dev` served the new bytes while `fashionistas.ai`
+and `fashionistas-ai.pages.dev` kept serving production `98abeaf5` — and `cf-cache-status: DYNAMIC`
+on the apex ruled caching out, so only the deployments API exposed the truth. Redeploying with
+`--branch main` (what `deploy.sh` and `FEDERATION.md` already specify) produced
+**`882eb790 env=production`**, after which the apex matched local md5 `c3a7fafd` byte for byte.
+**Check `environment` in the deployments API after every Pages deploy.**
+
+*Untested:* actually posting to a marketplace through an API (no marketplace credentials exist —
+20 of 21 are `deep` by design); clipboard copy showed `Copy blocked by browser` under automation,
+where the kit text is still on screen to select and copy by hand.

@@ -4270,30 +4270,36 @@ function xlKitRules(shopId){
 }
 
 function xlKitTags(rules, l){
-  const brand = String(l.brand||"resale").replace(/\s+/g,"");
-  const cat = String(l.category||"fashion").replace(/\s+/g,"");
+  /* A category arrives as a PATH — this listing's is "Bags & Luggage/Handbags" —
+     and the old code only stripped spaces, so the kits shipped
+     `#Bags&Luggage/Handbags`. No marketplace resolves a hashtag containing "&"
+     or "/", so that tag was unusable in exactly the field it was written for
+     (measured on the White Handbag crosspost, 2026-09-30). Take the leaf of the
+     path, lowercase, letters and digits only, and drop anything too short to be
+     a tag; the same word feeds eBay's comma keywords. */
+  const word = (v) => {
+    const leaf = String(v || "").split("/").pop().toLowerCase().replace(/[^a-z0-9]/g, "");
+    return leaf.length >= 3 && leaf.length <= 24 ? leaf : "";
+  };
+  const brand = word(l.brand);
+  const cat = word(l.category);
   if (rules.id === "ebay"){
     const base = rules.tags.slice();
-    if (brand) base.unshift(brand.toLowerCase());
-    if (cat) base.push(cat.toLowerCase());
+    if (brand) base.unshift(brand);
+    if (cat) base.push(cat);
     return [...new Set(base)].join(", ");
   }
   if (rules.id === "depop"){
-    const extra = ["#"+brand, "#"+cat].filter(t => t.length > 2);
+    const extra = [brand && "#" + brand, cat && "#" + cat].filter(Boolean);
     return [...new Set(rules.tags.concat(extra))].slice(0, 8).join(" ");
   }
   /* Posh/Mercari/Vinted/Grailed and every shop without bespoke rules.
      The old line here was `return rules.id === "grailed" ? "" : ""` — both
      branches empty, i.e. a dead ternary that made the comment above it a
      promise the code never kept. Grailed genuinely takes no hashtags; the
-     rest do, so give them the tags the comment already describes. Use the
-     raw values rather than `brand`/`cat` above, which default to "resale"
-     and "fashion" and would otherwise stamp #resale onto every kit. */
+     rest do, so give them the tags the comment already describes. */
   if (rules.id === "grailed") return "";
-  const raw = (v) => (v && String(v).toLowerCase() !== "unknown") ? String(v) : "";
-  const soft = [raw(l.brand), raw(l.category)]
-    .filter(Boolean)
-    .map(v => "#" + v.replace(/\s+/g, ""));
+  const soft = [brand && "#" + brand, cat && "#" + cat].filter(Boolean);
   return [...new Set(soft)].slice(0, 6).join(" ");
 }
 

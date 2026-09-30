@@ -1,4 +1,4 @@
-# TODO — both apps (updated 2026-09-29)
+# TODO — both apps (updated 2026-09-30)
 
 Status legend: `TODO` not started · `WIP` agent working · `DONE` verified live · `BLOCKED` cannot proceed
 
@@ -51,6 +51,8 @@ Every item names the agent that owns it. No item is DONE until a live HTTP/brows
 | F14 | **The category tree was dead at the API** — `canonCategory` accepted only the seven pre-tree flat words and returned `null` for anything else, and it runs on **INSERT, PUT and read** alike. A seller filing under `Bags & Luggage/Handbags` silently got `NULL` (item lands in *no* department), the same null killed the edit, and 4 of the 8 departments could never hold a listing while the UI dutifully showed `0 ITEMS` | — | — | DONE | worker `db2032e7`: `TAX_TREE` allow-list mirrors the app's `TAX`, flat legacy words still round-trip, junk still nulls — **10/10** sliced unit cases. Live: `PUT id 120 → Bags & Luggage/Handbags` **stuck**, `PUT id 98 → Men's Clothing/Outerwear` **stuck**, `GET /api/market` returns both **not** nulled. Department counts now **5 / 1 / 0 / 2 / 1 / 1 / 0 / 1 = 11 = header** (was Women's 6, Men's **0**, Bags **0** with a men's jacket and two handbags on sale) |
 | F15 | **The first safe deploy would have destroyed four live pages** — `/fees/` `/contact/` `/about/` `/privacy/` and `/site.css` existed **only on live** (a Pages deploy replaces the whole tree), and our adopted copy had been captured from `fashionistas.ai`, i.e. Cloudflare's edge-obfuscated variant (**+257 B**, `mailto` rewritten + `email-decode.min.js` injected) rather than the source | — | — | DONE | re-adopted raw from `fashionistas-ai.pages.dev` (sha `e24433e7`), `grep cdn-cgi` → **0**; 4 pages + `site.css` + a `_headers` reproducing live's `access-control-allow-origin: *`, `x-content-type-options: nosniff`, `referrer-policy: strict-origin-when-cross-origin` are now **in the repo**. Deploy `verify_pages` sha match; all 11 URLs **200** with unchanged sizes; headers unchanged. **repo == git == live** |
 | F16 | **Three phone/race defects found by measuring, not eyeballing** — (a) Multilist connect rows were `nowrap` with `flex:none` actions → page min-width ~540px → mobile Chrome widened the **layout viewport to 556px** (zoomed out, sideways scroll); (b) the floating tour button parked on the thread's **Send**: `elementFromPoint(sendCentre)` returned `#hc-fab`, `sendReachable:false` at **420/390/360** — a real tap opened the tour instead of sending; (c) async screen renders raced, so the *slowest* paint won: `Home→Shop` fast (or login's `go("home")` racing your Shop) could repaint Home on top of the screen you asked for | — | — | DONE | `tests/walk-390.mjs` **PASS — 10 screens**: every screen `scrollWidth 390 = 390`, XL `innerWidth **390**` (was 556), `Send is tappable` **PASS**, **0 console errors**; reachability re-measured at 420/390/360 → `hitCenter = BUTTON.btn btn-accent`, `coveredByFab:false`. Renders serialised in request order (tab highlight/title still instant); desktop triple-tap `shop→home→shop` settles on **Shop, 11 cards, 0 errors** |
+
+| F17 | **Multilist clicked end to end — what it really does, and two defects found in it.** It does **not** auto-post outside: `/api/marketplaces` = **21** entries, **20 `api:"deep"`** (guide + paste) + **1 `api:"full"`** (fashionistas itself), and the screen says *"You post yourself on every shop."* The guide half works: item → `platforms → 200` → 21 fee checkboxes → Select all → `crosspost → 200` → **21 saved drafts** with title/price/fields/tone/description/tags + a real *Open listing page* link per shop. **Defect (a)** the eBay panel never loaded — `index.html` sends `cache-control: no-store` but the worker allowed only `Content-Type, Authorization` → preflight failed. **Defect (b)** every kit shipped `#Bags&Luggage/Handbags`, a category **path** used as a tag, which no marketplace resolves | — | — | **DONE** | **CONTROL pre-fix:** browser shows `Request header field cache-control is not allowed by Access-Control-Allow-Headers…` + `net::ERR_FAILED` on `/api/ebay/status` while curl got **200 with ACAO**; **19/19 TAGS lines** = `#Bags&Luggage/Handbags`. **POST-FIX, two runs:** preflight → 200 with `allow-headers: …, Cache-Control`, in-page `GET /api/ebay/status → 200 (22 ms)`, **0 CORS errors**; `POST /api/listings/120/crosspost → 200` (**2,047 ms**, **2,091 ms**) → **21 kits, 19 TAGS, `badTags: 0`**, Depop `#vintage #thrift #y2k #resale #rework #preloved #handbags`, **0 console errors**. Deploy trap recorded: a no-`--branch` Pages deploy landed as `environment=preview` (apex still served yesterday's production bytes); `--branch main` → **`882eb790 env=production`**, apex md5 == local |
 
 ## C. Cross-cutting
 
@@ -153,7 +155,7 @@ Commits this session: `1555afa` `09a3ab2`.
 
 ## Status board — 2026-09-30 (reposted after this stretch's ships)
 
-**CLOSED (16)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
+**CLOSED (17)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
 position-aware false positive; relay per-attempt/timeouts raised after the measured 100.0 s
 abort; **`missing-element` detector** (proven in production via `/api/script-probe`, 15 ids on
 build 144's own bytes); **gate silence now impossible** (`script-health` line prints
@@ -162,7 +164,11 @@ control = your screenshot, treatment = build 148 → `model-not-build-overridden
 38,919 chars → published, 0 errors, `repair=fixed-1` on its first live fire); **CDN hybrid page**
 (fresh HTML + 7-day-stale `script.js` killed a correctly-built page — fixed by stamping asset
 refs at publish, measured `age:0` + md5 match on the stamped URL); builder phone-zoom unblocked;
-fashionistas E2E (login 200, listings 200, `POST /api/ai/analyze 200 in 1,867 ms`).
+fashionistas E2E (login 200, listings 200, `POST /api/ai/analyze 200 in 1,867 ms`);
+**fashionistas Multilist measured + its two defects** (eBay status killed by a `cache-control`
+preflight — control: `ERR_FAILED` in the browser vs **200 from curl**, treatment: **200 (22 ms)
+in the page, 0 CORS errors**; and the unresolvable `#Bags&Luggage/Handbags` tag — control:
+**19/19** bad, treatment: **19/19 `#handbags`, `badTags:0`**, crosspost 200 twice, 0 errors).
 
 **OPEN (6)** — Phase 5 mobile still untested on a real handset (no device emulation exists);
 `/help` pages; createstuff map #3–#8; fashionistas analytics token (needs a credential);
@@ -171,10 +177,13 @@ cached `index.html` for up to 8 h (no purge rights — `createstuff-sites` is on
 hold no token for).
 
 **WAITING-ON-YOU (4)** — Cloudflare error text/screenshot; the apex domain you already own;
-the Q1 A/B/C auto-posting answer; a mail credential for the placebets digest (all 4 Gmail app
-passwords dead, `535-5.7.8`).
+the Q1 A/B/C auto-posting answer (no marketplace here is connected: **20 of 21 are
+guide-and-paste by design**, only fashionistas itself posts for real); a mail credential for
+the placebets digest (all 4 Gmail app passwords dead, `535-5.7.8`).
 
-Live links to test: `https://sites.createstuff.ai/255/index.html` (your refusal, now built —
+Live links to test: `https://fashionistas.ai/` → sign in as demo seller → **Multilist** → click
+an item → *Select all* → *Get ready to post* (21 kits, each with **Copy kit** and an *Open
+listing page* link), `https://sites.createstuff.ai/255/index.html` (your refusal, now built —
 includes **Connect GitHub**), `https://sites.createstuff.ai/251/index.html` (E2E-proven),
 `https://sites.createstuff.ai/250/index.html` (control that cannot register),
-`https://fashionistas.ai/` → "Log in as demo seller", `https://createstuff.ai/#builder`.
+`https://createstuff.ai/#builder`.

@@ -585,3 +585,39 @@ Nothing in this list may be shown as working before it is proven live end to end
 - [ ] Remaining: handset testing (no device emulation here), `/help`, createstuff map #3–#8,
       the fashionistas analytics credential, `preview` 404, hostname detach — and no purge rights
       for `createstuff-sites`, so pre-stamp visitors keep a cached `index.html` for up to 8 h.
+
+### 2026-09-30 (later) — fashionistas Multilist, measured instead of asserted
+- [x] **What Multilist actually does (measured, because nobody had clicked it):** it does
+      **not** post to the outside shops. `/api/marketplaces` returns **21** entries, **20 with
+      `api:"deep"`** (guide + paste) and **1 with `api:"full"`** (fashionistas itself), and the
+      screen says so in its own words — *"You post yourself on every shop."* The guide half
+      genuinely works: pick an item → `GET /api/listings/120/platforms → 200` → 21 fee-labelled
+      checkboxes → Select all → `POST /api/listings/120/crosspost → 200 in ~2.05 s` → **21
+      saved drafts**, each with TITLE / PRICE / META / FIELDS / TONE / DESCRIPTION / TAGS and a
+      real *Open listing page* link (eBay, Depop, Poshmark, Mercari, Vinted, Grailed, Etsy hrefs
+      checked). eBay's optional API path is honestly switched off:
+      `{"available":false,"connected":false,"message":"eBay posting is not switched on for this
+      site yet.","nextStep":"…copy the kit and paste it on eBay yourself."}`.
+- [x] **The eBay connection panel could never load — CORS preflight.** Control (pre-fix, in the
+      browser): `Request header field cache-control is not allowed by Access-Control-Allow-Headers
+      in preflight response` + `net::ERR_FAILED` on `/api/ebay/status`, while the same URL
+      answered **200 with a correct ACAO from curl**. Cause measured: `index.html:2654` sends
+      `{"cache-control":"no-store"}` and the worker allowed only `Content-Type, Authorization`.
+      Fixed server-side; treatment = live preflight → 200 with
+      `allow-headers: Content-Type, Authorization, Cache-Control`, in-page
+      `GET /api/ebay/status → 200 (22 ms)`, **0 CORS errors**.
+- [x] **Every kit shipped an unresolvable hashtag.** Control (same item, `Bags & Luggage/Handbags`):
+      **19/19** TAGS lines read `#Bags&Luggage/Handbags` — no marketplace resolves `&` or `/` in
+      a tag. `xlKitTags()` only stripped spaces from the category *path*; it now takes the leaf,
+      lowercased, letters and digits only. Treatment, run twice: 21 kits, 19 TAGS lines,
+      **`badTags: 0`** (`#handbags` everywhere; Depop `#vintage #thrift #y2k #resale #rework
+      #preloved #handbags`), crosspost 200 in 2,047 ms then 2,091 ms, **0 console errors**.
+- [x] **A successful-looking Pages deploy can be a preview.** `wrangler pages deploy
+      --project-name=fashionistas-ai` with **no `--branch`** created `7f112964` with
+      `environment=preview`: the deployment URL and `master.…pages.dev` served the new bytes
+      while `fashionistas.ai` kept serving production `98abeaf5` — with `cf-cache-status: DYNAMIC`,
+      so caching was ruled out and only the deployments API exposed it. `--branch main` (what
+      `deploy.sh` and `FEDERATION.md` already say) produced **`882eb790 env=production`** and the
+      apex then matched local md5 byte for byte. **Always check `environment` after a deploy.**
+- [ ] Still open: auto-posting to the outside shops needs their APIs/credentials — that is the
+      Q1 A/B/C question already waiting on the owner, and no marketplace here is connected.

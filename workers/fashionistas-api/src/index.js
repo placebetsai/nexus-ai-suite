@@ -35,7 +35,14 @@ async function verifyToken(token) {
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  // Cache-Control is listed because the app itself sends it: index.html asks
+  // for `{"cache-control":"no-store"}` on /api/ebay/status and on POSTs, and a
+  // preflight that does not see the header named in Access-Control-Allow-Headers
+  // fails outright — measured 2026-09-30, the eBay connection panel in Multilist
+  // never loaded (`Request header field cache-control is not allowed by
+  // Access-Control-Allow-Headers in preflight response`) even though the same
+  // URL answered 200 with a correct ACAO from curl.
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Cache-Control",
   "Access-Control-Max-Age": "86400",
 };
 
