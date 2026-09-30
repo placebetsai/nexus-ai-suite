@@ -33,6 +33,8 @@ bucket_name = "createstuff-files"
 # analytics token itself is a Worker secret: `wrangler secret put
 # CF_ANALYTICS_TOKEN`. It is never written to this repository.
 [vars]
+# Builds call Groq from this Worker first; the laptop relay is only a fallback.
+CLOUD_FIRST = "1"
 CF_ACCOUNT_ID = "7eb89b01e9c3bec41ee24db8ecbe77f8"
 
 [ai]

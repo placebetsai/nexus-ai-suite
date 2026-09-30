@@ -58,6 +58,12 @@
 // Zone.DNS:Edit and keep returning error 10000, so that one is the only writer.
 // The Pages custom domain went active the same night. Both hosts serve the same
 // files forever: the old pages.dev links keep working, this is the pretty one.
+// Parsed by acorn (bundled with this worker) rather than by compiling a string:
+// the Workers runtime refuses `new Function`, measured 2026-09-30 —
+// `{"compiles":false}` from /api/syntax-probe — so there is no built-in way to
+// ask "does this parse?" and a broken script would otherwise ship silently.
+import { parse as acornParse } from "acorn";
+
 const PUBLISH_HOST = "https://sites.createstuff.ai";
 
 const enc = new TextEncoder();
@@ -76,7 +82,12 @@ async function getSecret(env) {
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  // PATCH was missing here until 2026-09-29. Measured before: an OPTIONS
+  // preflight from https://sites.createstuff.ai for `Access-Control-Request-Method: PATCH`
+  // answered 200 with `allow-methods: GET, POST, PUT, DELETE, OPTIONS` — so the
+  // browser blocked every update a published app tried to make, even though the
+  // route below accepts PATCH. The list is what the browser checks, not the route.
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 const json = (d, s = 200) =>
@@ -220,7 +231,31 @@ function withTool(msg, tool) {
 function toolLine(t) {
   if (!t) return "tool=none endpoint=none HTTP n/a 0ms";
   const http = t.http === null || t.http === undefined ? "n/a" : String(t.http);
-  return `tool=${t.name || "unknown"} endpoint=${t.endpoint || "none"} HTTP ${http} ${Math.round(t.ms || 0)}ms`;
+  const polls = t.polls === null || t.polls === undefined ? "" : ` polls=${t.polls}`;
+  return `tool=${t.name || "unknown"} endpoint=${t.endpoint || "none"} HTTP ${http} ${Math.round(t.ms || 0)}ms${polls}`;
+}
+
+// Cloudflare's free plan refuses the 51st subrequest in one invocation —
+// measured 2026-09-30, when build 136's missing-asset repair died on "Too many
+// subrequests by single Worker invocation" and the whole build failed instead
+// of repairing itself. HTTP fetches are the dominant cost (the relay is polled
+// once per generation) and they are the only ones a Worker can see from
+// JavaScript: D1, KV and R2 count against the same 50 but are not fetches, so
+// `fetch=N` in the build note is a FLOOR on what the build spent, not the
+// total. If the wrap itself is refused, the note says n/a rather than 0.
+let FETCH_N = 0;
+let FETCH_WRAPPED = false;
+try {
+  const realFetch = globalThis.fetch;
+  if (typeof realFetch === "function") {
+    globalThis.fetch = function (input, init) {
+      FETCH_N++;
+      return realFetch.call(this, input, init);
+    };
+    FETCH_WRAPPED = true;
+  }
+} catch (e) {
+  FETCH_WRAPPED = false;
 }
 
 // One OpenAI-compatible call. `viaRelay` picks the Hive relay when configured.
@@ -246,8 +281,16 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
       body: JSON.stringify({
         model, messages, max_tokens: maxTok, async: true,
         // Budget by size: the planner (<=1500 tokens) must return quickly so
-        // the writer still has room inside the Worker's 180s cap.
-        deadline_ms: maxTok <= 1500 ? 45000 : 110000,
+        // the writer still has room. The writer asks for 16,000 tokens and a
+        // three-file answer takes longer than the 110 s this used to allow —
+        // build 142 was cut off by the relay at 100 s mid-answer and fell back
+        // to a 10,534-char build where the relay one was 26,656. 130 s is still
+        // short enough that the repair steps below (gated at 140-150 s from
+        // start) remain reachable, and the worst case it opens — 6 s plan +
+        // 130 s write + 90 s repair = ~226 s — sits under a build we have
+        // already seen finish (142: 223,981 ms). The "180s Worker cap" this
+        // comment used to claim was never reproduced; no such timeout exists.
+        deadline_ms: maxTok <= 1500 ? 45000 : maxTok >= 16000 ? 130000 : 110000,
       }),
       signal: AbortSignal.timeout(20000),
     }).catch((e) => {
@@ -262,10 +305,20 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
     const jobUrl = String(env.HIVE_URL).replace(/\/v1\/chat\/completions\/?$/, "") + "/v1/jobs/" + s.job_id;
     relay.endpoint = jobUrl;
 
-    const budget = Date.now() + (maxTok <= 1500 ? 60000 : 125000);
+    const budget = Date.now() + (maxTok <= 1500 ? 60000 : maxTok >= 16000 ? 145000 : 125000);
     let last = "no poll yet";
+    let polls = 0;
+    // Backoff instead of a flat 3 s: the free plan allows 50 subrequests in
+    // one invocation, a build makes 3-5 relay calls, and a flat 3 s poll on a
+    // 70 s generation spends ~23 of them on that single call — which is what
+    // pushed build 136's repair step over the cap. 2 s is sooner than the old
+    // first poll, so short calls come back faster, and 15 s caps how long a
+    // long one can make us wait.
+    let wait = 2000;
     while (Date.now() < budget) {
-      await sleep(3000);
+      await sleep(wait);
+      wait = Math.min(15000, Math.round(wait * 1.6));
+      polls++;
       let j;
       try {
         const g = await fetch(jobUrl, { headers, signal: AbortSignal.timeout(15000) });
@@ -277,13 +330,18 @@ async function openAiGen(env, model, system, user, maxTok, viaRelay) {
 
       if (j.status === "done") {
         const text = String(j.content || "").trim();
-        if (!text) throw withTool("hive job finished with empty content", relay);
+        if (!text) { relay.polls = polls; throw withTool("hive job finished with empty content", relay); }
+        relay.polls = polls;
         return { text, parsed: null, model: "hive/" + (j.model || model), backend: j.backend || "relay", tool: relay };
       }
-      if (j.status === "failed") throw withTool("hive job failed: " + String(j.error || "").slice(0, 220), relay);
+      if (j.status === "failed") {
+        relay.polls = polls;
+        throw withTool("hive job failed: " + String(j.error || "").slice(0, 220), relay);
+      }
       last = "running for " + Math.round((Date.now() - (j.started || Date.now())) / 1000) + "s";
     }
     relay.ms = Date.now() - t0;
+    relay.polls = polls;
     throw withTool("hive job timed out after 150s (" + last + ")", relay);
   }
 
@@ -327,11 +385,54 @@ function withTimeout(p, ms, label) {
   return Promise.race([p, guard]).finally(() => clearTimeout(t));
 }
 
+// Groq, called straight from this Worker: a cloud provider, so a build no longer
+// depends on the laptop relay (quick tunnel -> hive-relay.js on the owner's
+// machine), which dies whenever that machine sleeps and changes URL on restart.
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+async function groqGen(env, system, user, maxTok) {
+  let last = null;
+  for (const m of [
+    { model: "llama-3.3-70b-versatile", max_tokens: Math.min(maxTok, 30000) },
+    { model: "openai/gpt-oss-120b", max_tokens: Math.min(maxTok + 2000, 30000), reasoning_effort: "low" },
+  ]) {
+    const t0 = Date.now();
+    const tool = { name: "groq", endpoint: GROQ_URL + "#" + m.model, http: null, ms: 0 };
+    try {
+      const r = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.GROQ_API_KEY },
+        body: JSON.stringify({ ...m, temperature: 0.3, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+        signal: AbortSignal.timeout(110000),
+      });
+      tool.http = r.status; tool.ms = Date.now() - t0;
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { last = withTool("groq " + m.model + " HTTP " + r.status + ": " + String(j?.error?.message || "").slice(0, 120), tool); continue; }
+      const text = String(j?.choices?.[0]?.message?.content || "").trim();
+      if (!text) { last = withTool("groq " + m.model + " returned an empty response", tool); continue; }
+      return { text, parsed: null, model: "groq/" + m.model, backend: "groq", tool };
+    } catch (e) {
+      tool.ms = Date.now() - t0;
+      last = withTool("groq " + m.model + ": " + String((e && e.message) || e), tool);
+    }
+  }
+  throw last;
+}
+
 const gen = async (env, system, user, maxTok = 8000) => {
   let last = null;
+  // 0. Cloud first (CLOUD_FIRST=1): Groq from this Worker, no laptop involved.
+  if (env.GROQ_API_KEY && env.CLOUD_FIRST === "1") {
+    try { return await groqGen(env, system, user, maxTok); }
+    catch (e) { last = e; }
+  }
   // 1. the Hive relay (one call — it already fails over across all 8 free models)
-  if (env.HIVE_URL) {
+  if (env.HIVE_URL && env.RELAY_OFF !== "1") {
     try { return await openAiGen(env, "space-bunny-free", system, user, maxTok, true); }
+    catch (e) { last = e; }
+  }
+  // 1b. Groq as a fallback when the cloud-first switch is off.
+  if (env.GROQ_API_KEY && env.CLOUD_FIRST !== "1") {
+    try { return await groqGen(env, system, user, maxTok); }
     catch (e) { last = e; }
   }
   // 2. direct Zen, in case the relay is down
@@ -346,7 +447,10 @@ const gen = async (env, system, user, maxTok = 8000) => {
     try {
       const r = await withTimeout(env.AI.run(model, {
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        max_tokens: maxTok,
+        // The free Workers AI models cap far below the 16k the writer now
+        // asks of the relay; passing it through would reject the call, and
+        // this is the last fallback in the chain.
+        max_tokens: Math.min(maxTok, 8000),
       }), 90000, "workers-ai");
       tool.ms = Date.now() - t0;
       const resp = r ? r.response : null;
@@ -525,6 +629,17 @@ function qualityFlags(files, plan) {
     flags.push(`stale-copyright-${hardcodedYear[1]}`);
   }
 
+  // Duplicate id="..." values. getElementById() returns the FIRST match, so a
+  // document carrying <input id="email"> in both a sign-in form and a register
+  // form submits the wrong one: measured on a live build (project 245,
+  // 2026-09-29) the register handler read the sign-in form's empty email field,
+  // so every first-time visitor's sign-up sent an empty address. This is a
+  // broken feature wearing valid-looking markup, which is why it is a flag.
+  const idSeen = Object.create(null);
+  for (const m of html.matchAll(/\sid="([^"]+)"/gi)) idSeen[m[1]] = (idSeen[m[1]] || 0) + 1;
+  const dupIds = Object.keys(idSeen).filter((k) => idSeen[k] > 1);
+  if (dupIds.length) flags.push(`duplicate-id:${dupIds.slice(0, 4).join(",")}`);
+
   if (/lorem ipsum|your text here|\[\s*(?:heading|title|text|copy)\s*\]/i.test(html)) flags.push("placeholder-text");
 
   // Generic template hero.
@@ -537,6 +652,349 @@ function qualityFlags(files, plan) {
   if (rendersList && !hasEmptyState) flags.push("missing-empty-state");
 
   return flags;
+}
+
+// Does this script parse? The rule verifier reads markup; it is blind to the
+// fact that the generated JavaScript does not compile, and one bad line kills
+// every handler in the file at once. Measured: project 247 (2026-09-30) shipped
+// `const dark=try{...}catch(e){false}` — a build reported "quality=clean",
+// published, and opened with appInit undefined, no sign-up handler and no list
+// load, i.e. a page where nothing worked at all.
+//
+// Parsed, never executed. sourceType "script" is what a browser uses for the
+// plain <script src> these builds emit, so a top-level await or return is
+// flagged exactly as the browser would flag it. Files that begin a line with
+// import/export are skipped: they need a module context and are not what this
+// pipeline writes.
+function jsSyntaxError(src) {
+  if (typeof src !== "string" || !src.trim()) return null;
+  if (/^\s*(?:import|export)\s/m.test(src)) return null;
+  try {
+    acornParse(src, { ecmaVersion: 2022, sourceType: "script" });
+    return null;
+  } catch (e) {
+    return e instanceof SyntaxError ? String((e && e.message) || e).slice(0, 200) : null;
+  }
+}
+
+// ── form handlers that let the browser reload the page ─────────────────────
+// Without preventDefault the browser does what it always does with a form:
+// submit it as a GET to itself, navigating away and killing the request the
+// handler had just started. Measured on project 248 (2026-09-30): the sign-up
+// handler read the fields, began the register call, and the page reloaded
+// before it could answer — no account, no message, no error.
+// Resolution is heuristic (inline body, e=>callee(), or a bare handler name,
+// plus one level of delegation), so an unresolvable binding is silently
+// skipped and the verdict is advisory, never fatal.
+function sliceBraces(src, at) {
+  let depth = 0;
+  for (let i = at; i < src.length; i++) {
+    const c = src[i];
+    if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) return src.slice(at, i + 1); }
+  }
+  return null;
+}
+function fnBody(src, name) {
+  const esc = String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pats = [
+    new RegExp("(?:^|[^\\w$.])function\\s+" + esc + "\\s*\\([^)]*\\)\\s*\\{"),
+    new RegExp("(?:^|[^\\w$.])" + esc + "\\s*=\\s*(?:async\\s+)?function\\s*\\([^)]*\\)\\s*\\{"),
+    new RegExp("(?:^|[^\\w$.])" + esc + "\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>\\s*\\{"),
+    new RegExp("(?:^|[^\\w$.])" + esc + "\\s*=\\s*(?:async\\s+)?[A-Za-z_$][\\w$]*\\s*=>\\s*\\{"),
+  ];
+  for (const p of pats) {
+    const m = p.exec(src);
+    if (!m) continue;
+    const at = src.indexOf("{", m.index);
+    if (at < 0) continue;
+    const b = sliceBraces(src, at);
+    if (b) return b;
+  }
+  return null;
+}
+function calleesPrevent(js, body) {
+  const ids = new Set();
+  for (const mm of body.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) ids.add(mm[1]);
+  for (const n of ids) {
+    const b = fnBody(js, n);
+    if (b && /preventDefault/.test(b)) return true;
+  }
+  return false;
+}
+function submitNoPreventDefault(js) {
+  if (!/addEventListener\(\s*['"]submit['"]/.test(js)) return [];
+  const out = [];
+  const seen = new Set();
+  const add = (label) => { if (!seen.has(label)) { seen.add(label); out.push(label); } };
+  const re = /addEventListener\(\s*['"]submit['"]\s*,\s*/g;
+  let m;
+  while ((m = re.exec(js))) {
+    const rest = js.slice(m.index + m[0].length);
+    const t = rest.trimStart();
+    if (/^(?:async\s+)?(?:function\b|\()/.test(t)) {
+      const at = rest.indexOf("{");
+      const body = at >= 0 ? sliceBraces(rest, at) : null;
+      if (body && !/preventDefault/.test(body) && !calleesPrevent(js, body)) add("inline-handler");
+      continue;
+    }
+    const arrow = /^([A-Za-z_$][\w$]*)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(/.exec(t);
+    const named = /^([A-Za-z_$][\w$]*)/.exec(t);
+    const target = arrow ? arrow[2] : named ? named[1] : null;
+    if (!target) continue;
+    const body = fnBody(js, target);
+    if (body && !/preventDefault/.test(body) && !calleesPrevent(js, body)) add(target);
+  }
+  return out;
+}
+
+// The helper and its call sites must agree. If const $ = id => document.getElementById(id)
+// then $('.menu-button') is always null — getElementById does not understand class
+// selectors — and `.addEventListener` on null throws on the FIRST such line, so every
+// handler defined after it in the same function never attaches (project 248,
+// 2026-09-30: book-form, login-form, register-form, logout and theme all died behind
+// one `$('.menu-button')`, and the surrounding try/catch hid it from the console).
+// The mirror case — a querySelector helper handed a bare 'id' — looks for a tag and
+// misses the element for the same reason.
+function helperStyle(js) {
+  const m = /(?:const|let|var)\s+\$\s*=\s*\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*document\.(getElementById|querySelector)\b/.exec(js);
+  return m ? m[1] : null;
+}
+function selectorMismatches(js) {
+  const style = helperStyle(js);
+  if (!style) return [];
+  const out = new Set();
+  const re = /\$\(\s*['"]([^'"]+)['"]\s*\)/g;
+  let m;
+  while ((m = re.exec(js))) {
+    const arg = m[1];
+    const plainId = /^[\w-]+$/.test(arg);
+    if (style === "getElementById" && plainId) continue;
+    if (style === "querySelector" && !plainId) continue;
+    out.add("$('" + arg + "') via " + style);
+  }
+  return [...out];
+}
+
+// The submit listener hands the EVENT to a helper whose first parameter is named
+// `form`, and that helper then calls form-only methods on it. Measured on
+// project 249 (2026-09-30): e=>authHandler(e,'login') reached
+// `async function authHandler(form,type){ form.querySelector(…) }`, threw
+// "TypeError: form.querySelector is not a function" on every submit, and
+// sign-in plus sign-up did nothing at all — while the build reported
+// "quality=clean". Events have no querySelector/reportValidity/reset; only the
+// bare event identifier counts as a giveaway (e.currentTarget means the handler
+// already knows what it is doing), and an inline handler is skipped because it
+// sees the event directly.
+function eventAsForm(js) {
+  if (!/addEventListener\(\s*['"]submit['"]/.test(js)) return [];
+  const out = [];
+  const seen = new Set();
+  const re = /addEventListener\(\s*['"]submit['"]\s*,\s*/g;
+  let m;
+  while ((m = re.exec(js))) {
+    const rest = js.slice(m.index + m[0].length);
+    const t = rest.trimStart();
+    let target = null;
+    let passesEvent = false;
+    const arrow = /^([A-Za-z_$][\w$]*)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(/.exec(t);
+    if (arrow) {
+      target = arrow[2];
+      const open = t.indexOf("(");
+      const firstArg = /^\s*([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*)/.exec(t.slice(open + 1));
+      passesEvent = !!firstArg && /^(?:e|evt|event|ev)$/.test(firstArg[1].replace(/\s/g, ""));
+    } else if (/^(?:async\s+)?(?:function\b|\()/.test(t)) {
+      continue; // inline handler: it is written against the event it receives
+    } else {
+      const bare = /^([A-Za-z_$][\w$]*)\s*[,)]/.exec(t);
+      if (!bare) continue;
+      target = bare[1];
+      passesEvent = true; // addEventListener('submit', fn) hands fn the event
+    }
+    if (!target || !passesEvent || seen.has(target)) continue;
+    seen.add(target);
+    const body = fnBody(js, target);
+    if (!body) continue;
+    const esc = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Both alternatives must name the function: an unanchored one matches the
+    // first "name=(" anywhere in the file (measured: it found "search=($" and
+    // read the parameter list as "$", so the check silently never fired).
+    const pm = new RegExp(
+      "(?:function\\s+" + esc + "\\s*\\(\\s*|" + esc + "\\s*=\\s*(?:async\\s+)?(?:function\\s*)?\\(\\s*)([A-Za-z_$][\\w$]*)"
+    ).exec(js);
+    const param = pm && pm[1];
+    if (!param) continue;
+    // Deriving the form from the event is the correct fix — leave it alone.
+    if (new RegExp("\\b" + param + "\\.(?:currentTarget|target)\\b").test(body)) continue;
+    const pesc = param.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (
+      new RegExp(
+        "\\b" + pesc + "\\.(?:querySelector|querySelectorAll|reportValidity|checkValidity|reset|elements)\\s*\\("
+      ).test(body)
+    ) {
+      out.push(target);
+    }
+  }
+  return out;
+}
+
+// A mode the code branches on but no caller ever passes. Measured on project
+// 250 (2026-09-30): the Create-account tab called showAuth('signup'), which
+// un-hid the name field and renamed the button, while the form stayed bound to
+// authHandler(e,'login') — so "Create account" POSTed /auth/login, the server
+// answered "unknown email", and no account was ever created even though
+// every line of signup code was present and correct. The branch on
+// type==='signup' was unreachable from the visitor's side of the screen.
+// Only functions that a real event listener reaches are considered, and only
+// after at least one call site with a literal has been found, so an uncalled
+// helper cannot produce a flag.
+function unreachableMode(js) {
+  if (!/addEventListener\(\s*['"](?:submit|click|change|input)['"]/.test(js)) return [];
+  const out = [];
+  const seenFn = new Set();
+
+  // Listener-reachable functions, plus one level down: the mode may be carried
+  // by a helper the listener's handler calls rather than by the handler itself.
+  const roots = new Set();
+  const re = /addEventListener\(\s*['"](?:submit|click|change|input)['"]\s*,\s*/g;
+  let m;
+  const addFrom = (t) => {
+    const arrow = /^([A-Za-z_$][\w$]*)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(/.exec(t);
+    if (arrow) { roots.add(arrow[2]); return; }
+    const bare = /^([A-Za-z_$][\w$]*)\s*[,)]/.exec(t);
+    if (bare) { roots.add(bare[1]); return; }
+    const at = t.indexOf("{");
+    if (at < 0) return;
+    const body = sliceBraces(t, at);
+    if (!body) return;
+    for (const c of body.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) roots.add(c[1]);
+  };
+  while ((m = re.exec(js))) addFrom(js.slice(m.index + m[0].length).trimStart());
+  const depth1 = new Set();
+  for (const r of roots) {
+    const b = fnBody(js, r);
+    if (!b) continue;
+    for (const c of b.matchAll(/(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) depth1.add(c[1]);
+  }
+  const reach = new Set([...roots, ...depth1]);
+
+  // Every call site of a reachable function, arguments split POSITIONALLY by a
+  // small quote-aware scanner so a ")" or a "," inside a string cannot cut them
+  // short. The declaration is skipped: `function f(a,b)` is not a call, and its
+  // own parameter names would read back as unknown arguments.
+  const callsOf = (name) => {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp("(?:^|[^\\w$.])" + esc + "\\s*\\(", "g");
+    const all = [];
+    let c;
+    while ((c = re.exec(js))) {
+      const nameStart = c.index + c[0].length - 1 - name.length;
+      const pre = js.slice(Math.max(0, nameStart - 16), nameStart);
+      if (/(?:function\s+|=\s*(?:async\s+)?|:\s*(?:async\s+)?)$/.test(pre)) continue;
+      const start = js.indexOf("(", nameStart + name.length);
+      if (start < 0) continue;
+      let depth = 0, quote = null, arg = "";
+      const args = [];
+      for (let i = start; i < js.length; i++) {
+        const ch = js[i];
+        if (quote) {
+          if (ch === "\\" && i + 1 < js.length) { arg += ch + js[i + 1]; i++; continue; }
+          if (ch === quote) quote = null;
+          arg += ch;
+          continue;
+        }
+        if (ch === "'" || ch === '"' || ch === "`") { quote = ch; arg += ch; continue; }
+        if (ch === "(") { depth++; if (depth > 1) arg += ch; continue; }
+        if (ch === ")") {
+          depth--;
+          if (depth === 0) { args.push(arg); break; }
+          if (depth > 0) arg += ch;
+          continue;
+        }
+        if (depth === 1 && ch === ",") { args.push(arg); arg = ""; continue; }
+        if (depth >= 1) arg += ch;
+      }
+      all.push(args);
+    }
+    return all;
+  };
+
+  // Reachable only means worth reading. What makes a branch provably dead is
+  // the VALUE at that parameter position: if every caller passes a literal and
+  // none of them passes the one the branch wants, the branch cannot run. The
+  // moment any caller hands over a variable the check stands down, because a
+  // variable can hold anything — measured both ways: project 250's
+  // authHandler(e,'login') passed a literal and the 'signup' branch was dead,
+  // while project 252's statusLabel(book.status || 'reading') reaches
+  // 'finished' through the data and must NOT be flagged (it was, before this
+  // position-aware rewrite).
+  for (const name of reach) {
+    if (seenFn.has(name)) continue;
+    seenFn.add(name);
+    const decl = new RegExp("(?:function\\s+" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\()([^)]*)\\)").exec(js);
+    if (!decl) continue;
+    const params = decl[1].split(",").map((s) => s.trim()).filter((s) => /^[A-Za-z_$][\w$]*$/.test(s));
+    if (!params.length) continue;
+    const body = fnBody(js, name);
+    if (!body) continue;
+    const calls = callsOf(name).filter((a) => a.length);
+    if (!calls.length) continue;
+    for (let i = 0; i < params.length; i++) {
+      const p = params[i];
+      const compared = new Set();
+      const pesc = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const fwd = new RegExp("\\b" + pesc + "\\s*([!=])==?\\s*['\"]([^'\"]+)['\"]", "g");
+      const rev = new RegExp("['\"]([^'\"]+)['\"]\\s*([!=])==?\\s*\\b" + pesc + "\\b", "g");
+      let mm;
+      while ((mm = fwd.exec(body))) compared.add(mm[2]);
+      while ((mm = rev.exec(body))) compared.add(mm[1]);
+      if (!compared.size) continue;
+      const lits = new Set();
+      let unknown = false;
+      let counted = 0;
+      for (const args of calls) {
+        const raw = i < args.length ? String(args[i]).trim() : "";
+        if (!raw) continue; // argument omitted: passes undefined, not a value
+        counted++;
+        const lit = /^['"]([^'"]*)['"]$/.exec(raw);
+        if (lit) lits.add(lit[1]);
+        else unknown = true;
+      }
+      if (!counted || !lits.size || unknown) continue;
+      for (const lit of compared) if (!lits.has(lit)) out.push(`${name}:${lit}`);
+    }
+  }
+  return [...new Set(out)];
+}
+
+// A handler-attachment function that nothing calls is invisible to every other
+// check: the file parses, the markup is right, and yet no submit handler ever
+// attaches. Project 248's wire() is invoked but throws mid-way for a different
+// reason (see selectorMismatches above); this is the sibling case where nothing
+// invokes it at all. Only a small set of conventional wiring names is
+// considered, and the verdict is advisory: a name heuristic must never be able
+// to refuse a build that actually works.
+const WIRING_NAMES = new Set([
+  "wire", "wireUp", "wireup", "wireEvents", "bindEvents", "bindHandlers",
+  "attachEvents", "setup", "initHandlers", "bindAll",
+]);
+function unwiredHandlers(src) {
+  if (typeof src !== "string") return [];
+  const out = [];
+  const decl = /(?:^|[^\w$])function\s+([A-Za-z_$][\w$]*)\s*\(/g;
+  const seen = new Set();
+  let m;
+  while ((m = decl.exec(src))) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (!WIRING_NAMES.has(name)) continue;
+    // Every occurrence followed by "(" — the declaration itself counts as one,
+    // so zero call sites means exactly one match.
+    const calls = (src.match(new RegExp("(?:^|[^\\w$.])" + name + "\\s*\\(", "g")) || []).length;
+    if (calls <= 1) out.push(name);
+  }
+  return out;
 }
 
 // Models reach for via.placeholder.com / picsum / placehold.co even when told
@@ -605,6 +1063,45 @@ OUTPUT EXACTLY 3 FILES
 "styles.css" — every visual rule.
 "script.js" — every interaction. It must run without throwing.
 
+YOUR APP COMES WITH A DATABASE AND REAL USER ACCOUNTS.
+The page is handed its own backend when it is served: window.__APP. Use it exactly as written below — that helper builds the URL, carries the sign-in token and reads the response for you.
+
+  const API = window.__APP;                          // never type a host, never type a project id
+
+  const who = await API.me();                       // signed-in user object, or null when signed out
+  await API.register("sam@example.com", "hunter22"); // a first-time visitor creates an account
+  await API.login("sam@example.com", "hunter22");
+  await API.logout();
+
+  await API.create("reading-list", { title: "Dune", author: "Herbert" })  // saved as theirs, automatically
+  const { items } = await API.list("reading-list", true)                  // true = only mine
+  const { items: everyone } = await API.list("reading-list")              // omitted = all rows, for a guestbook
+
+  // list(col, true) with nobody signed in answers the PUBLIC rows instead of throwing,
+  // so a page always renders something on first open — never code around a 401 here.
+  await API.update("reading-list", id, { done: true })                    // needs a signed-in user
+  await API.remove("reading-list", id)                                    // needs a signed-in user
+
+list() answers {items:[…]}, create()/update() answer {item:{…,id:n}}, register()/login() resolve to {user:{id,email,name}, token}. Read the name as the nested user's, e.g. const d = await API.register(e,p,n); show d.user.name. Every call returns the server's JSON or THROWS an Error carrying the server's own message — await it inside try/catch and show that message to the visitor.
+
+Do not write your own fetch() for any of this. The helper is the contract: it is what carries the token, and a request you hand-build will silently save a row that belongs to nobody.
+
+If window.__APP is missing (a file opened from disk), fall back to localStorage rather than throwing.
+
+RULES THAT HAVE FAILED IN A REAL BUILD — DO NOT REPEAT THEM:
+- NO SIGN-IN WITHOUT SIGN-UP. If the app signs anyone in, the same screen offers "Create account" (API.register) as a real form — inputs plus a submit button — never a button that opens prompt() dialogs. A sign-in form with no way to create an account locks out every first-time visitor.
+- Save through API.create, never a bare fetch. A row saved without the token does not show up in list(x, true) after a refresh — which is the entire feature.
+- Anything that must still be there tomorrow goes in the database. localStorage is for UI preferences only (theme, current tab, "don't show this again").
+- Never claim a save succeeded before the call resolves.
+- Name your startup function EXACTLY appInit: function appInit(){ ...fetch and render saved rows... }. It is called for you when the page is ready — DEFINE it, do not call it yourself (calling it too runs your startup twice). Decide signed-in state by the value of const who = await API.me() — a user object, or null when signed out. A list that only loads after a click is empty for everyone who reloads.
+- NO window.prompt() FOR INPUT AND NO alert() FOR MESSAGES. Both are blocked in the preview frame and in automated browsers: measured 2026-09-30, a build that opened three stacked prompt() dialogs for sign-up threw the error "prompt() is not supported" and NO ACCOUNT WAS EVER CREATED — a first-time visitor could not sign up at all. Sign-up is a real form on the page (email + password + name inputs, a submit button, the error text rendered beside it). Show every server message in a visible element, never in a dialog.
+- EVERY SUBMIT HANDLER CALLS e.preventDefault() AS ITS FIRST LINE. Without it the browser does what it always does with a form — reloads the page as a GET — which kills the request the handler just started: measured on project 248 (2026-09-30) a sign-up handler read the fields, began the register call, and the page reloaded before it could answer, so no account was created and no message was ever shown. async function auth(form,type){ form.preventDefault(); … }
+- THE HELPER AND ITS CALLS MUST MATCH. If you define const $ = id => document.getElementById(id), then every call is $('element-id') — NEVER $('.class'): getElementById does not understand class selectors, so it returns null, and .addEventListener on null throws, and the first throw aborts the rest of that function. Measured on project 248 (2026-09-30): a single $('.menu-button') line left sign-up, sign-in, add-book, log-out and the theme toggle with no handlers at all — and the try/catch around the wiring kept the error off the console, so nothing was visible anywhere. Use document.querySelector for classes, and do NOT wrap your wiring in try/catch.
+- THE MODE YOU SHOW MUST BE THE MODE YOU SEND. Toggling a tab or renaming a button changes only what the visitor SEES — the form is still bound to whatever mode it was wired with, so the label ends up lying about the action. Measured on project 250 (2026-09-30): $('authForm').addEventListener('submit', e=>authHandler(e,'login')) while the Create-account tab only called showAuth('signup'), so Create account posted /auth/login, the server answered that the email was unknown, and NO ACCOUNT WAS EVER CREATED even though the entire signup branch was sitting right there in the file. Hold the mode in one variable (let authMode='login'), set it in the tab handler, pass that variable to the submit handler, and make sure every mode the handler branches on is one some caller actually passes.
+- THE LISTENER HANDS YOU AN EVENT, NOT THE FORM. A submit listener's argument is the event object. If you pass it into a helper — e=>authHandler(e,'login') — then inside that helper it is STILL the event: get the form with e.currentTarget, or pass e.currentTarget to the helper instead. Naming the parameter form and calling form.querySelector / form.reportValidity / form.reset on it throws "form.querySelector is not a function" on the first click, so sign-in and sign-up do nothing at all while the page looks perfect: measured on project 249 (2026-09-30), async function authHandler(form,type){ form.preventDefault(); const submit=form.querySelector('button[type=submit]'); … } received the event from e=>authHandler(e,'login'), threw, and no account was ever created. form.preventDefault() works on the event by accident — do not read that as proof the argument is the form.
+- appInit IS HOW THE PAGE STARTS: read state, attach handlers, load data — everything a visitor can do must be reachable from it or from a function it calls as its last line. A wiring function that nothing calls is dead code no checker can see, and it produces the same symptom as a thrown one: buttons that do nothing.
+- If the brief has nothing to save and nobody to sign in, build none of this — a brochure page gets no login form and no database calls.
+
 COVER THE WHOLE PAGE, not just a hero — but ONLY with sections this brief actually calls for.
 
 RELEVANCE IS A HARD RULE. Build a checklist from the brief and emit exactly one section per item on it. Do NOT emit generic marketing sections the brief never mentioned:
@@ -640,7 +1137,9 @@ script.js must wire every interactive element: mobile nav, TABS AND EVERY in-pag
 EVERY form you output must be reachable by clicking something a user can see. If you hide a section with class="hidden", there must be a visible control that reveals it. No orphans.
 
 OUTPUT FORMAT — output ONLY this array, no prose before or after, no markdown fences, at least 4500 characters of code in total, and you MUST close the array with "]":
-[{"path":"index.html","content":"<full html, every newline escaped as \\n, every quote escaped as \\""},{"path":"styles.css","content":"..."},{"path":"script.js","content":"..."}]`;
+[{"path":"index.html","content":"<full html, every newline escaped as \\n, every quote escaped as \\""},{"path":"styles.css","content":"..."},{"path":"script.js","content":"..."}]
+
+ORDER MATTERS. index.html is the FIRST object in that array, always. The build reads your answer the moment it arrives and an answer that reaches styles.css before index.html has produced no page at all — measured on 2026-09-30, where a build returned styles.css alone and failed outright. Write index.html first, styles.css second, script.js last.`;
 
 // ── STAGE 1/3 · MANAGER ────────────────────────────────────────────────────
 // The three-agent shape Replit publishes (manager / editor / verifier), built
@@ -723,19 +1222,31 @@ FILE STORAGE — for anything a user attaches (avatar, photo, receipt, PDF, resu
     await fetch(API_BASE + "/profile", {method:"POST", headers: jsonHeaders(), body: JSON.stringify({avatar: url})});
   Render stored files straight into <img src> / <a href> — the url is absolute.
 
-Define it once at the top of script.js as a single constant:
-  const API_BASE = "__ORIGIN__/app/__ID__/api";
-and build every request from it. Never hardcode any other host.
+The page is handed its own backend address at runtime — read it, never type it:
+  const API_BASE = window.__APP.api;
+and build every request from it. Never write a host or a project id into the file:
+the same file is previewed and published, and a written-in address is wrong the
+moment either one moves. The same object also carries ready-made calls that attach
+the sign-in token for you, which is why they beat a hand-built fetch:
+  window.__APP.list(col, mine)  window.__APP.create(col, obj)  window.__APP.update(col, id, obj)
+  // list(col, true) asks for that user's own rows; with nobody signed in it answers
+  // the public rows rather than failing, so a fresh visitor never sees an error.
+  window.__APP.remove(col, id)  window.__APP.get(col, id)
+  window.__APP.register(email, pw)  window.__APP.login(email, pw)  window.__APP.logout()
+  window.__APP.me()  ->  the signed-in user object, or null (never a truthy empty object)
+Use those for rows and accounts. Use fetch only where there is no helper (file uploads below).
 
 RULES
 - Send JSON with Content-Type: application/json. Send the token as Authorization: Bearer <token>. Store the token in localStorage under "app_token", but read/write localStorage ONLY inside try/catch (the preview runs in a sandboxed iframe where it can throw SecurityError) and fall back to a plain in-memory variable.
 - Use await fetch(...) inside try/catch. On a non-ok response show a VISIBLE error message to the user. Never show success before the server confirms.
-- A form that claims to save MUST POST and MUST render the item the server returned (use its real id).
+- Never window.prompt() for input and never alert() for a message: both are blocked where this app runs (measured 2026-09-30 — a sign-up built from prompt() dialogs threw "prompt() is not supported" and no account was created). Collect input from inputs on the page; render errors into a visible element.
+- Every handler you attach must be attached from code that RUNS on load — appInit, or a function appInit calls. A wiring function defined and never invoked leaves every form dead while the file still parses, so nothing else can see it.
+- A form that claims to save MUST POST and MUST render the item the server returned (use its real id). Every submit handler starts with e.preventDefault() (or form.preventDefault()) — otherwise the browser reloads the page and cancels the request the handler just started, which is why a sign-up can appear to do nothing at all.
 - After ANY successful POST, PATCH or DELETE, RE-FETCH the collection with GET and render what the server returns. Do NOT hand-edit your local array (arr.filter(t => t.id !== id) silently fails because ids from the DOM are strings while ids from JSON are numbers). The server is the only source of truth for what is on screen.
 - Compare ids as strings: String(a) === String(b), never ===.
-- On load, GET the collection and render what comes back — not invented rows.
+- On load, GET the collection and render what comes back — not invented rows. Put that startup work in a function named EXACTLY appInit (function appInit(){ ... }): it is called for you when the page is ready. Work you only do after a click never happens for someone who just opens the page — measured 2026-09-29: an app that loaded its list only after sign-in showed an empty list on every reload while its row sat in the database.
 - Any list the user would lose on refresh (tasks, notes, bookings, messages, entries, orders) must live in the API.
-- Keep API paths absolute, built from API_BASE. Never a relative path, never another host.
+- Keep API paths absolute, built from API_BASE (which is read from window.__APP.api). Never a relative path, never another host.
 
 If the brief is purely presentational (a landing page with no user data and no accounts), you may skip the API entirely.`;
 
@@ -1582,7 +2093,28 @@ async function classifyWithModel(env, raw) {
     }
     if (parsed && parsed.kind === "not_build") {
       const reply = cleanReply(parsed.reply) || GENERIC_REPLY;
-      return { kind: "not_build", confident: true, reply, rule: "model", source: "model", model, tool, ms: Date.now() - t0 };
+      // The model path is only ever consulted when the keyword path already
+      // said "build" without confidence. Letting a model guess then turn that
+      // into a refusal is how a person pressing Build ended up at
+      // "No site was built - the answer is above." with nothing to click —
+      // measured 2026-09-30 with "first connectt to my github lets vibe code":
+      // the typo kept the deterministic connect-account rule from matching,
+      // the model guessed not_build, and the build never happened. So the
+      // keyword path keeps the last word: it said build, we build. The model's
+      // objection is recorded in the stage line instead of being shown as a
+      // wall. Capability questions the product really cannot do are still
+      // answered — those are caught deterministically, before any model runs.
+      return {
+        kind: "build",
+        confident: false,
+        reply: "",
+        rule: "model-not-build-overridden",
+        source: "model",
+        model,
+        tool,
+        ms: Date.now() - t0,
+        why: `model suggested not_build; keyword said build, so building (model said: ${reply.slice(0, 120)})`,
+      };
     }
     return { ...kw, source: "keyword", model, tool, ms: Date.now() - t0, why: "model returned no usable JSON" };
   } catch (e) {
@@ -1691,8 +2223,50 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   if (hasPlan) await push("Plan", String(manager.spec || "").trim());
 
   // ── STAGE 2/3 · EDITOR ──────────────────────────────────────────────────
-  const g = await gen(env, CODE_SYS, `${brief}${specBlock}\n\nBRIEF FROM THE USER:\n${String(plan || "").slice(0, 6000)}`, 8000);
+  // The writer gets 16,000 tokens, not 8,000: a full three-file answer runs
+  // past 8k and a torn JSON array salvages to whatever objects closed first,
+  // which is how build 140 came back with styles.css and no page. The relay
+  // deadline is unchanged (110 s) because it is keyed on maxTok <= 1500.
+  const g = await gen(env, CODE_SYS, `${brief}${specBlock}\n\nBRIEF FROM THE USER:\n${String(plan || "").slice(0, 6000)}`, 16000);
   let files = finalizeFiles(extractFiles(g));
+
+  // ── INDEX-HTML GATE ─────────────────────────────────────────────────────
+  // The writer can run out of room before it reaches the index.html object —
+  // build 140 (2026-09-30) came back with styles.css alone after a 94 s write
+  // — and with no index.html there is nothing to publish, nothing for the
+  // missing-asset gate to read and no page for the visitor. Ask for that ONE
+  // file by name: it is the smallest of the three and the only load-bearing
+  // one, and the missing-asset gate below then asks for whatever it links.
+  // This runs BEFORE the router/shim/sanitizer passes so a repaired file set
+  // is treated exactly like one that arrived whole.
+  if (!files.some((f) => /(^|\/)index\.html?$/i.test(f.path)) && Date.now() - started < 150000) {
+    const had = files.map((f) => f.path).join(", ") || "nothing parseable";
+    await push("Fix", `Fix tool: -> the editor returned ${had} and no index.html, so there is no page at all. Asking the editor for that file alone.`);
+    try {
+      const gIdx = await gen(
+        env,
+        CODE_SYS,
+        `You were asked to build a site. Your answer contained ${had} but no index.html, so there is nothing to open and nothing to publish.\n\n` +
+          `Return ONLY index.html as a JSON array of one {"path","content"} object, complete and ready to use. ` +
+          `No prose, no markdown fences, no truncation. index.html FIRST: it is the file the whole build depends on.\n\n` +
+          `BRIEF:\n${String(plan || "").slice(0, 3000)}`,
+        16000
+      );
+      const idx = finalizeFiles(extractFiles(gIdx)).find((f) => /(^|\/)index\.html?$/i.test(f.path));
+      if (idx && siteOk([idx])) {
+        files = files.concat([idx]);
+        await push("Fix", `Fix tool: ${toolLine(gIdx.tool)} -> index.html written (${idx.content.length.toLocaleString("en-US")} chars).`);
+      } else {
+        await push(
+          "Fix",
+          `Fix tool: the editor did not return an index.html (came back with [${finalizeFiles(extractFiles(gIdx)).map((f) => f.path).join(", ") || "nothing parseable"}]).`
+        );
+      }
+    } catch (e) {
+      await push("Fix", `Fix tool: could not ask for index.html (${String((e && e.message) || e).slice(0, 120)}).`);
+    }
+  }
+
   let replaced = sanitizeAssets(files);
   let routed = injectNavRouter(files);
   let shimmed = injectStorageShim(files);
@@ -1757,7 +2331,11 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
           `Do NOT return index.html, do NOT use markdown fences, and do NOT truncate.\n\n` +
           `MISSING FILES: ${missing.join(", ")}\n\n` +
           `--- index.html (for context only — do not return it) ---\n${idxRetry.slice(0, 6000)}`,
-        8000
+        // 16,000, not 8,000: a complete stylesheet for a whole app runs past
+        // 8k tokens, and a truncated JSON array parses to nothing at all —
+        // build 139 lost the build to exactly this ("the editor did not return
+        // styles.css") after the ask itself succeeded.
+        16000
       );
       const extra = finalizeFiles(extractFiles(g2));
       const added = extra.filter(
@@ -1768,7 +2346,14 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
         qFlags = qualityFlags(files, plan);
         await push("Fix", `Fix tool: ${toolLine(g2.tool)} -> wrote ${added.map((f) => f.path).join(", ")}`);
       } else {
-        await push("Fix", `Fix tool: the editor did not return ${missing.join(", ")}.`);
+        // Say what came back instead of only what did not: the next failure of
+        // this kind has to be diagnosable from the log alone.
+        const back = extra.map((f) => f.path).join(", ") || "nothing parseable";
+        const peek = String(g2.text || "").replace(/\s+/g, " ").slice(0, 140);
+        await push(
+          "Fix",
+          `Fix tool: the editor did not return ${missing.join(", ")} — it came back with [${back}] (${peek ? `start: ${peek}` : "empty"}).`
+        );
       }
     } catch (e) {
       await push("Fix", `Fix tool: could not ask for the missing files (${String((e && e.message) || e).slice(0, 120)}).`);
@@ -1781,10 +2366,225 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
     await push("Test", `Test tool: -> still missing ${missing.join(", ")} after repair. Refusing to save a broken file set.`);
   }
 
+  // ── SCRIPT-HEALTH GATE ────────────────────────────────────────────────
+  // Same principle as the missing-asset gate: a file the browser cannot run, or
+  // a handler nobody will ever reach, is a broken build — and saying so beats
+  // shipping a page where every button is dead. The repair agent only rewrites
+  // index.html, so a defective script gets re-asked FOR BY NAME — the same
+  // focused single-file retry the missing-asset gate already uses — with the
+  // defects spelled out in plain words. A file that still does not parse after
+  // that retry fails the build honestly instead of publishing a corpse; rule
+  // warnings that survive are recorded as quality flags, because a name
+  // heuristic must never be able to refuse a build that actually works.
+  // ── missing-element ────────────────────────────────────────────────────────
+// The check that should have caught the page this session published as
+// build 143 (2026-09-30): the HTML declared authForm, bookForm, logoutButton
+// while script.js wired #auth-form, #book-form, #logout-button, so every one
+// of the 23 lookups returned null, appInit threw "Cannot read properties of
+// null" on the first wiring line, no button on the page did anything — and
+// the verifier reported 0 flags, because no existing check ever compared the
+// script against the page it ships with.
+//
+// An id cannot appear out of thin air: if it is not declared in the HTML and
+// its string never occurs in the script (where templates and createElement
+// calls would carry it), nothing creates it and the lookup is guaranteed to
+// return null. Takes the whole file set, so it is passed `files` alongside the
+// script's own content. One aggregated flag, not one per id: the repair only
+// needs to be told the naming convention that drifted.
+function missingElements(content, allFiles) {
+  const files = allFiles || [];
+  const html = files.filter((f) => /\.html?$/i.test(f.path)).map((f) => f.content).join("\n");
+  missingElements.diag = { htmlBytes: html.length, idsHave: 0, lookups: 0, missing: 0, idHelper: false, why: "" };
+  if (!html || !content) { missingElements.diag.why = "no html or no content"; return []; }
+  const have = new Set([...html.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)].map((m) => m[1]));
+  missingElements.diag.idsHave = have.size;
+  if (!have.size) { missingElements.diag.why = "html has no id= attributes"; return []; }
+  // Ids the script CREATES itself — inside a template it injects, or an
+  // assignment to el.id — which is the only way an id can exist without being
+  // in the page. Deliberately NOT "any string literal in the script": the
+  // first draft of this used that and suppressed every lookup, because
+  // $('auth-form') obviously contains the literal "auth-form" (measured: that
+  // version reported 1 missing id where the page really had 23).
+  const made = new Set();
+  for (const m of content.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
+  for (const m of content.matchAll(/\.id\s*=\s*["']([^"']+)["']/g)) made.add(m[1]);
+  for (const m of content.matchAll(/setAttribute\(\s*["']id["']\s*,\s*["']([^"']+)["']\s*\)/g)) made.add(m[1]);
+  // Only treat $(x) as an id lookup when it is one: this script reaches for
+  // elements with getElementById (directly or through its $ wrapper), or the
+  // call names an explicit '#id'. $('.row') is a class selector and belongs to
+  // the selector-mismatch check, not here.
+  const idHelper = /\bgetElementById\b/.test(content);
+  const seen = new Set();
+  const missing = [];
+  const near = (id) => {
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const n = norm(id);
+    for (const h of have) if (norm(h) === n && h !== id) return h;
+    return null;
+  };
+  const take = (id) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    if (have.has(id) || made.has(id)) return;
+    const h = near(id);
+    missing.push(h ? id + "->" + h : id);
+  };
+  // Only unguarded lookups are claimed, because only those can throw. A null
+  // the code defends — const x = $('x'), $('x') || fallback, $('x')?.go,
+  // if ($('x')) — fails quietly, and a heuristic that reports those as "the
+  // page dies here" would be saying something this session has not measured.
+  // Measured both ways: build 143's unguarded $('auth-form') threw and took
+  // appInit with it, while 251's const n = $('mainNav') || $('.main-nav')
+  // falls through and its page works. (Guarded-but-wrong ids — a control the
+  // script quietly skips — remain an untested gap, recorded as such.)
+  const guarded = (start, end) => {
+    const before = content.slice(Math.max(0, start - 12), start).replace(/\s+$/, "");
+    const after = content.slice(end, end + 6);
+    return /[=(]$/.test(before) || /^\s*(\|\||\?\.)/.test(after);
+  };
+  const ref = (id, start, end) => { if (!guarded(start, end)) take(id); };
+  if (idHelper) {
+    for (const m of content.matchAll(/\$\(\s*["'`]#?([^"'`)\s]+)["'`]\s*\)/g)) {
+      if (/^[.[\]]/.test(m[1])) continue; // .class or [attr] selector
+      ref(m[1], m.index, m.index + m[0].length);
+    }
+  }
+  for (const m of content.matchAll(/getElementById\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
+  for (const m of content.matchAll(/querySelector(?:All)?\(\s*["'`]#([^"'`]+)["'`]\s*\)/g)) ref(m[1], m.index, m.index + m[0].length);
+  if (!missing.length) return [];
+  const shown = missing.slice(0, 4).join(", ");
+  return [`${missing.length} id(s), first: ${shown}`];
+}
+
+const JS_CHECKS = [
+    [
+      "unwired-handlers",
+      unwiredHandlers,
+      (n) =>
+        `${n}() is defined but nothing ever calls it, so every handler inside it stays unattached — the buttons on the page do nothing.`
+    ],
+    [
+      "submit-no-preventdefault",
+      submitNoPreventDefault,
+      (n) =>
+        `the submit handler ${n}() never calls preventDefault(), so the browser reloads the page and cancels the request it just started.`
+    ],
+    [
+      "selector-mismatch",
+      selectorMismatches,
+      (n) =>
+        `${n} is a class selector handed to an id-lookup helper. It returns null, the .addEventListener on null throws, and every handler wired after that line in the same function never attaches.`
+    ],
+    [
+      "event-passed-as-form",
+      eventAsForm,
+      (n) =>
+        `${n}(form, ...) is being handed the event but treats its first argument as the form (form.querySelector, form.reportValidity). An event has no such methods, so it throws on the first submit and nothing happens.`
+    ],
+    [
+      "missing-element",
+      missingElements,
+      (n) =>
+        `${n} — ids the script looks up unguarded and the page never declares. Each of those returns null, the first .addEventListener on null throws, and everything after it in appInit never runs: the page loads, looks finished, and no button works. Use the ids the HTML actually declares — the arrow shows the name that exists (measured on build 143, where 20 of them missed and the verifier still said 0 flags).`
+    ],
+    [
+      "unreachable-mode",
+      unreachableMode,
+      (n) => {
+        const [fn, lit] = [n.slice(0, n.lastIndexOf(":")), n.slice(n.lastIndexOf(":") + 1)];
+        return `${fn}() branches on ${lit} but no caller ever passes it, so the control that offers that choice (a tab, a toggle) only changes the label while the handler keeps sending the other mode — measured on project 250, where Create account still posted /auth/login and no account was ever created.`;
+      }
+    ]
+  ];
+  const jsList = () => files.filter((f) => /\.m?js$/i.test(f.path));
+  const scanScript = (f) => {
+    const parse = jsSyntaxError(f.content);
+    const warn = [];
+    for (const [flag, fn, say] of JS_CHECKS) {
+      // Second argument is the whole file set: some checks (missing-element)
+      // can only be judged by comparing the script with the page it ships
+      // alongside, which a single file's text cannot tell you.
+      for (const n of fn(f.content, files)) warn.push({ flag: `${flag}:${n}`, say: say(n) });
+    }
+    return { f, parse, warn };
+  };
+  const scanAll = () => jsList().map(scanScript).filter((s) => s.parse || s.warn.length);
+  const defectScore = (s) => (s.parse ? 1000 : 0) + s.warn.length;
+  const parseT0 = Date.now();
+  let problems = scanAll();
+
+  if (problems.length && Date.now() - started < 150000) {
+    for (const p of problems.slice(0, 2)) {
+      const bullets = (p.parse ? [`it does not parse: ${p.parse}`] : []).concat(p.warn.map((w) => w.say));
+      await push(
+        "Fix",
+        `Fix tool: -> ${p.f.path} has ${bullets.length} defect${bullets.length === 1 ? "" : "s"} that would leave the page unusable. Asking the editor for that file again.`
+      );
+      try {
+        const g3 = await gen(
+          env,
+          CODE_SYS,
+          `You wrote ${p.f.path}. A visitor cannot use this page because of ${bullets.length === 1 ? "this defect" : "these defects"}:\n` +
+            bullets.map((b) => `- ${b}`).join("\n") +
+            `\n\nReturn ONLY the complete corrected file as a JSON array of one {"path","content"} object. No prose, no markdown fences, no truncation. Change only what these defects require.\n\n--- ${p.f.path} ---\n${p.f.content}`,
+          // 16,000 for the same reason as the missing-asset retry: a torn JSON
+          // array salvages to nothing, and a full script is bigger than 8k.
+          16000
+        );
+        const fixed = finalizeFiles(extractFiles(g3)).find(
+          (x) => String(x.path).replace(/^\.?\//, "") === String(p.f.path).replace(/^\.?\//, "")
+        );
+        const after = fixed ? scanScript(fixed) : null;
+        if (after && defectScore(after) < defectScore(p)) {
+          files = files.map((x) => (x.path === p.f.path ? fixed : x));
+          await push(
+            "Fix",
+            `Fix tool: ${toolLine(g3.tool)} -> ${p.f.path} now ${after.parse ? "still does not parse" : "parses"} with ${after.warn.length} warning(s) left.`
+          );
+        } else {
+          await push(
+            "Fix",
+            `Fix tool: ${p.f.path} came back no better${fixed ? ` (${after.parse || `${after.warn.length} warning(s)`})` : " — the editor did not return it"}. Keeping what the editor first wrote.`
+          );
+        }
+      } catch (e) {
+        await push("Fix", `Fix tool: could not re-ask for ${p.f.path} (${String((e && e.message) || e).slice(0, 120)}).`);
+      }
+    }
+    problems = scanAll();
+  }
+
+  const stillBroken = problems.filter((p) => p.parse);
+  if (stillBroken.length) {
+    ok = false;
+    const detail = stillBroken.map((b) => `${b.f.path} (${b.parse})`).join(", ");
+    missingNote += `${missingNote ? " " : ""}${detail} — this script does not parse, so the page would open with every button dead. Build it again.`;
+    await push("Test", `Test tool: -> ${detail} still does not parse. Refusing to save a broken file set.`);
+  }
+  // Logged even when clean: a gate nobody can see cannot be told apart from a
+  // gate that is not there.
+  if (jsList().length) {
+    const parseMs = Date.now() - parseT0;
+    await push(
+      "Test",
+      `Test tool: ${toolLine({ name: "acorn", endpoint: "inline", http: null, ms: parseMs })} -> ` +
+        (stillBroken.length ? `${stillBroken.length} script(s) still do not parse` : `${jsList().length} script(s) parse cleanly`)
+    );
+  }
+
+  // The four advisory checks: they parse, so they are not fatal — they are
+  // recorded so the next build of the same brief starts from the record.
+  const warned = problems.filter((p) => p.warn.length);
+  if (warned.length) {
+    const detail = warned.map((p) => `${p.f.path}: ${p.warn.map((w) => w.flag).join(", ")}`).join("; ");
+    await push("Test", `Test tool: -> ${detail} — recorded as quality flags, not fatal.`);
+    qFlags = qFlags.concat(warned.flatMap((p) => p.warn.map((w) => w.flag)));
+  }
+
   const code = files.map((f) => f.content).join("\n");
   const apiCalls = (code.match(/\bfetch\s*\(/g) || []).length;
   const usesAuth = /auth\/(login|register)/.test(code);
-  const agentNote = `agents: classifier=${cls.source}/${cls.rule}, planner=${hasPlan ? manager.model : "off"}, writer=${g.model}, verifier=rules(${flagsBefore} flag${flagsBefore === 1 ? "" : "s"}), repair=${repairState}`;
+  const agentNote = `agents: classifier=${cls.source}/${cls.rule}, planner=${hasPlan ? manager.model : "off"}, writer=${g.model}, verifier=rules(${flagsBefore} flag${flagsBefore === 1 ? "" : "s"}), repair=${repairState}, http-fetches=${FETCH_WRAPPED ? FETCH_N : "n/a"} of 50-subrequest cap (D1/KV not countable from here)`;
 
   const note = ok
     ? `${files.length} files, ${files.reduce((n, f) => n + f.content.length, 0)} chars${replaced ? `, ${replaced} external image(s) swapped for CSS art` : ""}${routed ? ", nav-router=1" : ""}${shimmed ? ", storage-shim=1" : ""}; fetch()=${apiCalls}${usesAuth ? ", auth=yes" : ""}${qFlags.length ? `; QUALITY: ${qFlags.join(", ")}` : "; quality=clean"}; ${agentNote}`
@@ -1953,10 +2753,10 @@ async function projectFileResponse(env, projectId, filePath) {
     : /\.js$/i.test(filePath) ? "application/javascript; charset=utf-8"
     : /\.json$/i.test(filePath) ? "application/json"
       : "text/html; charset=utf-8";
-  // Only HTML carries window.__ENV; a stylesheet or a script gets the exact
-  // bytes that were built, because it has nowhere to read them from.
+  // Only HTML carries window.__ENV and window.__APP; a stylesheet or a script
+  // gets the exact bytes that were built, because neither has a page to run in.
   const content = type.startsWith("text/html")
-    ? await injectProjectEnv(env, projectId, row.content || "")
+    ? injectAppRuntime(projectId, await injectProjectEnv(env, projectId, row.content || ""))
     : (row.content || "");
   return new Response(content, {
     headers: { ...CORS, "Content-Type": type, "Cache-Control": "no-cache" },
@@ -1987,6 +2787,87 @@ async function injectProjectEnv(env, projectId, html) {
   // `\u003c` instead of `<` so a value containing </script> cannot close the
   // tag early and run as code the owner never wrote.
   const js = `<script>window.__ENV=${JSON.stringify(vars).replace(/</g, "\\u003c")};</script>`;
+  const at = html.search(/<\/head\s*>/i);
+  return at >= 0 ? html.slice(0, at) + js + html.slice(at) : js + html;
+}
+
+// ── THE APP'S OWN DATABASE AND SIGN-INS — THE MISSING WIRE ─────────────────
+// Everything on the server side has existed for a while: `app_data`,
+// `app_users`, `app_sessions` and the `/app/:id/api/*` routes that read and
+// write them (list/create/update/delete + register/login/logout/me + storage).
+// What never existed was the connection. Measured on live, before this, with a
+// real build:
+//   * the writer's prompt said nothing about a backend, so it told the app to
+//     use localStorage — a control build of "a reading list I can sign in to"
+//     produced 7 localStorage calls, 0 references to any API;
+//   * the served page carried no address for that API (`window.__APP`, 0
+//     occurrences on the published bytes);
+//   * and the CORS method list omitted PATCH, so a page that *had* the address
+//     still could not update a row it owned.
+// Three parts, all built, wired to nothing. This is the fourth part: the page
+// is told, at serve time, where its own backend lives.
+//
+// `api.createstuff.ai` is NOT used as the base: that hostname belongs to a
+// worker on a third Cloudflare account that this machine cannot deploy to, so
+// it answers with 401 for our routes. The worker's own address is the one that
+// is guaranteed to be this code.
+const APP_API_ORIGIN = "https://createstuff-api.fashionistas1979.workers.dev";
+
+// The handle plus a helper that does the parts a model reliably gets wrong.
+//
+// Measured on the first treatment build (2026-09-29, project 242): it reached
+// the backend correctly but wrote the host and project id into its own source
+// instead of reading them, and its POST carried only Content-Type — no
+// Authorization — so `owner_id` came back null and the row would have been
+// invisible to the very `?mine=1` query the same app used to load the list. A
+// personal list that cannot show the person's own items is worse than no list.
+// Both defects are now handled by the platform rather than by remembering.
+const APP_SDK = `(function(){
+  var K="app_token";
+  function tk(){ try{ return localStorage.getItem(K)||""; }catch(e){ return ""; } }
+  function hd(o){ var h={"Content-Type":"application/json"}; var t=tk(); if(t) h.Authorization="Bearer "+t; return Object.assign(h,o||{}); }
+  async function call(p,o){ o=o||{};
+    var r=await fetch(window.__APP.api+p,{method:o.method||"GET",headers:hd(o.headers),body:o.body===undefined?undefined:JSON.stringify(o.body)});
+    var d=null; try{ d=await r.json(); }catch(e){}
+    if(!r.ok) throw new Error((d&&d.error)||("Request failed ("+r.status+")"));
+    return d; }
+  function keep(d){ try{ if(d&&d.token) localStorage.setItem(K,d.token); }catch(e){} return d; }
+  window.__APP.api=window.__APP.api||"";
+  // A personal read with nobody signed in used to answer 401, and the app's own
+  // appInit logged "Sign in to read your own rows" as a console error before the
+  // page had rendered anything — measured on a cleared-storage first visit to
+  // project 246 (2026-09-30): 4 console errors on load. Ask for "mine" only when
+  // a session exists, and fall back to the public list if that session has since
+  // expired. A guest still gets public rows; they can never get someone else's.
+  window.__APP.list=function(c,mine){
+    if(!mine || !tk()) return call("/"+c);
+    return call("/"+c+"?mine=1").catch(function(){ return call("/"+c); });
+  };
+  window.__APP.get=function(c,id){ return call("/"+c+"/"+id); };
+  window.__APP.create=function(c,body){ return call("/"+c,{method:"POST",body:body}); };
+  window.__APP.update=function(c,id,body){ return call("/"+c+"/"+id,{method:"PATCH",body:body}); };
+  window.__APP.remove=function(c,id){ return call("/"+c+"/"+id,{method:"DELETE"}); };
+  window.__APP.register=function(e,p,n){ var b={email:e,password:p}; if(n) b.name=n; return call("/auth/register",{method:"POST",body:b}).then(keep); };
+  window.__APP.login=function(e,p){ return call("/auth/login",{method:"POST",body:{email:e,password:p}}).then(keep); };
+  window.__APP.logout=function(){ return call("/auth/logout",{method:"POST"}).then(function(){ try{ localStorage.removeItem(K); }catch(e){} },function(){ try{ localStorage.removeItem(K); }catch(e){} }); };
+  window.__APP.me=function(){ return call("/auth/me").then(
+    function(d){ return (d && d.user) ? d.user : null; },
+    function(){ return null; }); };
+  function whenReady(fn){ if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",fn); else fn(); }
+  whenReady(function(){
+    try { if (typeof window.appInit === "function") window.appInit(); }
+    catch (e) { console.error("appInit failed:", e); }
+  });
+})();`;
+
+function injectAppRuntime(projectId, html) {
+  if (typeof html !== "string" || !html) return html;
+  if (html.includes("window.__APP=")) return html; // already carrying it
+  const js = `<script>window.__APP=${JSON.stringify({
+    projectId: Number(projectId),
+    api: `${APP_API_ORIGIN}/app/${projectId}/api`,
+    files: `${APP_API_ORIGIN}/app/${projectId}`,
+  })};${APP_SDK}</script>`;
   const at = html.search(/<\/head\s*>/i);
   return at >= 0 ? html.slice(0, at) + js + html.slice(at) : js + html;
 }
@@ -2072,7 +2953,13 @@ async function serveAppFile(env, url, projectId, filePath) {
     : /\.json$/i.test(filePath) ? "application/json"
     : /\.(png|jpe?g|gif|webp|ico)$/i.test(filePath) ? "application/octet-stream"
       : "text/html; charset=utf-8";
-  return new Response(row.content || "", {
+  // Same treatment as projectFileResponse: an HTML page served from this path
+  // is told where its own backend is, so a preview and a published copy behave
+  // identically rather than one of them silently having no database.
+  const body = type.startsWith("text/html")
+    ? injectAppRuntime(projectId, row.content || "")
+    : (row.content || "");
+  return new Response(body, {
     headers: { ...CORS, "Content-Type": type, "Cache-Control": "no-cache" },
   });
 }
@@ -2084,6 +2971,24 @@ async function serveAppFile(env, url, projectId, filePath) {
 async function handleAppRequest(request, env, url, defer) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "app") return null;
+
+  // /app/__sdk.js — the helper, served by URL.
+  //
+  // A published page gets the helper inlined into its own bytes (see
+  // injectAppRuntime) so it costs no extra request. The builder's preview
+  // cannot: it is assembled in the browser from files it already has, and
+  // duplicating the helper in two places is how the two copies drift until the
+  // preview passes and the published site throws. One source, fetched by both.
+  if (parts[1] === "__sdk.js") {
+    return new Response(APP_SDK, {
+      headers: {
+        ...CORS,
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+      },
+    });
+  }
+
   const projectId = parseInt(parts[1], 10);
   if (!projectId) return err("unknown app", 404);
   const method = request.method;
@@ -2295,18 +3200,32 @@ async function handleAppRequest(request, env, url, defer) {
   if (seg[1] && !rowId) return err("Bad id", 422);
 
   if (method === "GET" && !rowId) {
-    const key = appListKey(projectId, col);
-    const hit = await cacheGet(env, key);
-    if (hit !== null && hit !== undefined) return json({ items: hit });
+    // `?mine=1` — a signed-in user's OWN rows.
+    //
+    // Reads below are deliberately public so a guestbook works while signed
+    // out, but a personal list that hands back everybody else's entries is not
+    // a list. Opt-in and never the default, so no existing app changes
+    // behaviour: without the flag this is byte-for-byte the old query.
+    const mine = url.searchParams.get("mine") === "1";
+    if (mine && !sess) return err("Sign in to read your own rows", 401);
+    const key = mine ? null : appListKey(projectId, col);
+    if (key) {
+      const hit = await cacheGet(env, key);
+      if (hit !== null && hit !== undefined) return json({ items: hit });
+    }
     const r = await env.DB.prepare(
-      "SELECT id, payload, owner_id, created_at, updated_at FROM app_data WHERE project_id=? AND collection=? ORDER BY id DESC LIMIT 500"
-    ).bind(projectId, col).all();
+      mine
+        ? "SELECT id, payload, owner_id, created_at, updated_at FROM app_data WHERE project_id=? AND collection=? AND owner_id=? ORDER BY id DESC LIMIT 500"
+        : "SELECT id, payload, owner_id, created_at, updated_at FROM app_data WHERE project_id=? AND collection=? ORDER BY id DESC LIMIT 500"
+    ).bind(...(mine ? [projectId, col, sess.uid] : [projectId, col])).all();
     const items = (r.results || []).map((x) => {
       let p = {};
       try { p = safeBody(JSON.parse(x.payload || "{}")); } catch { p = {}; }
       return { id: x.id, ...p, owner_id: x.owner_id, created_at: x.created_at, updated_at: x.updated_at };
     });
-    await cachePut(env, key, items);
+    // Never cached: a per-user answer sitting in a shared key would serve one
+    // person's rows to the next caller.
+    if (key) await cachePut(env, key, items);
     return json({ items });
   }
 
@@ -2589,6 +3508,8 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    // Per-invocation subrequest bookkeeping: one request, one counter.
+    FETCH_N = 0;
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -2674,6 +3595,16 @@ export default {
           out.workersAI = "ok";
         } catch (e) { out.workersAI = String((e && e.message) || e).slice(0, 90); }
         return json(out);
+      }
+
+      // Temporary diagnostic: verdict that runGenerate's script-parse gate would
+      // reach for the source it is given, from the real parser in the real
+      // runtime. (Compiling strings is not an option here — the Workers runtime
+      // refuses new Function, measured 2026-09-30.)
+      if (path === "/api/syntax-probe" && method === "POST") {
+        const b2 = await request.json().catch(() => ({}));
+        const code = String(b2.code || "");
+        return json({ parser: "acorn", chars: code.length, error: jsSyntaxError(code) });
       }
 
       // per-project app backend + static app files (public: the app's own users)
