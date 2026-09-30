@@ -1952,8 +1952,14 @@ async function startBuild(prompt) {
           showToast('Build complete!');
         } else if (buildStatus.status === 'answered') {
           clearInterval(pollInterval);
-          agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>No site was built - the answer is above.';
-          showToast('Answered above');
+          agentStatusBar.innerHTML = '<span class="status-dot active"></span>Answering…';
+          try {
+            const r = await api('/api/ai/discuss', { method: 'POST', body: JSON.stringify({ message: prompt }) });
+            addAgentMsg('Planner', escapeHtml((r && r.ok && r.reply) || 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.').replace(/\n/g, '<br>'));
+          } catch {
+            addAgentMsg('Planner', 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.');
+          }
+          agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>Answered — no app was built.';
         } else if (buildStatus.status === 'failed') {
           clearInterval(pollInterval);
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--red)"></span>Build failed';
@@ -2069,7 +2075,20 @@ function csSetChatMode(mode) {
 function csSend(text) {
   const v = String(text || '').trim();
   if (!v) return;
-  if (csChatMode() === 'talk') discuss(v); else startBuild(v);
+  // "connect to my github" is a request to connect, not a site to build: it used
+  // to go to the builder, get classified "not a build" and end with nothing.
+  if (/\b(git\s?hub|repo|repos|repository|repositories)\b/i.test(v) && /\b(connect|link|log\s?in|sign\s?in|import|open|pull|clone|push|my)\b/i.test(v)) {
+    const chat = document.getElementById('chat-messages');
+    if (chat) chat.innerHTML += `<div class="msg user"><div class="msg-avatar"></div><div class="msg-content">${escapeHtml(v)}</div></div>`;
+    addAgentMsg('Planner', 'Opening GitHub for you. Pick a repository to bring in, then tell me what to change.');
+    if (typeof renderPage === 'function') renderPage('github');
+    return;
+  }
+  // A plain question ("what's the difference between a website and a web app?")
+  // is not a build order; it used to start one and create an app nobody asked for.
+  const isQuestion = /\?\s*$/.test(v) || /^(what|why|how|who|when|where|which|should|can|could|would|is|are|do|does|explain|tell me)\b/i.test(v);
+  const buildWords = /\b(build|make|create|generate|design|code|write|clone|add|change|fix|update|redo|rebuild|landing page|website for|site for|app for|app that|page for)\b/i;
+  if (csChatMode() === 'talk' || (isQuestion && !buildWords.test(v))) discuss(v); else startBuild(v);
 }
 
 async function discuss(message) {
@@ -2237,6 +2256,9 @@ window.restoreVersion = async function(buildId) {
 };
 
 function addAgentMsg(name, msg, code) {
+  // Internal diagnostics ("Classifier tool: tool=… endpoint=https://….trycloudflare.com… HTTP 200")
+  // are for the build log, not the person.
+  if (/\btool=\S+\s+endpoint=|^Classifier tool:|trycloudflare\.com|\bpolls=\d/.test(String(msg || ''))) return;
   const chat = document.getElementById('chat-messages');
   const AGENT_IC = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6z"/><path d="M12 8.4 16 10.6v4.2M12 8.4 8 10.6v4.2M12 8.4v4.2"/></svg>';
   const icons = {};
