@@ -398,12 +398,20 @@ async function groqGen(env, system, user, maxTok) {
     const t0 = Date.now();
     const tool = { name: "groq", endpoint: GROQ_URL + "#" + m.model, http: null, ms: 0 };
     try {
-      const r = await fetch(GROQ_URL, {
+      const call = () => fetch(GROQ_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + env.GROQ_API_KEY },
         body: JSON.stringify({ ...m, temperature: 0.3, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
         signal: AbortSignal.timeout(110000),
       });
+      // The free tier caps tokens per minute; a build's classify/plan/write/repair
+      // steps can trip it. Wait the few seconds Groq asks for instead of failing over.
+      let r = await call();
+      for (let i = 0; i < 2 && r.status === 429; i++) {
+        const wait = Math.min(20, Math.max(2, Number(r.headers.get("retry-after")) || 8));
+        await sleep(wait * 1000);
+        r = await call();
+      }
       tool.http = r.status; tool.ms = Date.now() - t0;
       const j = await r.json().catch(() => null);
       if (!r.ok) { last = withTool("groq " + m.model + " HTTP " + r.status + ": " + String(j?.error?.message || "").slice(0, 120), tool); continue; }
