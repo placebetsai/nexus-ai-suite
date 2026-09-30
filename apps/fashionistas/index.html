@@ -4599,8 +4599,13 @@ async function xlCopyForBookmark(btn){
     try { await navigator.clipboard.writeText(await xlFillPayload()); done(true); } catch (e2) { console.warn("[xl] copy fallback", e2); done(false); }
   }
 }
+// A second press must take over from the first: the old listener and its
+// countdown are cleared here, not left to overwrite the newer message.
+let XL_FILL_TIMER = null, XL_FILL_ACK = null;
 function xlAutofill(){
   const st = CURRENT.xlFill; if (!st) return;
+  if (XL_FILL_TIMER) { clearTimeout(XL_FILL_TIMER); XL_FILL_TIMER = null; }
+  if (XL_FILL_ACK) { window.removeEventListener("message", XL_FILL_ACK); XL_FILL_ACK = null; }
   const l = st.l || {};
   const shops = st.picks.filter(p => XL_FILL_SHOPS.includes(p)).map(pid => {
     const rules = xlKitRules(pid);
@@ -4610,12 +4615,34 @@ function xlAutofill(){
   });
   const photos = [l.photo_url].concat(Array.isArray(l.photos) ? l.photos : []).filter(u => typeof u === "string" && /^https:\/\//.test(u));
   const msg = document.getElementById("xl-fill-msg");
-  if (msg) msg.textContent = "Opening " + shops.length + " shop" + (shops.length===1?"":"s") + "…";
+  const shopWord = shops.length === 1 ? "shop" : "shops";
+  if (msg) msg.textContent = "Opening " + shops.length + " " + shopWord + "…";
+  const stop = () => {
+    if (XL_FILL_TIMER) { clearTimeout(XL_FILL_TIMER); XL_FILL_TIMER = null; }
+    if (XL_FILL_ACK) { window.removeEventListener("message", XL_FILL_ACK); XL_FILL_ACK = null; }
+  };
   const onAck = (e) => {
     if (e.source !== window || !e.data || e.data.source !== "fashionistas-crosslister" || e.data.type !== "FASH_CROSSLIST_ACK") return;
-    window.removeEventListener("message", onAck);
+    stop();
     if (msg) msg.textContent = e.data.ok ? "Opened in new tabs. Check each one and press Post there." : ("The Crosslister couldn't start: " + (e.data.error || "unknown error"));
   };
+  // Nobody may be listening — the helper can be switched off, mid-update or
+  // waiting for this page to be reloaded. Measured 2026-09-30: with no answer
+  // the line stayed on "Opening 6 shops…" at 5 s and at 10 s, forever, which
+  // reads as the button being broken. After 4 seconds say what to do instead.
+  // The kits for every shop are already on this page, so the person can always
+  // carry on by hand while the helper is sorted out.
+  const allPicks = (st.picks || []).length;
+  XL_FILL_TIMER = setTimeout(() => {
+    if (!msg) return;
+    stop();
+    msg.innerHTML = "Nothing opened yet — the shop helper is not switched on in this browser, " +
+      "or it needs this page reloaded after installing. Use the <b>Fashionistas Fill</b> bookmark " +
+      "above (no install), or switch the Crosslister on and press the button again. " +
+      "Every one of your " + allPicks + " picked " + (allPicks === 1 ? "shop" : "shops") +
+      " already has its text ready in the kits below.";
+  }, 4000);
+  XL_FILL_ACK = onAck;
   window.addEventListener("message", onAck);
   window.postMessage({ source: "fashionistas", type: "FASH_CROSSLIST", job: { listingId: l.id || null, shops, photos } }, location.origin);
 }

@@ -54,6 +54,7 @@ Every item names the agent that owns it. No item is DONE until a live HTTP/brows
 | F16 | **Three phone/race defects found by measuring, not eyeballing** — (a) Multilist connect rows were `nowrap` with `flex:none` actions → page min-width ~540px → mobile Chrome widened the **layout viewport to 556px** (zoomed out, sideways scroll); (b) the floating tour button parked on the thread's **Send**: `elementFromPoint(sendCentre)` returned `#hc-fab`, `sendReachable:false` at **420/390/360** — a real tap opened the tour instead of sending; (c) async screen renders raced, so the *slowest* paint won: `Home→Shop` fast (or login's `go("home")` racing your Shop) could repaint Home on top of the screen you asked for | — | — | DONE | `tests/walk-390.mjs` **PASS — 10 screens**: every screen `scrollWidth 390 = 390`, XL `innerWidth **390**` (was 556), `Send is tappable` **PASS**, **0 console errors**; reachability re-measured at 420/390/360 → `hitCenter = BUTTON.btn btn-accent`, `coveredByFab:false`. Renders serialised in request order (tab highlight/title still instant); desktop triple-tap `shop→home→shop` settles on **Shop, 11 cards, 0 errors** |
 
 | F17 | **Multilist clicked end to end — what it really does, and two defects found in it.** It does **not** auto-post outside: `/api/marketplaces` = **21** entries, **20 `api:"deep"`** (guide + paste) + **1 `api:"full"`** (fashionistas itself), and the screen says *"You post yourself on every shop."* The guide half works: item → `platforms → 200` → 21 fee checkboxes → Select all → `crosspost → 200` → **21 saved drafts** with title/price/fields/tone/description/tags + a real *Open listing page* link per shop. **Defect (a)** the eBay panel never loaded — `index.html` sends `cache-control: no-store` but the worker allowed only `Content-Type, Authorization` → preflight failed. **Defect (b)** every kit shipped `#Bags&Luggage/Handbags`, a category **path** used as a tag, which no marketplace resolves | — | — | **DONE** | **CONTROL pre-fix:** browser shows `Request header field cache-control is not allowed by Access-Control-Allow-Headers…` + `net::ERR_FAILED` on `/api/ebay/status` while curl got **200 with ACAO**; **19/19 TAGS lines** = `#Bags&Luggage/Handbags`. **POST-FIX, two runs:** preflight → 200 with `allow-headers: …, Cache-Control`, in-page `GET /api/ebay/status → 200 (22 ms)`, **0 CORS errors**; `POST /api/listings/120/crosspost → 200` (**2,047 ms**, **2,091 ms**) → **21 kits, 19 TAGS, `badTags: 0`**, Depop `#vintage #thrift #y2k #resale #rework #preloved #handbags`, **0 console errors**. Deploy trap recorded: a no-`--branch` Pages deploy landed as `environment=preview` (apex still served yesterday's production bytes); `--branch main` → **`882eb790 env=production`**, apex md5 == local |
+| F18 | **"Fill it for me" could wait for ever** — `xlAutofill()` posted `FASH_CROSSLIST` and waited for the ACK **with no timeout**, so a silent helper (switched off, mid-update, or needing a reload after install) left `Opening 6 shops…` on screen permanently, and each press stacked a new listener over the old one | **Lead** | — | **DONE** | CONTROL: the line was still `Opening 6 shops…` at **5 s and 10 s**. TREATMENT (fresh load, demo seller): at **4 s** it becomes the no-install bookmark route + the switch-on steps + *"your **21** picked shops already have their text ready in the kits below"*, kits stay on screen (**22** `[data-kit]` nodes), **0 console errors**; ACK half replayed using the exact contract in `extensions/crosslister/bridge.js:14` → `Opened in new tabs…` within 6 s **and unchanged at +6 s** (countdown cancelled, so success never becomes a warning). acorn gate OK (1 JS block, 3 JSON-LD skipped); deploy `ee9bf8d5` **`environment=production`**, apex == pages.dev == local **429,890 B**. *Not re-run here:* `tests/crosslister-e2e.mjs` — `playwright` is not installed in this workspace |
 
 ## C. Cross-cutting
 
@@ -156,7 +157,7 @@ Commits this session: `1555afa` `09a3ab2`.
 
 ## Status board — 2026-09-30 (reposted after this stretch's ships)
 
-**CLOSED (18)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
+**CLOSED (19)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
 position-aware false positive; relay per-attempt/timeouts raised after the measured 100.0 s
 abort; **`missing-element` detector** (proven in production via `/api/script-probe`, 15 ids on
 build 144's own bytes); **gate silence now impossible** (`script-health` line prints
@@ -174,7 +175,11 @@ in the page, 0 CORS errors**; and the unresolvable `#Bags&Luggage/Handbags` tag 
 owner could not use, build **154** answered the same question twice and 409'd on the plan line;
 treatment: builds **155/156/157** → one reply + a **Open my GitHub tools** button → `#github`
 **51 repos**, `log → 201`, plan card cleared, **0 console errors** — plus the *untested* push now
-measured: `POST /api/github/push → 200 (1,580 ms)` verified by `gh` read-back, repo restored).
+measured: `POST /api/github/push → 200 (1,580 ms)` verified by `gh` read-back, repo restored);
+**fashionistas "Fill it for me" could wait for ever** (control: `Opening 6 shops…` still on
+screen at **5 s and 10 s**; treatment: at **4 s** it explains itself — no-install bookmark route,
+switch-on steps, *"your 21 picked shops already have their text ready"* — and a real ACK keeps
+`Opened in new tabs…` at **+6 s**, 0 console errors).
 
 **OPEN (6)** — Phase 5 mobile still untested on a real handset (no device emulation exists);
 `/help` pages; createstuff map #3–#8; fashionistas analytics token (needs a credential);

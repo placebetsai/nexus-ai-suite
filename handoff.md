@@ -1111,3 +1111,50 @@ Pages `createstuff-marketing` `c67e09fc` and `createstuff-app` `686230da`, both
 *Untested:* pushing to a repository the connected account does not own (fork/second owner);
 GitLab and Bitbucket (no panel here — the reply says GitHub only); OAuth device flow for a
 *different* user's GitHub (only the connected account's token path has been exercised).
+
+### 10.8 fashionistas.ai — the "Fill it for me" button could hang for ever; now it says what to do
+
+**The complaint:** *"fashionistas doesn't have any sort of auto flow that lists your item on all
+the fucking sites."* What exists, measured: an item → **Multilist** → pick shops → kits for
+**21** platforms (title/price/fields/tone/description/tags + a real *Open listing page* link
+each), plus an auto-fill helper that opens a shop's sell form already filled in for the **6**
+shops the helper actually supports — `XL_FILL_SHOPS = depop, ebay, poshmark, mercari, vinted,
+grailed`, which is exactly the shop list inside `extensions/crosslister` (measured: those six
+are the only shop names in the extension's sources). **No shop outside fashionistas can be
+posted to server-side: 20 of 21 are `api:"deep"` by design — no marketplace credentials exist**
+(that is the Q1 question still waiting on the owner).
+
+**The defect, measured (CONTROL, 2026-09-30).** `xlAutofill()` posted `FASH_CROSSLIST` and then
+waited for `FASH_CROSSLIST_ACK` **with no timeout**. With the helper silent (switched off,
+mid-update, or waiting for a reload after install — `bridge.js` has to answer for the message to
+come back), the status line stayed on **`Opening 6 shops…` at 5 s and at 10 s** and for ever
+after. A second press made it worse: each press added its own listener and countdown, so the old
+one could still overwrite the new message.
+
+**The fix** (`apps/fashionistas/index.html`): a **4-second countdown** — if nobody answers, the
+line becomes *"Nothing opened yet — the shop helper is not switched on in this browser, or it
+needs this page reloaded after installing. Use the Fashionistas Fill bookmark above (no
+install), or switch the Crosslister on and press the button again. Every one of your 21 picked
+shops already has its text ready in the kits below."* A second press now clears the previous
+listener and timer first (`XL_FILL_TIMER` / `XL_FILL_ACK`).
+
+**TREATMENT (live, real Chrome, fresh load, signed in as the demo seller):**
+
+| | control | treatment |
+|---|---|---|
+| press with a silent helper | `Opening 6 shops…` at **5 s** and **10 s**, forever | `Opening 6 shops…` → guidance at **4 s** (captured inside a 9 s wait) |
+| what the line says | nothing useful | bookmark advice + **"your 21 picked shops"** + kits still listed (**22** `[data-kit]` nodes on screen) |
+| ACK arrives instead | — | `Opened in new tabs. Check each one and press Post there.` within 6 s, **and still there at +6 s** — the countdown was cancelled, so success never turns into a warning |
+| console errors | — | **0** |
+
+*How the ACK half was proven:* this harness has **no extension-install tool**, so the extension's
+own reply was replayed in-page using the exact contract from `extensions/crosslister/bridge.js:14`
+(`source:"fashionistas-crosslister"`, `type:"FASH_CROSSLIST_ACK"`, `ok:true`) after 300 ms. The
+real extension end-to-end run is `tests/crosslister-e2e.mjs`, which needs `playwright` — **not
+installed in this workspace**, so that exact test was **not** re-run. Untested here: a real
+helper answering on a real shop tab (same contract, different machine).
+
+**Gates:** acorn on the extracted inline script (`1` JS block, `3` JSON-LD blocks skipped) → OK;
+`./deploy.sh pages fashionistas-ai apps/fashionistas` → deployment **`ee9bf8d5`** with
+**`environment=production`**; `fashionistas.ai` == `fashionistas-ai.pages.dev` == local
+(**429,890 B**, both containing the new text), `cf-cache-status: DYNAMIC`.

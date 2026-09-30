@@ -653,3 +653,18 @@ Nothing in this list may be shown as working before it is proven live end to end
       `POST /api/github/import → **201 (1,438 ms)**` → *"New app: createstuff-e2e-probe (github)"*.
 - [ ] Still open: push to a repo the connected account does not own; GitLab/Bitbucket (no panel
       here); a *different* user's GitHub OAuth. None of those are claimed.
+
+### 2026-09-30 (later) — fashionistas "Fill it for me" could wait for ever
+
+- [x] **The auto-fill button had no timeout.** CONTROL: with the helper silent,
+      `#xl-fill-msg` read **`Opening 6 shops…` at 5 s and at 10 s**, forever — a broken-looking
+      button with no way forward. TREATMENT: a **4-second countdown** now replaces it with the
+      bookmark/no-install route, the extension switch-on steps and *"your 21 picked shops already
+      have their text ready"*; measured on a fresh load (guidance inside a 9 s wait, **0 console
+      errors**), and with an ACK arriving (replayed from `bridge.js:14`'s contract) the success
+      line stays put at **+6 s** — the countdown is cancelled, so success never turns into a
+      warning. A second press now clears the previous listener/timer first.
+- [ ] Honest scope, unchanged: auto-fill covers the **6** shops the helper supports
+      (`depop, ebay, poshmark, mercari, vinted, grailed` — the only shops in the extension);
+      the other 15 of the 21 get ready-written kits + links, and **posting to them server-side is
+      impossible without their credentials** (Q1, still waiting on the owner).
