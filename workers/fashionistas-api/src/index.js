@@ -1138,6 +1138,37 @@ async function dispatch(request, env) {
         } catch (e) {
           console.error("analyze scout:", (e && e.message) || e);
         }
+        // Workers AI's free plan stops at 10,000 neurons a day (used up by 09:00 UTC
+        // on 2026-09-30), so a Groq vision model is the backup. Groq retired Llama 4
+        // Scout; qwen3.8-27b reads the sample jacket as "Denim Jacket, Outerwear, $25-60".
+        // The free key allows ~1,000 output tokens a minute, hence one retry on 429.
+        if (env.GROQ_API_KEY) {
+          const ask = () => fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "qwen/qwen3.8-27b", max_tokens: 350, temperature: 0.2, reasoning_effort: "none",
+              messages: [{ role: "user", content: [
+                { type: "text", text: VISION_PROMPT },
+                { type: "image_url", image_url: { url: "data:image/jpeg;base64," + image } },
+              ] }],
+            }),
+            signal: AbortSignal.timeout(25000),
+          });
+          try {
+            let g = await ask();
+            if (g.status === 429) { await new Promise((r) => setTimeout(r, 4000)); g = await ask(); }
+            const gj = await g.json();
+            const pg = aiJson(gj?.choices?.[0]?.message?.content || "", null);
+            if (pg && pg.type) {
+              if (pg.confidence != null && pg.confidence <= 1) pg.confidence = Math.round(pg.confidence * 100);
+              return json({ source: "ai", ...pg, note: "" });
+            }
+            console.error("analyze groq:", g.status, JSON.stringify(gj).slice(0, 200));
+          } catch (e) {
+            console.error("analyze groq:", (e && e.stack) || e);
+          }
+        }
         try {
           const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
             prompt: "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (string or 'Unknown'), color, condition (Poor/Fair/Good/Excellent), category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint. Be specific and honest.",
@@ -1151,7 +1182,8 @@ async function dispatch(request, env) {
           } catch { text = JSON.stringify(r); }
           const parsed = aiJson(text, null);
           if (parsed) return json({ source: "ai", ...parsed, note: "" });
-          return json({ source: "ai", note: "description: " + String(text).slice(0, 200), confidence: 60, type: "Clothing Item", priceMin: 25, priceMax: 75, condition: "Good", category: "Tops", color: "Various", brand: "Unknown", sizeHint: "" });
+          // Never dress a guess up as an AI read ("Clothing Item, $25–75, Good" used to come back here).
+          return json({ source: "error", error: "could not read the photo", note: "vision model unavailable" }, 502);
         } catch (e) {
           return json({ source: "error", error: e.message, note: "vision model unavailable" }, 502);
         }
