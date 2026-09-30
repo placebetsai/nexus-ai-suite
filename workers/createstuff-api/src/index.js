@@ -2008,6 +2008,28 @@ const NOT_BUILD_RULES = [
   { id: "credentials", all: [SECRET_WORD, SECRET_CONTEXT] },
 ];
 
+// Rule 0 — the person wants to work ON THEIR OWN code: "connect my github",
+// "first connectt to my github lets vibe code". Two failures came from missing
+// this, both measured 2026-09-30: (a) CONNECT_ACCOUNT needs "connect" spelled
+// correctly inside 60 characters, so the real person's "connectt" did not
+// match, the keyword path said build, and the run produced build 152 — a page
+// called "GitHub Vibe" whose Connect GitHub buttons do nothing; (b) when a
+// rule DID match, the answer was one paragraph of prose with nowhere to go,
+// while the feature it described (list repos, pull one in, edit, send back)
+// already existed behind #github. The verb list is deliberately typo-tolerant
+// and it never fires on an explicit build request, so "build me a github stars
+// page" still builds.
+const REPO_INTENT_HOST = /\b(?:github|gitlab|bitbucket|repo|repository|my\s+code)\b/;
+const REPO_INTENT_VERB =
+  /\b(?:connectt?|link|hook\s*up|sync|pair\s*up|authori[sz]e|authenticate|vibe\s*cod(?:e|ing)|vibecode|lets?\s+vibe|import|clone|push|commit|my\s+github|our\s+github|my\s+repo)\b/;
+
+// A refusal that has somewhere to send the person carries the route with it.
+// Only GitHub has a panel behind it, so only GitHub gets an action.
+const REPO_INTENT_REPLY =
+  "GitHub is already wired in here: I can list your repositories, pull one into " +
+  "the builder, work on it with you and send the changes back. Press Open my " +
+  "GitHub tools to start. Want that?";
+
 function ruleFires(rule, low) {
   return rule.all ? rule.all.every((re) => re.test(low)) : rule.re.test(low);
 }
@@ -2028,6 +2050,7 @@ function replyFor(ruleId, low) {
   if (ruleId === "deploy-third-party") return cleanReply(REPLY_DEPLOY);
   if (ruleId === "credentials") return cleanReply(REPLY_CREDENTIALS);
   if (ruleId === "repo-operation") return cleanReply(REPLY_REPO);
+  if (ruleId === "repo-intent") return cleanReply(REPO_INTENT_REPLY);
   const svc = findService(low);
   if (svc && GIT_HOSTS.has(svc)) return cleanReply(REPLY_GIT.replace(/\{svc\}/g, SERVICE_DISPLAY[svc]));
   if (svc) return cleanReply(REPLY_ACCOUNT.replace(/\{svc\}/g, SERVICE_DISPLAY[svc]));
@@ -2047,6 +2070,27 @@ function classifyRequest(raw) {
   if (!t) return { kind: "build", confident: true, reply: "", rule: "empty" };
 
   const low = t.toLowerCase();
+
+  // Rule 0 first: someone wants to work with their own repository. It wins
+  // over an explicit build request ONLY when no build was asked for, so
+  // "build me a github stars page" is untouched, and it answers with a route
+  // (#github) rather than prose or a decorative page.
+  if (REPO_INTENT_HOST.test(low) && REPO_INTENT_VERB.test(low) &&
+      !BUILD_REQUEST.test(low) && !BUILD_NOUN.test(low)) {
+    const named = findService(low);
+    // Named host that is not GitHub (GitLab/Bitbucket have no panel here) and
+    // unnamed "my repo" both keep today's behaviour; only GitHub — or an
+    // unnamed repo, whose repos this account keeps on GitHub — carries an
+    // action, because an action must lead somewhere real.
+    const isGithub = named === "github" || (!named && /\b(?:repo|repository|my\s+code)\b/.test(low));
+    if (isGithub) {
+      return {
+        kind: "not_build", confident: true, reply: replyFor("repo-intent", low),
+        rule: "repo-intent", action: { label: "Open my GitHub tools", href: "#github" },
+      };
+    }
+  }
+
   if (BUILD_REQUEST.test(low)) return { kind: "build", confident: true, reply: "", rule: "build-request" };
 
   for (const rule of NOT_BUILD_RULES) {
@@ -2245,8 +2289,8 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   // seen yet. Writing the log after each stage is what makes the chat move
   // instead of sitting on one frozen bubble for two minutes.
   const log = [];
-  const push = async (agent, message) => {
-    log.push({ agent, message, at: new Date().toISOString() });
+  const push = async (agent, message, extra) => {
+    log.push({ agent, message, at: new Date().toISOString(), ...(extra || {}) });
     if (buildId) {
       try {
         await env.DB.prepare("UPDATE builds SET agent_log=? WHERE id=?")
@@ -2279,8 +2323,11 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
 
   if (cls.kind === "not_build") {
     // The answer IS the reply: one plain paragraph, no site, no preview. It is
-    // pushed first so it is the first thing the chat renders.
-    await push("Planner", cls.reply);
+    // pushed first so it is the first thing the chat renders. `answer` marks it
+    // so the client does not ask the model the same question a second time, and
+    // `action` carries the route to the tool that can actually do the job — a
+    // paragraph with nowhere to go is how "connect my github" used to end.
+    await push("Planner", cls.reply, { answer: true, action: cls.action || null });
     await push("Planner", `${clsLine}. No site generated.`);
     const agents = {
       classifier: { kind: cls.kind, rule: cls.rule, source: cls.source, model: cls.model || null, ms: cls.ms },
@@ -2308,6 +2355,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
       notBuild: true,
       kind: cls.kind,
       reply: cls.reply,
+      action: cls.action || null,
       files: [],
       notes: cls.reply,
       model: cls.model || null,
@@ -4289,6 +4337,15 @@ export default {
         const message = String(b.message || b.plan || b.prompt || "").trim().slice(0, 4000);
         if (!message) return err("message required");
         const t0 = Date.now();
+        // When the keyword path is confident the answer is already written and
+        // it is the SAME answer the build path gives, so the two never
+        // contradict each other — and this one can carry an action (a button
+        // that opens the tool that can actually do it). Everything the keyword
+        // path is unsure about still goes to the model.
+        const kw = classifyRequest(message);
+        if (kw.kind === "not_build" && kw.confident) {
+          return json({ ok: true, reply: kw.reply, action: kw.action || null, source: "keyword", ms: Date.now() - t0 });
+        }
         try {
           const r = await gen(env, DISCUSS_SYS, message, 700);
           const reply = String((r && r.text) || "").trim();
@@ -4502,7 +4559,16 @@ export default {
           "SELECT b.id, b.status, b.agent_log FROM builds b JOIN projects p ON p.id=b.project_id WHERE b.id=? AND p.user_id=?"
         ).bind(id, user.sub).first();
         if (!row) return err("Not found", 404);
-        if (row.status !== "running") return err("This build is no longer open.", 409);
+        // Open rows take appends, and so do `answered` ones: an answer closes
+        // the row in about 600 ms while the plan call takes about 700 ms, so
+        // the plan line for the turn always arrived after it was written and
+        // got a 409 — a first-party console error on an ordinary question,
+        // measured 2026-09-30 (build 154, POST /api/builds/154/log -> 409).
+        // The line is a label on the answer that is already there; it changes
+        // nothing but the record. Finished builds (`completed`/`failed`) still
+        // refuse, because those logs are history and nothing should be added
+        // to a build after it produced its page.
+        if (row.status !== "running" && row.status !== "answered") return err("This build is no longer open.", 409);
         const body2 = await readJson(request);
         const agent = String(body2.agent || "").trim().slice(0, 40);
         const message = String(body2.message || "").trim().slice(0, 4000);

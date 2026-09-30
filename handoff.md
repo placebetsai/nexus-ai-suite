@@ -1035,3 +1035,79 @@ on the apex ruled caching out, so only the deployments API exposed the truth. Re
 *Untested:* actually posting to a marketplace through an API (no marketplace credentials exist —
 20 of 21 are `deep` by design); clipboard copy showed `Copy blocked by browser` under automation,
 where the kit text is still on screen to select and copy by hand.
+
+### 10.7 createstuff.ai — asking for GitHub now reaches GitHub; the push is proven
+
+**The complaint (owner, verbatim):** *"i can vibe code my guthub for shit … u made me some lame
+webpage generator"*. Two halves, both measured.
+
+**CONTROL — what it did before this change.**
+
+1. The same family of sentence built a decorative page: **build 152 "GitHub Vibe"**, whose
+   *Connect GitHub* buttons do nothing (recorded earlier 2026-09-30). Cause: the keyword
+   `CONNECT_ACCOUNT` rule needs `connect` spelled correctly, the person typed **`connectt`**, so
+   the keyword path said *build*, and the model's `not_build` guess was overridden by rule
+   (`model-not-build-overridden`).
+2. When a rule *did* answer, it answered in prose only — `REPLY_GIT`, *"I cannot log into GitHub
+   from here…"* — with no way to act on it, while the tool it described (list repos → pull one in
+   → edit → send back) already existed behind `#github`.
+3. The live front end answered **the same question twice** and printed a first-party console
+   error: build **154** → `POST /api/ai/generate → 200`, then `POST /api/ai/discuss → 200 (66 ms)`
+   carrying the identical paragraph again, and `POST /api/builds/154/log → **409** "This build is
+   no longer open."` (the plan line always lands ~800 ms after an answer that closed in ~600 ms).
+
+**WHAT CHANGED** — `workers/createstuff-api/src/index.js`, `apps/createstuff-marketing/app.js`:
+
+- New classifier rule **`repo-intent`**: typo-tolerant verb list (`connectt?`, `vibe code`,
+  `pull`/`push`/`import`…), and it never fires on an explicit build request, so
+  *"build me a github stars page"* still builds. It returns `not_build` **plus an action**:
+  `{label:"Open my GitHub tools", href:"#github"}`. GitLab/Bitbucket get no action — there is no
+  panel for them here, and an action must lead somewhere real.
+- The action travels end to end: `push(agent, message, extra)` stamps `answer:true` + `action` on
+  the row; `POST /api/ai/generate` and `POST /api/ai/discuss` both return `action`;
+  `csActionHtml()` renders it as a `btn btn-primary` with `data-tip` **and** `title` (href
+  accepted only as an in-app hash, label escaped).
+- The poll does not ask the model a question the worker already answered (`hadAnswer`) → one
+  reply instead of two. `/api/ai/discuss` now runs the keyword path first (deterministic, **66 ms**
+  vs a model round trip) and only falls to the model when unsure.
+- `POST /api/builds/:id/log` accepts appends on **`answered`** rows (201). `completed`/`failed`
+  still refuse with 409 — those logs are history.
+- When nothing was built, the **plan card and the stage strip are removed**: a card describing an
+  app that does not exist is the same lie as a preview.
+
+**TREATMENT — live, real Chrome, fresh reload per run (2026-09-30 17:10–17:18Z):**
+
+| check | measured |
+|---|---|
+| offline classifier gate (block re-extracted from the shipped file) | **16/16**, incl. `first connectt to my github lets vibe code → not_build/repo-intent/#github`, `build me a github stars page → build` |
+| ask, build **155** / **156** / **157** (three runs) | `POST /api/ai/generate → 200` (546–750 ms), reply printed **once**, button **"Open my GitHub tools"** present, status **"Answered — no app was built."** |
+| `POST /api/ai/discuss` re-ask | **not called** (was 200/66 ms on 154) |
+| `POST /api/builds/157/log` | **201** (was 409) |
+| plan card / stage strip on an answer | **gone** (`#cs-plan-card` absent, `#cs-plan-stage` empty) |
+| click the button | → `#github`, **51 repos** rendered, `GET /api/github/repos → 200 (937 ms)`, **Bring it in** + **Send it to GitHub** both visible |
+| console errors (fresh load → ask → click → panel) | **0** |
+
+**The push — previously *untested* (row C5), now measured with a read-back from GitHub:**
+`#push-repo=placebetsai/createstuff-e2e-probe`, `path=e2e-verify.txt`, `branch=main` →
+`POST /api/github/push → **200 (1,580 ms)**` → toast *"Pushed to GitHub!"* → **independent `gh`
+read-back**: file `e2e-verify.txt`, 23 B, content exactly `E2E-PROBE-1790788226173`, commit
+**`e45c148cfc`** with the message typed in the box. Repo then restored by hand
+(commit `d40847eaf0`, tree back to `["README.md","index.html"]`) — **their repo is as it was.**
+
+**The import:** paste URL → `POST /api/github/import → **201 (1,438 ms)**` → *"New app:
+createstuff-e2e-probe (github)"*, `GET /api/projects → 200`.
+
+**Also measured (pre-existing, works):** typing *"first connectt to my github lets vibe code"*
+is caught client-side by `csSend()` → *"Opening GitHub for you…"* → `#github` panel. The two
+layers are complementary: the client rule needs `connect`/`my`/`import`… as whole words, the new
+server rule does not, which is exactly the `connectt`-with-no-`my` gap that produced build 152.
+
+**Deployed:** `createstuff-api` deployment `13d327d8` (version `92c147e2`, 100%, `/api/health → 200`);
+Pages `createstuff-marketing` `c67e09fc` and `createstuff-app` `686230da`, both
+**`environment=production`** (deployed with `--branch main` via `deploy.sh`), and
+`app.js` sha256 matches local on **both** `createstuff.ai` and `app.createstuff.ai`
+(`53450a33a8acbe2f`). `node --check` passes on both edited files; `cs-inline.test.mjs` **12/12**.
+
+*Untested:* pushing to a repository the connected account does not own (fork/second owner);
+GitLab and Bitbucket (no panel here — the reply says GitHub only); OAuth device flow for a
+*different* user's GitHub (only the connected account's token path has been exercised).

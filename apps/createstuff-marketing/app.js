@@ -694,7 +694,11 @@ async function csStartBuild(promptText, projectId, serverRow) {
       if (r && r.ok === false && r.notes) {
         b.status = 'answered';
         b.error = null;
-        b.agent_log.push({ agent: 'Planner', message: r.notes });
+        // `answer:true` marks this as the reply (the poll will not ask the
+        // model the same question again) and the action rides along as its own
+        // line, so the button reaches this view too.
+        b.agent_log.push({ agent: 'Planner', message: r.notes, answer: true });
+        if (r.action) b.agent_log.push({ agent: 'Planner', message: csActionHtml(r.action) });
         b.done = true;
         const a1 = csBuilds(); a1[id] = b; csSaveBuilds(a1);
         return;
@@ -1947,6 +1951,10 @@ async function startBuild(prompt) {
             // and the build itself can report it, so only the first one paints.
             if (String(log.agent) === 'Plan') { if (!document.getElementById('cs-plan-card')) csRenderPlanCard(log.message); continue; }
             addAgentMsg(log.agent, log.message, log.code);
+            // The worker can attach a route to an answer (a button to the tool
+            // that can actually do it) — render it as its own line under the
+            // paragraph it belongs to.
+            if (log.action) addAgentMsg(log.agent, csActionHtml(log.action));
             csPlanStage(log.agent);
           }
         }
@@ -1976,12 +1984,29 @@ async function startBuild(prompt) {
           showToast('Build complete!');
         } else if (buildStatus.status === 'answered') {
           clearInterval(pollInterval);
-          agentStatusBar.innerHTML = '<span class="status-dot active"></span>Answering…';
-          try {
-            const r = await api('/api/ai/discuss', { method: 'POST', body: JSON.stringify({ message: prompt }) });
-            addAgentMsg('Planner', escapeHtml((r && r.ok && r.reply) || 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.').replace(/\n/g, '<br>'));
-          } catch {
-            addAgentMsg('Planner', 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.');
+          // Nothing was built, so nothing that belongs to a build stays on
+          // screen. The plan card describes an app that does not exist and the
+          // stage strip reads like a run in progress — either one would tell
+          // the person an app was being made when the answer was "no app was
+          // made", so both are cleared the moment the answer lands.
+          const planCard = document.getElementById('cs-plan-card');
+          if (planCard) planCard.remove();
+          const stageStrip = document.getElementById('cs-plan-stage');
+          if (stageStrip) stageStrip.innerHTML = '';
+          // When the worker already wrote the answer into the log, asking the
+          // model the same question a second time only ever produced a second
+          // paragraph saying roughly the same thing — so ask only if nothing
+          // answered yet.
+          const hadAnswer = (buildStatus.agent_log || []).some(l => l && l.answer);
+          if (!hadAnswer) {
+            agentStatusBar.innerHTML = '<span class="status-dot active"></span>Answering…';
+            try {
+              const r = await api('/api/ai/discuss', { method: 'POST', body: JSON.stringify({ message: prompt }) });
+              addAgentMsg('Planner', escapeHtml((r && r.ok && r.reply) || 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.').replace(/\n/g, '<br>'));
+              if (r && r.action) addAgentMsg('Planner', csActionHtml(r.action));
+            } catch {
+              addAgentMsg('Planner', 'That sounded like a question rather than an app to build. Describe the app you want, or switch to Talk it through.');
+            }
           }
           agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>Answered — no app was built.';
         } else if (buildStatus.status === 'failed') {
@@ -2135,7 +2160,7 @@ async function discuss(message) {
     if (agentStatusBar) agentStatusBar.innerHTML = '<span class="status-dot" style="background:var(--green)"></span>No build was used.';
     if (!slot) return;
     if (r && r.ok && r.reply) {
-      slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml(r.reply).replace(/\n/g, '<br>')}</p>`;
+      slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml(r.reply).replace(/\n/g, '<br>')}${csActionHtml(r.action)}</p>`;
     } else {
       slot.innerHTML = `<strong>Planner Agent</strong><p>${escapeHtml((r && (r.error || r.notes)) || 'I could not answer that. Ask it again.')}</p>`;
     }
@@ -2278,6 +2303,18 @@ window.restoreVersion = async function(buildId) {
     showToast(err && err.message ? err.message : 'Could not go back to that version');
   }
 };
+
+// A refusal that has somewhere to send the person gets a button, not just
+// words: the server answers with {label, href} alongside the paragraph. href is
+// accepted only as an in-app hash, so a reply can never be turned into an
+// outbound link, and the label is escaped like any other text.
+function csActionHtml(a) {
+  if (!a || typeof a !== 'object') return '';
+  const href = String(a.href || '');
+  const label = String(a.label || '');
+  if (!/^#[A-Za-z0-9_-]+$/.test(href) || !label) return '';
+  return `<a class="btn btn-primary btn-sm" style="margin-top:.4rem" href="${href}" data-tip="Opens the built-in tool for this — no copy and paste needed." title="Opens the built-in tool for this — no copy and paste needed.">${escapeHtml(label)}</a>`;
+}
 
 function addAgentMsg(name, msg, code) {
   // Internal diagnostics ("Classifier tool: tool=… endpoint=https://….trycloudflare.com… HTTP 200")

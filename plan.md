@@ -621,3 +621,35 @@ Nothing in this list may be shown as working before it is proven live end to end
       apex then matched local md5 byte for byte. **Always check `environment` after a deploy.**
 - [ ] Still open: auto-posting to the outside shops needs their APIs/credentials — that is the
       Q1 A/B/C question already waiting on the owner, and no marketplace here is connected.
+
+### 2026-09-30 (evening) — "vibe code my github" reached a dead end, twice
+
+- [x] **Asking for GitHub built a page that cannot connect to GitHub.** Control (measured
+      earlier today): the owner's own sentence `first connectt to my github lets vibe code`
+      produced **build 152 "GitHub Vibe"** — decorative Connect buttons, nothing behind them —
+      because `CONNECT_ACCOUNT` needs `connect` spelled correctly and the keyword path then said
+      *build*, overriding the model's `not_build`. Second control: when a rule *did* answer, the
+      answer was prose only (`REPLY_GIT`), with no action. Treatment: new `repo-intent` rule —
+      typo-tolerant, guarded so `build me a github stars page` still builds — returns `not_build`
+      **plus** `{label:"Open my GitHub tools", href:"#github"}`. Offline gate on the shipped block
+      **16/16**; live builds **155/156/157** each answered **once** with the button, status
+      **"Answered — no app was built."**, and the click lands on `#github` with **51 repos**,
+      `GET /api/github/repos → 200 (937 ms)`, **0 console errors**.
+- [x] **The same question was answered twice, and the plan line printed a console error.**
+      Control, build **154** (old front end): `POST /api/ai/generate → 200` then
+      `POST /api/ai/discuss → 200 (66 ms)` with the identical paragraph, plus
+      `POST /api/builds/154/log → **409**`. Treatment: the row carries `answer:true`, so the poll
+      never re-asks; `/api/builds/:id/log` accepts appends on `answered` rows → **201**
+      (`completed`/`failed` still 409); `/api/ai/discuss` answers from the keyword path first
+      (66 ms, deterministic). Build **157**: **one** reply, **no** discuss call, **201**, **0 errors**.
+- [x] **An answer that built nothing still showed an app plan.** Treatment, build **157**: the
+      plan card and the stage strip are removed the moment the answer lands — `#cs-plan-card`
+      absent, `#cs-plan-stage` empty, status still **"Answered — no app was built."**
+- [x] **The GitHub push was never executed (row C5 said "untested").** Measured now:
+      `POST /api/github/push → **200 (1,580 ms)**` → file `e2e-verify.txt` (23 B) on
+      `placebetsai/createstuff-e2e-probe`, read back with `gh` — content exactly
+      `E2E-PROBE-1790788226173`, commit **`e45c148cfc`** carrying the message typed in the box.
+      Repo restored afterwards (`d40847eaf0`, tree `["README.md","index.html"]`). Import leg:
+      `POST /api/github/import → **201 (1,438 ms)**` → *"New app: createstuff-e2e-probe (github)"*.
+- [ ] Still open: push to a repo the connected account does not own; GitLab/Bitbucket (no panel
+      here); a *different* user's GitHub OAuth. None of those are claimed.
