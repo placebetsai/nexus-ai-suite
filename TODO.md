@@ -1,4 +1,4 @@
-# TODO — both apps (updated 2026-09-30)
+# TODO — both apps (updated 2026-10-01)
 
 Status legend: `TODO` not started · `WIP` agent working · `DONE` verified live · `BLOCKED` cannot proceed
 
@@ -159,7 +159,105 @@ Commits this session: `1555afa` `09a3ab2`.
 
 ---
 
-## Status board — 2026-10-01 (data-layer round; supersedes the 2026-09-30 board below)
+## Status board — 2026-10-01 (Connect-panel round; supersedes the data-layer board below)
+
+Owner's complaint this round, verbatim: the fashionistas **Connect Depop** panel was
+*"Ready to guide / Local status · not a password vault / I've connected — local flag only"* —
+a checklist plus a localStorage flag — with *"figure out an easy way"* demanded. This repo
+already had an extension that fills the shop's form; the panel never surfaced it.
+
+Standing gate after every ship (this round): `tests/connect-fill-e2e.mjs` **37/37**,
+`tests/crosslister-e2e.mjs` **31/31**, `tests/bookmarklet-e2e.mjs` **26/26**,
+`tests/harness-categories.mjs` **68/68**, live `tests/e2e/crosspost.mjs` **26/26** — all
+exit 0. Data-layer gate unchanged and still green: `tests/data-layer-proof.mjs` → **13/13,
+`PROOF 5/5`, exit 0**.
+
+**CLOSED this round (6)** — each with a live control and a live treatment:
+
+1. **The Connect panel instructed instead of performing.** CONTROL (live, build
+   `45fcb471aae0`): coach checklist + `Open create listing` / `Open signup` /
+   `I've connected`, subtitle *"Free guide · open the shop · paste your draft"*, nothing
+   sent anywhere. TREATMENT (build `a4308ffb48d8`): primary **`Fill Depop for me`** when
+   `bridge.js` reports the helper (round-trips `FASH_CROSSLIST` → ack), **`Copy my listing
+   & open Depop`** without it; subtitle *"One tap · your draft lands in the shop's own
+   form"*. Real Chrome, both states: helper on → **panel click → extension ack → Depop form
+   filled** with description, **price 25**, **1 attached photo**, **never posted**; helper
+   off → **real system clipboard read back 375,493 chars**, `fashionistas:1`,
+   `data:image/jpeg;base64` photo, shop opened. Live desktop click opened Depop's own login
+   gate for the form (`/login/?redirect=%2Fproducts%2Fcreate%2F`).
+2. **The fake connection.** CONTROL: `I've connected` wrote localStorage and the badge said
+   nothing about that. TREATMENT: button gone from panel and rows (renamed **`I have an
+   account`**, tip *"no connection is made"*), and the tag is measured — **`Auto-fill ready`
+   only when `data-fash-crosslister` is set by the extension itself**, otherwise the honest
+   local label. `crosspost.mjs` §3 still holds: **26/26**, `Account noted`, tip *"Nothing
+   was connected"*.
+3. **Shipping without a photo** — with nothing ticked the panel took `listings[0]`, and the
+   demo account's row **126 has `photo_url` empty** → a photo-less draft. Fallback is now
+   the newest item **that has a photo**; the test asserts `rows[0]=126 photo=false → picks
+   98`, and the live panel with nothing ticked ships item 98.
+4. **The one-tap copy failed on the live site while the tab opened** — measured, not
+   guessed: the shop opened first, focus moved, Chrome refused the write
+   (`NotAllowedError: … Write permission denied`, console pinned to `app.js:3327`). Copy now
+   starts while this document is focused, the shop opens after, and a blocked popup yields
+   an explicit **`Open Depop here`** link rather than silence. The refusal in *this*
+   environment was isolated separately: `navigator.permissions.query(clipboard-write)` →
+   **`denied`** on the automation desktop profile (a bare `writeText` probe fails
+   identically), which is why the real-clipboard proof runs in the e2e with the permission
+   granted the way a person's own browser grants it on a click.
+5. **Stale and mismatched copy.** Depop's *"no public seller OAuth"* is out of date — its
+   Selling API is partner-granted (`partnerapi.depop.com` answered only `routing` /
+   `Assets controller` errors from this machine, so **self-serve signup: untested**,
+   recorded as such) → rewritten to what is true; the honest line and coach steps no longer
+   name a button label the other browser state hides (live check `honestHasLabel:false`,
+   `honestOneTap:true`).
+6. **The Depop deep link was a marketing page** — `createListing` was `/sell/` (measured:
+   *"Sell Clothes Online for Free"*, no form) → now `/products/create/`, which redirects to
+   `/login/?redirect=%2Fproducts%2Fcreate%2F`, i.e. the actual form behind its own login.
+
+**OPEN (13)** — 11 carried over + 2 new: carried — a **real handset** (Playwright fakes
+width, not touch hardware; 320/768 unmeasured); `/help` pages; createstuff map #3–#8;
+fashionistas analytics token (needs a credential); `/api/projects/:id/preview` 404;
+hostname detach endpoint; pre-stamp visitors keep a cached `index.html` for up to 8 h (no
+purge rights on `createstuff-sites`); `/api/predict` **502 1-in-19** at 9,613 ms, trigger
+**unidentified (untested)**; Groq `429` still degrades the primary provider (fallback
+carries it, root cause open); `clipProse` **never observed firing in production** —
+unit-proven only; createstuff build **214 s** vs its own 60–150 s promise +
+`GET /api/builds/:id/log` **404**. **New this round** — 12. the **one-tap copy cannot be
+demonstrated on this desktop browser** (`clipboard-write` permission `denied` there), so
+"it copies for a real person" is **inferred** from Chrome's documented auto-grant on focus
++ the e2e with the permission granted, **not measured on a real user profile**; 13. Depop's
+partner API docs are **unreachable from this machine** (routing / `Assets controller`
+errors on every path), so whether a seller can get a key self-serve is **untested** —
+`business@depop.com` is the documented route, unverified by us.
+
+**WAITING-ON-YOU (6)** — (1) the exact Cloudflare error text or a screenshot; (2) the apex
+domain you already own — which one?; (3) the **Q1 A/B/C auto-posting** answer (20 of 21
+marketplaces are guide-and-paste by design — also what blocks fashionistas' inventory,
+still **2 items**); (4) a mail credential for the placebets digest (all 4 Gmail app
+passwords dead, `535-5.7.8`); (5) which site/link/action failed when *"the apps don't do
+shit"* — URL, screenshot, phone model; (6) which Replit/Base44 feature createstuff must beat
+**first** (gap table measured; your priority pick is open).
+
+**Rotations needed (owner):** `CS_API_TOKEN` — a subagent's grep printed its value into a
+tool output earlier this round; never written to a repo (`.secrets/cf.env` is gitignored),
+but rotate it.
+
+**Repos: local == git == live, `0 0` against origin** — nexus `master` `372c234`,
+placebets `main` `92752b3`, marketpicks `live-source` `c5d5493`. Deploys: fashionistas
+pages `8e334053` (sha-verified: apex == pages.dev == local, `app.js?v=a4308ffb48d8`),
+placebets `448ba7ce` (+ scheduler `a66dca7e`), marketpicks `b17dbebb`, createstuff worker
+`efcb76d4`.
+
+Live links to test: `https://fashionistas.ai/` → open **Connect → Depop** (one real button,
+no `I've connected`), `https://placebets.ai/api/predict` with
+`{"query":"Who wins Chiefs vs Bills and what's the probability?"}` (expect
+`probability: null` on a refusal and a `finish_reason`), `https://placebets.ai/api/trending`
+(7 rows), `https://marketpicks.ai/api/chatbot` (expect `timing`),
+`https://createstuff.ai/#builder`.
+
+---
+
+### Previous board — 2026-10-01 data-layer round (superseded, kept for history)
 
 Standing gate after every ship: `node tests/data-layer-proof.mjs` → **judges 13/13,
 `PROOF 5/5`, `RESULT PASS`, exit 0** (repeatable; control mode documents what was broken).

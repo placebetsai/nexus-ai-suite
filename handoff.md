@@ -1469,3 +1469,84 @@ because those products were not run today.
   into a tool output. It was never written to any repository and `.secrets/cf.env` is
   gitignored, but the token should be **rotated** — owner action, since minting it needs the
   Cloudflare dashboard.
+
+## 12. 2026-10-01 (Connect panel) — the fake connect, and the easy way that was already in the repo
+
+**The complaint, verbatim:** the fashionistas **Connect Depop** panel showed *"Ready to
+guide / Local status · not a password vault / ✕ / Honest: Depop has no public seller OAuth …
+Optional I've connected is a local flag only / Coach · checklist"*, and the instruction was
+**"figure out an easy way"** — after **"easier better integrated ways to get users plugged in
+… auto screenshots to ship items"**.
+
+**What was already true and unsurfaced:** this repo ships a working autofill path —
+`extensions/crosslister/` injects `bridge.js` on fashionistas.ai and `filler.js` on the six
+shops, `background.js` queues one job per shop and opens the sell page, and `app.js` already
+had `xlAutofill()` ("Fill it for me on 6 shops") **in the Multilist kit area**. The Connect
+panel — the screen the owner actually opened — offered only a checklist and a localStorage
+flag. The defect was not missing capability; it was that the panel never performed.
+
+### 12.1 Control and treatment
+
+| | Control (`45fcb471aae0`) | Treatment (`a4308ffb48d8`) |
+|---|---|---|
+| Panel primary action | none — coach checklist + `Open create listing` + `I've connected` | **`Fill Depop for me`** (helper detected) / **`Copy my listing & open Depop`** (not) |
+| Subtitle | *"Free guide · open the shop · paste your draft"* | *"One tap · your draft lands in the shop's own form"* |
+| Status tag | local label only | **`Auto-fill ready`** only when `data-fash-crosslister` is set by the extension itself; otherwise the honest local label |
+| `I've connected` | button in panel + rows | removed; **`I have an account`**, tip *"nothing was connected"* |
+| Depop deep link | `/sell/` — measured: *"Sell Clothes Online for Free"*, a marketing page | `/products/create/` → `/login/?redirect=%2Fproducts%2Fcreate%2F`, the real form behind its own login |
+| Honest line | *"no public seller OAuth"* (stale) + names a button label | partner-granted API, self-serve **untested**, action described without naming a label |
+
+**Proof — `tests/connect-fill-e2e.mjs`, new, 37/37 exit 0, real Chrome + the unpacked
+extension + the local build + the live API** (shop pages mocked, nothing ever submitted):
+
+- **Helper installed:** panel click → `FASH_CROSSLIST` ack *"Opened in new tabs"* → shop tab
+  opens → mock Depop form shows **description filled**, **price 25**, **1 attached photo**,
+  `submitted !== true`.
+- **Helper switched off (dataset cleared):** button changes honestly, the no-install
+  bookmark is offered, `window.open` gets `…/products/create/`, and the **real system
+  clipboard** (permission granted the way a person's browser grants it on a click) reads
+  back **375,493 chars** of `fashionistas:1` JSON whose `shops.depop` carries
+  title/description/price and whose `photos[0].data` starts `data:image/jpeg;base64`.
+- **Nothing ticked, Multilist never opened:** the panel still resolves an item — and now
+  picks one **with** a photo (`rows[0]=126 photo=false → picks 98`), which the live demo
+  account forced into the open (126 has an empty `photo_url`).
+
+Other suites after the change: `crosslister-e2e` **31/31**, `bookmarklet-e2e` **26/26**,
+`harness-categories` **68/68**, live `crosspost` **26/26** before **and** after deploy;
+`data-layer-proof.mjs` still **13/13, `PROOF 5/5`, exit 0**. Deploy: apex == pages.dev ==
+local, `app.js?v=a4308ffb48d8` (deployment `8e334053`); commit **`372c234`** pushed.
+
+### 12.2 Two things the proof caught in *me*
+
+1. **It was shipping a photo-less listing.** With nothing ticked, the fallback took
+   `listings[0]` = row **126**, whose `photo_url` is empty — the whole pitch is "photo
+   included", so the fallback now prefers the newest item that has one.
+2. **Opening the shop first broke the copy.** The live click opened Depop (tab
+   `tab_b75007` → its own login gate) *while the panel reported* "Your browser blocked the
+   copy", console `NotAllowedError … Write permission denied` at `app.js:3327`. Root cause
+   measured, not assumed: focus had already moved, and separately this automation desktop
+   reports `navigator.permissions.query(clipboard-write) === "denied"` — a bare
+   `writeText` probe fails identically, so the environment itself refuses clipboard writes.
+   Fix shipped: copy starts while the document is focused, the shop opens after, and a
+   blocked popup yields an explicit **`Open Depop here`** link. The real-clipboard proof
+   therefore lives in the e2e with the permission granted.
+
+### 12.3 What is still true and not fixed (read before claiming anything above)
+
+- **"It copies for a real person" is inferred, not measured.** No real user profile was
+  available; this desktop denies `clipboard-write`. What is measured: the bytes are correct
+  (375,493 chars, photo included) and the code path succeeds whenever the permission is
+  granted (e2e, twice). What is not: a stock Chrome profile on a normal desktop.
+- **Depop partner API self-serve availability is untested.** Every
+  `partnerapi.depop.com/api-docs/*` path answered `routing` / `Assets controller` errors from
+  this machine (raw fetch 404, in-browser errors); the Selling API exists and is
+  partner-granted (documented route `business@depop.com`, unverified by us). The panel says
+  partner-granted and does not offer a key box.
+- **The helper path still requires installing the extension** (zip / developer mode); a
+  **Chrome Web Store listing was not verified this round**. The zero-install bookmark is the
+  path that needs no install.
+- Unchanged carried gaps: placebets email delivery (4 Gmail app passwords dead,
+  `535-5.7.8`), fashionistas analytics token lacks zone analytics + RUM,
+  `forge-api`/`api.createstuff.ai` undeployable, Groq unreachable from this machine (403),
+  `createstuff-wholeapp-probe` undeletable, account A cron ceiling full (5/5), and the six
+  WAITING-ON-YOU items in `TODO.md`.

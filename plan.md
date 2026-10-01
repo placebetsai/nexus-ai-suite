@@ -872,3 +872,63 @@ control/treatment detail in `handoff.md` §11; the standing gate is
 - [ ] **Disclosure:** a subagent's grep printed the value of `CS_API_TOKEN` into a tool output
       this round. Never written to a repo, `.secrets/cf.env` stays gitignored — **rotate the
       token** (owner action).
+
+### 2026-10-01 (Connect panel) — "Connect Depop" stops being a checklist and a flag
+
+Owner, verbatim: *"Connect Depop … Ready to guide … I've connected is a local flag only …
+figure out an easy way"*, following *"easier better integrated ways to get users plugged in …
+auto screenshots to ship items"*. This repo already had an extension that fills each shop's
+form (`extensions/crosslister/`) — the Connect panel simply never surfaced it.
+
+- [x] **The panel performs (build `a4308ffb48d8`, commit `372c234`).** CONTROL build
+      `45fcb471aae0`: coach checklist + `Open create listing` + `I've connected`, subtitle
+      *"Free guide · open the shop · paste your draft"*, nothing sent anywhere. TREATMENT:
+      **`Fill Depop for me`** when `bridge.js` reports the helper (round-trips
+      `FASH_CROSSLIST` → ack), **`Copy my listing & open Depop`** when it does not; subtitle
+      *"One tap · your draft lands in the shop's own form"*; tag **`Auto-fill ready` only
+      when `data-fash-crosslister` is set by the extension itself**, otherwise the honest
+      local label. New proof `tests/connect-fill-e2e.mjs` **37/37, exit 0**: helper on →
+      panel click → extension ack → Depop form filled (description, **price 25**, **1 photo
+      attached**, **never posted**); helper off → **real system clipboard read back
+      375,493 chars**, `fashionistas:1`, `data:image/jpeg;base64`, shop opened.
+- [x] **The photos ship (the "auto screenshots" complaint), measured live:** payload with
+      nothing ticked = `photoCount: 1`, `data:image/jpeg;base64`, **375,493 chars**; the API
+      photo answers `access-control-allow-origin: https://fashionistas.ai` (so the no-install
+      fetch works from the page), and the extension path attaches the file itself
+      (`Depop photo attached: 1`).
+- [x] **It was shipping a photo-less item:** demo account row **126 has `photo_url` empty**
+      and was what the fallback selected. Fallback is now the newest item **that has a
+      photo** (test: `rows[0]=126 photo=false → picks 98`; live panel with nothing ticked
+      ships 98).
+- [x] **The one-tap copy failed on the live site while the tab opened — measured:** opening
+      the shop first moved focus and Chrome refused the write
+      (`NotAllowedError: … Write permission denied`, console pinned to `app.js:3327`). Copy
+      now starts while this document is focused, the shop opens after, and a blocked popup
+      produces an explicit **`Open Depop here`** link instead of silence. The refusal in
+      *this* environment was isolated separately: `navigator.permissions.query(clipboard-write)`
+      → **`denied`** on the automation desktop profile (a bare `writeText` probe fails
+      identically).
+- [x] **Fake affordance gone:** `I've connected` → **`I have an account`** in panel and rows
+      (tip: *"no connection was made"*); `tests/e2e/crosspost.mjs` §3 still **26/26**
+      (`Account noted`, tip *"Nothing was connected"*).
+- [x] **Depop deep link corrected:** `createListing` was `/sell/` (measured: a marketing
+      page, no form) → `/products/create/`, which redirects to
+      `/login/?redirect=%2Fproducts%2Fcreate%2F`, the actual form behind its own login.
+- [x] **Copy corrected, hedged where untested:** Depop's *"no public seller OAuth"* is stale —
+      its Selling API is partner-granted and `partnerapi.depop.com` answered only `routing` /
+      `Assets controller` errors from this machine, so **self-serve signup is recorded
+      untested**; the honest line and coach steps no longer name a button label the other
+      browser state hides (live: `honestHasLabel:false`, `honestOneTap:true`).
+- [x] **Gates, all exit 0:** `connect-fill-e2e` **37/37**, `crosslister-e2e` **31/31**,
+      `bookmarklet-e2e` **26/26**, `harness-categories` **68/68**, live `crosspost` **26/26**
+      before and after deploy; `data-layer-proof.mjs` unchanged **13/13, PROOF 5/5, exit 0**.
+      Deploy verified: **apex == pages.dev == local**, `app.js?v=a4308ffb48d8`
+      (`8e334053`); one deploy exited 1 on an origin race and was re-run to a clean
+      **VERIFY pass** rather than reported as success.
+- [ ] **Open, measured, not fixed:** "it copies for a real person" is **inferred, not
+      measured** (this desktop denies `clipboard-write`; the e2e proves the bytes only with
+      the permission granted, the way a person's browser grants it); Depop partner-API
+      self-serve availability **untested** (docs unreachable; `business@depop.com` is the
+      documented route, unverified by us); the helper path still needs the extension
+      installed and a **Chrome Web Store listing was not verified this round** — the
+      zero-install bookmark remains the path that needs no install at all.
