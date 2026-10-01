@@ -13,3 +13,6 @@
 /script.js
 /styles.css
 tests/out/
+# Local link to the sibling workspace's playwright (no trailing slash: this
+# entry is a symlink, and gitignore's directory form does not match symlinks)
+node_modules

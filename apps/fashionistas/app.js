@@ -1253,18 +1253,23 @@ async function xlEbayProbeStatus(){
   }
 }
 
+/* The six shops the browser helper can fill for the seller (extension or the
+   no-install bookmark). Declared here, above its first reader, so the status
+   tags can be honest about what this browser can actually do. */
+const XL_CONNECT_FILL = ["depop", "ebay", "poshmark", "mercari", "vinted", "grailed"];
+
 const XL_CONNECT_SHOPS = [
   {
     id: "depop", name: "Depop", oauth: false,
     signup: "https://www.depop.com/signup/",
-    createListing: "https://www.depop.com/sell/",
+    createListing: "https://www.depop.com/products/create/",
     hive: [
       "Create a free Depop seller account (email or app signup).",
       "Verify email / phone if Depop asks — finish profile basics.",
-      "Open Sell / new listing on Depop (deep link below).",
-      "Paste your fashionistas.ai title, price, tags and description, then post on Depop."
+      "Tap the fill button above — the form opens with your photo, title, price and description in it.",
+      "Check it, choose category and condition, then press Depop's own Post button."
     ],
-    honest: "Depop has <b>no public seller OAuth</b> for fashionistas.ai. We never invent API keys or take your password. Use the free guide: open Depop yourself → paste the draft kit. Optional <b>I've connected</b> is a local flag only."
+    honest: "Depop does not hand out seller API keys for this site — its Selling API is granted by Depop to partners, and we could not reach a self-serve signup for it, so we do not pretend to have one. We never invent API keys or take your password. What works today: one tap puts your photo, title, price and description straight into Depop's form, and you press Post."
   },
   {
     id: "ebay", name: "eBay", oauth: true,
@@ -1285,10 +1290,10 @@ const XL_CONNECT_SHOPS = [
     hive: [
       "Create a free Poshmark closet (signup link below).",
       "Verify email / complete closet basics if prompted.",
-      "Open Sell / create-listing on Poshmark.",
-      "Paste your fashionistas.ai draft kit into the listing form, then List."
+      "Tap the fill button above — the form opens with your draft in it.",
+      "Check it, then press Poshmark's own List button."
     ],
-    honest: "Poshmark has <b>no public seller OAuth</b> for fashionistas.ai. No fake API credentials. Guided open + paste only; <b>I've connected</b> is local and does not grant auto-post."
+    honest: "Poshmark does not give this site a seller API, and we do not invent keys or take your password. What works today: one tap puts your photo, title, price and description into Poshmark's own form — you check it and press List."
   },
   {
     id: "mercari", name: "Mercari", oauth: false,
@@ -1297,10 +1302,10 @@ const XL_CONNECT_SHOPS = [
     hive: [
       "Create a Mercari account and set a payout method.",
       "Verify phone / identity if Mercari asks.",
-      "Open Sell / new listing on Mercari.",
-      "Paste title, price and description from your kit, then list."
+      "Tap the fill button above — the form opens with your draft in it.",
+      "Check it, then press Mercari's own List button."
     ],
-    honest: "Mercari has <b>no public seller OAuth</b> for fashionistas.ai. We do not create accounts or store Mercari passwords. Use guided open + paste; mark Connected locally when you are set up."
+    honest: "Mercari does not give this site a seller API, and we never invent keys or store your Mercari password. What works today: one tap puts your photo, title, price and description into Mercari's own form — you check it and press List."
   },
   {
     id: "vinted", name: "Vinted", oauth: false,
@@ -1309,10 +1314,10 @@ const XL_CONNECT_SHOPS = [
     hive: [
       "Register on Vinted (select account type).",
       "Verify email / complete seller basics.",
-      "Open Items → new listing (deep link below).",
-      "Paste your draft kit and publish on Vinted."
+      "Tap the fill button above — the form opens with your draft in it.",
+      "Check it, then press Vinted's own Publish button."
     ],
-    honest: "Vinted has <b>no public seller OAuth</b> for fashionistas.ai. Honest guide only — open Vinted yourself, paste the kit. Optional local Connected flag; no auto-post."
+    honest: "Vinted does not give this site a seller API, and we do not invent keys or take your password. What works today: one tap puts your photo, title, price and description into Vinted's own form — you check it and press Publish."
   },
   {
     id: "grailed", name: "Grailed", oauth: false,
@@ -1321,10 +1326,10 @@ const XL_CONNECT_SHOPS = [
     hive: [
       "Sign up at Grailed.",
       "Verify email / seller profile as needed.",
-      "Open Sell / new listing on Grailed.",
-      "Paste title, measurements and description from your kit, then list."
+      "Tap the fill button above — the form opens with your draft in it.",
+      "Check it, then press Grailed's own Post button."
     ],
-    honest: "Grailed has <b>no public seller OAuth</b> for fashionistas.ai. No invented API keys. Guided open + paste; <b>I've connected</b> is browser-local only."
+    honest: "Grailed does not give this site a seller API, and we do not invent keys or take your password. What works today: one tap puts your photo, title, price and description into Grailed's own form — you check it and press Post."
   }
 ];
 
@@ -1374,6 +1379,12 @@ function xlConnectStatusTag(st){
 function xlConnectStatusTagForShop(id){
   const st = xlConnectStatus(id);
   if (id !== "ebay") {
+    // A real state, not a stored flag: bridge.js sets data-fash-crosslister
+    // from inside the extension itself, so this label can only ever appear
+    // when the helper that fills the shop's form is installed here. Measured
+    // from the extension's own handshake, not from localStorage.
+    if (XL_CONNECT_FILL.includes(id) && xlExtInstalled())
+      return `<span class="tag connected" data-tip="The shop helper is installed in this browser: Connect opens the shop with your photo, title, price and description already in the form. You still press Post.">Auto-fill ready</span>`;
     // Green, because the owner did do something — but the old label read
     // "Connected" for a flag in this browser's localStorage, with no account,
     // token or link behind it. The tip says what is actually true.
@@ -1411,7 +1422,7 @@ function xlConnectRowsHtml(){
       const connectLabel = "Connect " + shop.name;
       actions = `<button type="button" class="btn btn-accent btn-sm" onclick="xlShopOpenGuide('${shop.id}')" data-tip="Opens the ${escapeHtml(shop.name)} connect guidance panel.">${escapeHtml(connectLabel)}</button>`
         + `<a class="btn btn-soft btn-sm" href="${escapeHtml(shop.signup)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} signup.">Signup</a>`
-        + (shop.oauth ? "" : `<button type="button" class="btn btn-ghost btn-sm" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Marks Connected locally only — does not grant API post access.">I've connected</button>`);
+        + (shop.oauth ? "" : `<button type="button" class="btn btn-ghost btn-sm" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Notes that you already have an account here. It is a note in this browser only — no connection is made.">I have an account</button>`);
     }
     let detail;
     if (shop.id === "ebay") {
@@ -1422,8 +1433,10 @@ function xlConnectRowsHtml(){
       else detail = "Guide + keys → Connect OAuth (optional API)";
     } else {
       detail = connected
-        ? "Local Connected · paste kit on the shop"
-        : (st === "ready" ? "Guide open · signup → paste" : "Guide + paste (no public seller OAuth)");
+        ? "Account noted · no connection was made"
+        : (XL_CONNECT_FILL.includes(shop.id)
+          ? "One tap fills this shop's form"
+          : (st === "ready" ? "Guide open · signup → paste" : "Guide + paste (no seller API here)"));
     }
     return `<div class="xl-connect-row" data-shop="${shop.id}">
       <div class="xl-connect-name"><b>${escapeHtml(shop.name)}</b><span>${detail}</span></div>
@@ -1454,7 +1467,7 @@ function xlConnectShopsMerged(){
         "Open a new listing on " + name + ".",
         "Paste your fashionistas.ai draft kit, then post on " + name + "."
       ],
-      honest: escapeHtml(name) + " has <b>no public seller OAuth</b> wired here. Guided open + paste only — we never invent API credentials or take passwords. <b>I've connected</b> is local."
+      honest: escapeHtml(name) + " has no seller API wired here — we never invent API credentials or take your password. Use <b>Open create listing</b>, copy your kit and paste it into the shop's own form."
     });
   });
   return base;
@@ -1564,7 +1577,9 @@ function xlShopOpenGuide(id){
   if (title) title.textContent = "Connect " + shop.name;
   if (sub) sub.textContent = shop.oauth
     ? "Keys → Connect OAuth → paste kit (optional Create)"
-    : "Free guide · open the shop · paste your draft";
+    : (XL_CONNECT_FILL.includes(shop.id)
+      ? "One tap · your draft lands in the shop's own form"
+      : "Free guide · open the shop · paste your draft");
   xlShopPaintStatus(shop.id);
 
   const finishOpen = () => {
@@ -1622,17 +1637,21 @@ function xlShopOpenGuide(id){
     </div>
    </details>`;
     } else {
+      const fillable = XL_CONNECT_FILL.includes(shop.id);
       oauthBlock = `
+   ${fillable ? xlConnectFillHtml(shop) : ""}
    <div class="shop-cg-hive" aria-label="Coach checklist">
     <p class="kicker">Coach · checklist</p>
     <ol>${hiveLis}</ol>
    </div>
    <div class="shop-cg-actions">
-    <a class="btn btn-accent" href="${escapeHtml(shop.createListing)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} create-listing.">Open create listing</a>
+    <a class="btn btn-soft" href="${escapeHtml(shop.createListing)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} create-listing.">Open create listing</a>
     <a class="btn btn-soft" href="${escapeHtml(shop.signup)}" target="_blank" rel="noopener noreferrer" data-tip="Opens ${escapeHtml(shop.name)} signup.">Open signup</a>
-    <button type="button" class="btn btn-soft" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Notes that you have an account here. Nothing is connected.">I've connected</button>
+    <button type="button" class="btn btn-ghost" onclick="xlConnectMarkLocal('${shop.id}')" data-tip="Notes that you have an account here. Nothing is connected.">I have an account</button>
    </div>
-   <p class="shop-cg-foot">No API keys here — ${escapeHtml(shop.name)} is guide + paste only.</p>`;
+   <p class="shop-cg-foot">${fillable
+      ? `No API keys and no password — your browser fills ${escapeHtml(shop.name)} for you, and you press Post.`
+      : `No API keys here — ${escapeHtml(shop.name)} is guide + paste only.`}</p>`;
     }
 
     body.innerHTML = `
@@ -3092,9 +3111,42 @@ function xlSheet(l, picks, copied, kits, allKit){
  <button class="btn btn-primary" style="width:100%" onclick="closeSheet()" data-tip="Closes this panel." title="Closes this panel.">Done</button>`);
 }
 /* ---- Crosslister extension: fills each shop's sell form for the seller ---- */
-const XL_FILL_SHOPS = ["depop","ebay","poshmark","mercari","vinted","grailed"];
+const XL_FILL_SHOPS = XL_CONNECT_FILL;
 const XL_EXT_ZIP = "fashionistas-crosslister.zip";
 function xlExtInstalled(){ return !!(document.documentElement && document.documentElement.dataset.fashCrosslister); }
+
+/* The listing these buttons ship. The Connect panel is reachable straight from
+   the shop grid without ever opening Multilist, so CURRENT.xlFill cannot be
+   assumed to exist — fall back to whatever is ticked in Inventory, then to the
+   newest listing. Null only when there is genuinely nothing to send. */
+function xlFillListing(){
+  if (CURRENT.xlFill && CURRENT.xlFill.l) return CURRENT.xlFill.l;
+  const all = (S.listings || []).filter(x => x && x.id);
+  const sel = all.filter(x => S.sel && typeof S.sel.has === "function" && S.sel.has(x.id));
+  if (sel.length) return sel[0];
+  // Nothing ticked: ship the newest item that has a photo. A listing with no
+  // photo cannot be posted to any of these shops, and the photo is the thing
+  // the copy promises ("photo included"). Measured 2026-10-01: the demo
+  // account's first row (126) has photo_url empty, so taking rows[0] shipped
+  // a photo-less draft.
+  return all.find(x => x.photo_url) || all[0] || null;
+}
+/* One extension job for a set of shops (default: Multilist's own picks). */
+function xlFillJob(picks){
+  const l = xlFillListing();
+  if (!l) return null;
+  const st = CURRENT.xlFill;
+  const want = (picks && picks.length) ? picks : ((st && st.picks) || []);
+  const shops = want.filter(p => XL_FILL_SHOPS.includes(p)).map(pid => {
+    const rules = xlKitRules(pid);
+    return { id: pid, title: xlKitTitle(rules, l), description: xlKitDescription(rules, l),
+      price: l.price, brand: (l.brand && !/^unknown$/i.test(l.brand)) ? l.brand : "",
+      size: l.size || l.sizeHint || "", color: l.color || "", condition: l.condition || "" };
+  });
+  const photos = [l.photo_url].concat(Array.isArray(l.photos) ? l.photos : [])
+    .filter(u => typeof u === "string" && /^https:\/\//.test(u));
+  return { listingId: l.id || null, shops, photos };
+}
 function xlFillCardHtml(picks){
   const ok = picks.filter(p => XL_FILL_SHOPS.includes(p));
   if (!ok.length) return "";
@@ -3126,9 +3178,12 @@ function xlFillCardHtml(picks){
   </ol><a href="crosslister-privacy" target="_blank" rel="noopener" style="font-size:12px" data-tip="What the Crosslister stores and sends: only your listing, nothing else." title="What the Crosslister stores and sends.">Privacy: what it stores</a></details></div>`;
 }
 let XL_BM_HREF = null;
-function xlBookmarkLoad(){
-  const a = document.getElementById("xl-bm"); if (!a) return;
-  const set = () => { a.setAttribute("href", XL_BM_HREF); };
+function xlBookmarkLoad(id){
+  const key = id || "xl-bm";
+  const a = document.getElementById(key); if (!a) return;
+  // Re-resolve by id when the fetch lands: this runs for both the kit card and
+  // the Connect panel, and the panel may have re-rendered while it loaded.
+  const set = () => { const el = document.getElementById(key); if (el && XL_BM_HREF) el.setAttribute("href", XL_BM_HREF); };
   if (XL_BM_HREF) return set();
   fetch("fashionistas-fill-bookmarklet.txt").then(r => r.ok ? r.text() : Promise.reject(new Error("bookmark " + r.status)))
     .then(t => { if (/^javascript:/.test(t)) { XL_BM_HREF = t; set(); } })
@@ -3136,16 +3191,16 @@ function xlBookmarkLoad(){
 }
 /* The listing for the bookmark, as JSON with the photo shrunk to a data URL, so
    the bookmark never has to reach our servers from the shop's page. */
-async function xlFillPayload(){
-  const st = CURRENT.xlFill || {}; const l = st.l || {};
+async function xlFillPayload(picks){
+  const job = xlFillJob(picks);
+  const l = xlFillListing();
   const shops = {};
-  (st.picks || []).filter(p => XL_FILL_SHOPS.includes(p)).forEach(pid => {
-    const rules = xlKitRules(pid);
-    shops[pid] = { title: xlKitTitle(rules, l), description: xlKitDescription(rules, l), price: l.price,
-      brand: (l.brand && !/^unknown$/i.test(l.brand)) ? l.brand : "", size: l.size || l.sizeHint || "", color: l.color || "", condition: l.condition || "" };
+  (job ? job.shops : []).forEach(s => {
+    shops[s.id] = { title: s.title, description: s.description, price: s.price,
+      brand: s.brand, size: s.size, color: s.color, condition: s.condition };
   });
   const photos = [];
-  if (l.photo_url) {
+  if (l && l.photo_url) {
     try {
       // no-store: the <img> on this page cached the photo without CORS headers,
       // and reusing that copy for a fetch is blocked.
@@ -3159,7 +3214,7 @@ async function xlFillPayload(){
       photos.push({ type: "image/jpeg", data: c.toDataURL("image/jpeg", 0.85) });
     } catch (e) { console.warn("[xl] photo for bookmark", e); }
   }
-  return JSON.stringify({ fashionistas: 1, listingId: l.id || null, shops, photos });
+  return JSON.stringify({ fashionistas: 1, listingId: job ? job.listingId : null, shops, photos });
 }
 async function xlCopyForBookmark(btn){
   const msg = document.getElementById("xl-bm-msg");
@@ -3180,19 +3235,18 @@ async function xlCopyForBookmark(btn){
 // A second press must take over from the first: the old listener and its
 // countdown are cleared here, not left to overwrite the newer message.
 let XL_FILL_TIMER = null, XL_FILL_ACK = null;
-function xlAutofill(){
-  const st = CURRENT.xlFill; if (!st) return;
+function xlAutofill(only, msgId){
   if (XL_FILL_TIMER) { clearTimeout(XL_FILL_TIMER); XL_FILL_TIMER = null; }
   if (XL_FILL_ACK) { window.removeEventListener("message", XL_FILL_ACK); XL_FILL_ACK = null; }
-  const l = st.l || {};
-  const shops = st.picks.filter(p => XL_FILL_SHOPS.includes(p)).map(pid => {
-    const rules = xlKitRules(pid);
-    return { id: pid, title: xlKitTitle(rules, l), description: xlKitDescription(rules, l),
-      price: l.price, brand: (l.brand && !/^unknown$/i.test(l.brand)) ? l.brand : "", size: l.size || l.sizeHint || "",
-      color: l.color || "", condition: l.condition || "" };
-  });
-  const photos = [l.photo_url].concat(Array.isArray(l.photos) ? l.photos : []).filter(u => typeof u === "string" && /^https:\/\//.test(u));
-  const msg = document.getElementById("xl-fill-msg");
+  // `only` scopes the job to one shop (the Connect panel sends one shop at a
+  // time); with no argument it sends whatever Multilist had ticked.
+  const job = xlFillJob(only);
+  const msg = document.getElementById(msgId || "xl-fill-msg");
+  if (!job || !job.shops.length) {
+    if (msg) msg.textContent = "Nothing to send yet — snap an item (or tick one in Inventory), then press this again.";
+    return;
+  }
+  const shops = job.shops;
   const shopWord = shops.length === 1 ? "shop" : "shops";
   if (msg) msg.textContent = "Opening " + shops.length + " " + shopWord + "…";
   const stop = () => {
@@ -3210,7 +3264,7 @@ function xlAutofill(){
   // reads as the button being broken. After 4 seconds say what to do instead.
   // The kits for every shop are already on this page, so the person can always
   // carry on by hand while the helper is sorted out.
-  const allPicks = (st.picks || []).length;
+  const allPicks = shops.length;
   XL_FILL_TIMER = setTimeout(() => {
     if (!msg) return;
     stop();
@@ -3222,7 +3276,81 @@ function xlAutofill(){
   }, 4000);
   XL_FILL_ACK = onAck;
   window.addEventListener("message", onAck);
-  window.postMessage({ source: "fashionistas", type: "FASH_CROSSLIST", job: { listingId: l.id || null, shops, photos } }, location.origin);
+  window.postMessage({ source: "fashionistas", type: "FASH_CROSSLIST", job }, location.origin);
+}
+/* The Connect panel's real action: send THIS shop's form data. With the helper
+   installed the extension opens the shop and fills it (photo included);
+   without it, copy the same payload and open the shop, so the no-install
+   bookmark finishes the job on the form itself. */
+function xlConnectFill(pid){
+  const shop = xlConnectShopById(pid) || xlConnectShopsMerged().find(s => s.id === pid);
+  const say = (html) => { const el = document.getElementById("xl-cg-fill-msg"); if (el) el.innerHTML = html; };
+  if (!xlFillListing()) {
+    say("Nothing to send yet — tap <b>Snap an item</b>, save it, then come back here.");
+    return;
+  }
+  if (xlExtInstalled()) { xlAutofill([pid], "xl-cg-fill-msg"); return; }
+  const payload = xlFillPayload([pid]);          // starts shrinking the photo now
+  say("Copying your listing, then opening " + escapeHtml(shop ? shop.name : "the shop") + "…");
+  // ORDER MEASURED, NOT GUESSED — live 2026-10-01: opening the shop first
+  // switched focus to the new tab, Chrome then refused the clipboard write, and
+  // the panel reported a blocked copy while the tab had in fact opened. So the
+  // copy starts while THIS document is still focused; the shop opens after it.
+  // Same trick as xlCopyForBookmark: hand the clipboard a PROMISE so the write
+  // permission outlives the photo being fetched and re-encoded.
+  const copyIt = () => {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      return navigator.clipboard
+        .write([new ClipboardItem({ "text/plain": payload.then(t => new Blob([t], { type: "text/plain" })) })])
+        .catch(() => payload.then(t => navigator.clipboard.writeText(t)));
+    }
+    return payload.then(t => navigator.clipboard.writeText(t));
+  };
+  const openShop = () => {
+    if (!shop) return true;
+    let w = null;
+    try { w = window.open(shop.createListing, "_blank"); } catch (e) { w = null; }
+    if (!w) return false;                        // popup blocked → caller adds a link
+    try { w.opener = null; } catch (e) {}        // the isolation "noopener" would give
+    return true;
+  };
+  const openLink = () => ' <a class="btn btn-soft btn-sm" href="' + escapeHtml(shop ? shop.createListing : "#") +
+    '" target="_blank" rel="noopener">Open ' + escapeHtml(shop ? shop.name : "the shop") + " here</a>";
+  copyIt()
+    .then(() => {
+      const opened = openShop();
+      say("Copied — photo included. " + (opened
+        ? "The shop just opened in a new tab — click your <b>Fashionistas Fill</b> bookmark there and the listing drops into the form."
+        : "Your browser blocked the new tab." + openLink() + " On it, click your <b>Fashionistas Fill</b> bookmark."));
+    })
+    .catch(e => {
+      console.warn("[xl] connect copy", e);
+      openShop();
+      say("Your browser blocked the copy — press <b>Copy for Fashionistas Fill</b> in this item's kit below, then use the bookmark." + openLink());
+    });
+}
+/* The block the Connect panel opens with: one real button, not a checklist. */
+function xlConnectFillHtml(shop){
+  if (!shop || !XL_CONNECT_FILL.includes(shop.id)) return "";
+  const l = xlFillListing();
+  const what = l ? "“" + escapeHtml(String(l.title || "your item").slice(0, 42)) + "”" : "your next item";
+  const ext = xlExtInstalled();
+  setTimeout(() => xlBookmarkLoad("xl-bm-cg"), 0);
+  const btn = `<button type="button" class="btn btn-accent" onclick="xlConnectFill('${shop.id}')"
+     data-tip="${ext
+      ? "Opens " + escapeHtml(shop.name) + " with your photo, title, price and description already in the form. You check it and press Post."
+      : "Copies your listing (photo included) and opens " + escapeHtml(shop.name) + ". The bookmark below drops it into the form."}">`
+    + (ext ? `Fill ${escapeHtml(shop.name)} for me` : `Copy my listing &amp; open ${escapeHtml(shop.name)}`) + `</button>`;
+  return `<div class="xl-note" style="border-color:var(--accent);margin:0 0 12px">
+    <b>Ship ${what} to ${escapeHtml(shop.name)} in one tap.</b><br>
+    ${ext
+      ? `Your shop helper is on: ${escapeHtml(shop.name)} opens with the photo, title, price and description already in the form. Check it, then press the shop's own Post button.`
+      : `Copies your listing (photo included) and opens ${escapeHtml(shop.name)}. Once, drag the <b>Fashionistas Fill</b> bookmark to your bookmarks bar and it drops the listing straight into the form.`}
+    <div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">${btn}
+      ${ext ? "" : `<a id="xl-bm-cg" class="btn btn-soft btn-sm" href="#" onclick="event.preventDefault();toast('Drag this button to your bookmarks bar — don\\'t click it here.')" data-tip="Drag this to your bookmarks bar." title="Drag this to your bookmarks bar.">Fashionistas Fill</a>`}
+    </div>
+    <div id="xl-cg-fill-msg" class="mut" aria-live="polite" style="margin-top:6px;font-size:12px"></div>
+  </div>`;
 }
 function xlCopy(btn){ const t=btn&&btn.getAttribute("data-kit")||""; navigator.clipboard&&navigator.clipboard.writeText(t).then(()=>toast("Kit copied")).catch(()=>toast("Copy blocked by browser")); }
 
