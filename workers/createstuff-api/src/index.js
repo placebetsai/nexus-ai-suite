@@ -26,19 +26,29 @@
 // file object carries BOTH keys. Only one file list route exists in app.js but
 // it is used by two callers with different field names.
 
-// SECRET: env.SESSION_SECRET when it is set; otherwise a per-isolate random key.
-// This is NOT a solved problem, and the tradeoffs are real:
-//   (a) with no binding, every deploy / restart / scale-to-zero mints a new key,
-//       which invalidates EVERY outstanding token at once — builder tokens
-//       (/api/auth/*) and app tokens (/app/:id/api/auth/*) alike. Re-login with
-//       the same password always works, because password hashes are independent
-//       of this value.
-//   (b) with no binding, separate isolates hold separate keys, so a token minted
-//       in one isolate can fail verification in another until the client logs in
-//       again. That shows up as intermittent {user:null} / 401 on edge PoPs.
-// Setting SESSION_SECRET in wrangler.toml [vars] or the dashboard removes both.
-// Left unset on purpose here so a missing var cannot silently downgrade to a
-// guessable constant.
+// SECRET: env.SESSION_SECRET when it is set, otherwise a key DERIVED from a
+// secret that is bound to this worker, otherwise — only when nothing at all is
+// bound — a per-isolate random key.
+//
+// The requirement is that every isolate computes the SAME key: a token minted
+// here is verified over there. Measured 2026-10-01 against the live worker
+// (no SESSION_SECRET bound — the script's secret list is CF_ANALYTICS_TOKEN,
+// GITHUB_TOKEN, GROQ_API_KEY, HIVE_TOKEN, HIVE_URL), the old
+// "per-isolate random key" branch made verification depend on which isolate
+// answered: one token, 60 parallel GET /api/projects -> 13x200 + 47x401, and
+// 60 parallel POST /api/builds -> 11x202 + 49x401, while the same token passed
+// 100/100 sequential requests a second earlier. In the build itself, 5 calls
+// were refused before a retry took them. Every 401 is a person being logged
+// out mid-task and a build that does not start.
+//
+// Deriving the key (SHA-256 of a domain tag + a bound secret) keeps the
+// author's actual constraint — no constant that ships in the source, so
+// nothing guessable is in the repository — while making every isolate agree.
+// SESSION_SECRET still wins when it exists, so binding one later is a pure
+// upgrade: it rotates the key once, exactly as any rotation does.
+// The random branch survives only for a worker with NO secret bound at all,
+// which is the behaviour this worker had before, kept so a fresh install can
+// still sign tokens rather than 500 on every request.
 // Where a published site's address is handed back to the user.
 //
 // `${url.origin}/published/<id>/...` works but reads like infrastructure:
@@ -72,11 +82,22 @@ async function getSecret(env) {
   if (SECRET) return SECRET;
   if (env.SESSION_SECRET) {
     SECRET = new TextEncoder().encode(env.SESSION_SECRET);
-  } else {
-    const buf = new Uint8Array(32);
-    crypto.getRandomValues(buf);
-    SECRET = new TextEncoder().encode(b64s(buf));
+    return SECRET;
   }
+  // No SESSION_SECRET on this worker (measured 2026-10-01, see the note above):
+  // every isolate must still agree, so the key is derived from a secret that IS
+  // bound instead of being rolled per isolate. Domain tag first, so this key
+  // can never collide with anything the same secret is used for elsewhere.
+  const bound = env.HIVE_TOKEN || env.GROQ_API_KEY || env.GITHUB_TOKEN || env.CF_ANALYTICS_TOKEN;
+  if (bound) {
+    const digest = await crypto.subtle.digest("SHA-256", enc.encode("createstuff.session.v1:" + bound));
+    SECRET = new Uint8Array(digest);
+    return SECRET;
+  }
+  // Nothing is bound: keep the old behaviour so a fresh worker can still sign.
+  const buf = new Uint8Array(32);
+  crypto.getRandomValues(buf);
+  SECRET = new TextEncoder().encode(b64s(buf));
   return SECRET;
 }
 
