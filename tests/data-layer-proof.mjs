@@ -205,6 +205,28 @@ const REFUSAL = new RegExp(
 );
 const PERCENT = /(\d{1,3}(?:\.\d+)?)\s*%/g;
 
+/* A percentage that merely EXPLAINS a price is not the answer's own number.
+   Control (2026-10-01, live): with Groq rate-limited the fallback model answered
+   with odds math — the system prompt's own worked example, "Jets at -110 means
+   52.4% implied probability" — and C2 failed 1 run in 3 on
+   `answer asserts 52.4% but probability is null` while the shipped
+   extractProbability() had correctly returned null: the judge was demanding a
+   probability the prose never claimed for the asked question.
+   So a percentage only counts as ASSERTED when its local context carries no
+   price/maths marker. Anything unmarked stays asserted, which keeps this judge
+   at least as strict as the code it checks. */
+const ODDS_MATH = new RegExp(
+  [
+    "[-+]\\d{3}",                 // a moneyline price anywhere near the number
+    "\\bmeans?\\b", "\\bequals?\\b", "\\bconvert(?:s|ed|ing)?\\b",
+    "\\bbreak[- ]?even\\b", "\\b(?:vig|juice|overround)\\b", "\\bpayouts?\\b",
+    "\\bimplied probability\\b", "\\bfor example\\b", "\\bsuppose\\b",
+    "\\bprobability of a (?:win|cover)\\b",
+  ].join("|"),
+  "i",
+);
+const MATH_WINDOW = 70;
+
 function judge2(json) {
   if (!has(json, "answer") || typeof json.answer !== "string" || json.answer.trim() === "") {
     return { pass: false, actual: "no answer string", note: "response has no usable `answer` string" };
@@ -213,8 +235,14 @@ function judge2(json) {
   const raw = has(json, "probability") ? json.probability : undefined;
   const isNull = raw === null || raw === undefined;
   const refused = REFUSAL.test(answer);
-  const asserted = [...answer.matchAll(PERCENT)].map((m) => parseFloat(m[1])).filter((v) => v >= 0 && v <= 100);
-  const shown = `prob=${pct(raw)} ${refused ? "refusal" : "no-refusal"} ${asserted.length}pct`;
+  const allPct = [...answer.matchAll(PERCENT)].filter((m) => {
+    const v = parseFloat(m[1]);
+    return v >= 0 && v <= 100;
+  });
+  const asserted = allPct
+    .filter((m) => !ODDS_MATH.test(answer.slice(Math.max(0, (m.index ?? 0) - MATH_WINDOW), m.index ?? 0)))
+    .map((m) => parseFloat(m[1]));
+  const shown = `prob=${pct(raw)} ${refused ? "refusal" : "no-refusal"} ${asserted.length}asserted/${allPct.length}pct`;
 
   if (refused) {
     return {
@@ -474,6 +502,30 @@ const DISCRIMINATION = [
     id: "D10",
     claim: "judge1 rejects a missing topics field rather than passing it",
     run: () => judge1({ ok: true }),
+  },
+  {
+    id: "D11",
+    claim: "judge2 accepts odds-math prose with probability null",
+    run: () =>
+      judge2({
+        answer: "A -110 line means 52.4% implied probability, so the market has it near a coin flip.",
+        probability: null,
+      }),
+    want: true,
+  },
+  {
+    id: "D12",
+    claim: "judge2 still rejects the model's OWN number left null",
+    run: () => judge2({ answer: "I'd give the Chiefs a 54% chance to win this one.", probability: null }),
+  },
+  {
+    id: "D13",
+    claim: "judge2 rejects a number scraped out of pure odds math",
+    run: () =>
+      judge2({
+        answer: "A -110 line means 52.4% implied probability, so the market has it near a coin flip.",
+        probability: 0.524,
+      }),
   },
 ];
 
