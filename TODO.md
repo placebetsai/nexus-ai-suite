@@ -56,6 +56,7 @@ Every item names the agent that owns it. No item is DONE until a live HTTP/brows
 
 | F17 | **Multilist clicked end to end — what it really does, and two defects found in it.** It does **not** auto-post outside: `/api/marketplaces` = **21** entries, **20 `api:"deep"`** (guide + paste) + **1 `api:"full"`** (fashionistas itself), and the screen says *"You post yourself on every shop."* The guide half works: item → `platforms → 200` → 21 fee checkboxes → Select all → `crosspost → 200` → **21 saved drafts** with title/price/fields/tone/description/tags + a real *Open listing page* link per shop. **Defect (a)** the eBay panel never loaded — `index.html` sends `cache-control: no-store` but the worker allowed only `Content-Type, Authorization` → preflight failed. **Defect (b)** every kit shipped `#Bags&Luggage/Handbags`, a category **path** used as a tag, which no marketplace resolves | — | — | **DONE** | **CONTROL pre-fix:** browser shows `Request header field cache-control is not allowed by Access-Control-Allow-Headers…` + `net::ERR_FAILED` on `/api/ebay/status` while curl got **200 with ACAO**; **19/19 TAGS lines** = `#Bags&Luggage/Handbags`. **POST-FIX, two runs:** preflight → 200 with `allow-headers: …, Cache-Control`, in-page `GET /api/ebay/status → 200 (22 ms)`, **0 CORS errors**; `POST /api/listings/120/crosspost → 200` (**2,047 ms**, **2,091 ms**) → **21 kits, 19 TAGS, `badTags: 0`**, Depop `#vintage #thrift #y2k #resale #rework #preloved #handbags`, **0 console errors**. Deploy trap recorded: a no-`--branch` Pages deploy landed as `environment=preview` (apex still served yesterday's production bytes); `--branch main` → **`882eb790 env=production`**, apex md5 == local |
 | F18 | **"Fill it for me" could wait for ever** — `xlAutofill()` posted `FASH_CROSSLIST` and waited for the ACK **with no timeout**, so a silent helper (switched off, mid-update, or needing a reload after install) left `Opening 6 shops…` on screen permanently, and each press stacked a new listener over the old one | **Lead** | — | **DONE** | CONTROL: the line was still `Opening 6 shops…` at **5 s and 10 s**. TREATMENT (fresh load, demo seller): at **4 s** it becomes the no-install bookmark route + the switch-on steps + *"your **21** picked shops already have their text ready in the kits below"*, kits stay on screen (**22** `[data-kit]` nodes), **0 console errors**; ACK half replayed using the exact contract in `extensions/crosslister/bridge.js:14` → `Opened in new tabs…` within 6 s **and unchanged at +6 s** (countdown cancelled, so success never becomes a warning). acorn gate OK (1 JS block, 3 JSON-LD skipped); deploy `ee9bf8d5` **`environment=production`**, apex == pages.dev == local **429,890 B**. *Not re-run here:* `tests/crosslister-e2e.mjs` — `playwright` is not installed in this workspace |
+| F19 | **The add-item form blamed you for a field you had just filled** — both forms refuse with one message for two fields, so a typed title came back as *"Title and price are required"*, and the department rule fired with nothing pointing at the select | **Lead** | — | **DONE** | CONTROL (live, pre-fix): title typed + price empty → toast **"Title and price are required"**, no field highlighted; price filled + department empty → **"Pick a department so buyers can find this item"**, focus stays on the button. TREATMENT (fresh load, demo seller): **"Add a price — e.g. 45"** with focus on `#m-price`; **"Pick a department — e.g. Women's Clothing — so buyers can find it"** with focus on `#m-dept`; then `POST /api/listings → 201 (963 ms)`, item on screen, **0 console errors**. acorn OK (1 JS block); deploy verified, apex == pages.dev == local **430,874 B**. *Same edit in the main Sell form (`saveListing`) — that leg was not browser-proven here* |
 
 ## C. Cross-cutting
 
@@ -158,7 +159,7 @@ Commits this session: `1555afa` `09a3ab2`.
 
 ## Status board — 2026-09-30 (reposted after this stretch's ships)
 
-**CLOSED (20)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
+**CLOSED (21)** — index.html GATE (writer returning only `styles.css`); `unreachableMode`
 position-aware false positive; relay per-attempt/timeouts raised after the measured 100.0 s
 abort; **`missing-element` detector** (proven in production via `/api/script-probe`, 15 ids on
 build 144's own bytes); **gate silence now impossible** (`script-health` line prints
@@ -188,6 +189,14 @@ send"** and created nothing; treatment — 3 files landed as **one commit** `2f3
 **Send my whole app** button in a real browser wrote commit `93246c0bb4` with 2 files in
 2,356 ms, 0 console errors; a TDZ 500 on the first deploy was caught by that same run and fixed
 before ship).
+
+**the add-item form blaming you for a field you had just filled** (control: *"Title and price are
+required"* with the title typed; treatment: *"Add a price — e.g. 45"* with the cursor in the price
+box, then *"Pick a department — e.g. Women's Clothing…"* in the select, then `POST /api/listings
+→ 201`, 0 console errors). Also recorded so nobody re-opens them: **two alarms withdrawn** —
+`/predict` only looked stuck because the harness freezes background tabs (`$RB=6`/`$RT`
+undefined; focused: `$RT=114`, page renders, query works), and createstuff's storage was **not**
+wiped by the app (`logout()` runs only from the Sign-out buttons; keys survive a reload).
 
 **OPEN (6)** — Phase 5 mobile still untested on a real handset (no device emulation exists);
 `/help` pages; createstuff map #3–#8; fashionistas analytics token (needs a credential);

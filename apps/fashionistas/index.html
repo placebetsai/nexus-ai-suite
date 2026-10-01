@@ -4089,11 +4089,16 @@ async function saveListing(){
  const c = CURRENT.form;
  const title = $("#f-title").value.trim();
  const price = parseFloat($("#f-price").value);
- if (!title || !price || isNaN(price)) return toast("Title and a valid price are required");
+ /* Name the ONE thing that is missing and put the cursor in it. The old
+    messages claimed both fields were required when only one was, so a seller
+    who had typed a title was told their title was missing — which reads like
+    the form is broken rather than half-filled. */
+ if (!title) { const el = $("#f-title"); if (el) el.focus(); return toast("Add a title first — e.g. Levi's Trucker Jacket"); }
+ if (!price || isNaN(price)) { const el = $("#f-price"); if (el) el.focus(); return toast("Add a price — e.g. 45"); }
  /* Category is a department + type pair. Required, the way a real marketplace
     requires it — an item with nowhere to live can never be browsed to. */
  const category = fReadCat("f-dept", "f-sub-wrap");
- if (!category) return toast("Pick a department so buyers can find this item");
+ if (!category) { const el = $("#f-dept"); if (el) el.focus(); return toast("Pick a department — e.g. Women's Clothing — so buyers can find it"); }
  const condition = ((($("#f-cond .on")||{}).textContent)||"Good").trim();
  const size = $("#f-size").value.trim();
  const desc = $("#f-desc").value.trim();
@@ -5380,11 +5385,15 @@ function openAdd(){
 }
 async function saveManual(){
  const body = { title: $("#m-title").value.trim(), price: parseFloat($("#m-price").value), size: $("#m-size").value.trim(), category: fReadCat("m-dept","m-sub-wrap"), condition: ((($("#m-cond .on")||{}).textContent)||"Good").trim(), description: $("#m-desc").value.trim(), photo_url: $("#m-photo").value.trim()||null };
- if (!body.title || !body.price) return toast("Title and price are required");
+ /* Same one-field-at-a-time rule as the main form: say which box is empty and
+    jump to it. "Title and price are required" was shown even when the title
+    was already typed, so the seller had no way to know it was only the price. */
+ if (!body.title) { const el = $("#m-title"); if (el) el.focus(); return toast("Add a title first — e.g. Levi's Trucker Jacket"); }
+ if (!body.price) { const el = $("#m-price"); if (el) el.focus(); return toast("Add a price — e.g. 45"); }
  /* Same rule as the main form: every item gets a department, or it can never
     be browsed to. The old code read a chip group that no longer exists and
     silently fell back to a fixed category. */
- if (!body.category) return toast("Pick a department so buyers can find this item");
+ if (!body.category) { const el = $("#m-dept"); if (el) el.focus(); return toast("Pick a department — e.g. Women's Clothing — so buyers can find it"); }
  try { await api("/api/listings", { method:"POST", body: JSON.stringify(body) }); closeSheet(); toast("Added ✓"); go("closet"); } catch(e){ toast(e.message); }
 }
 

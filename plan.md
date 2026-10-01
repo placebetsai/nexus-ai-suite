@@ -707,3 +707,40 @@ Nothing in this list may be shown as working before it is proven live end to end
       into a repo this account does not own, GitLab/Bitbucket. `createstuff-wholeapp-probe`
       **stays on the account** — the `gh` token has `repo` but not `delete_repo`, so the DELETE
       came back *"Must have admin rights to Repository."* Disclosed, not glossed.
+
+### 2026-10-01 — layman walk of all four: what actually executes (and two alarms I retracted)
+
+- [x] **Why this pass.** Owner: *"the apps still don't do shit."* Instead of arguing, every site
+      was driven like a first-time user, in a focused tab, recording request + response:
+      - **placebets.ai/predict** — typed `Chiefs`, pressed Predict → `?q=Chiefs`,
+        *"Predictions for "Chiefs""*; board data `GET /api/odds → 200`, **468 matches** with
+        picks, PASS/LEAN labels and *Open prediction* links.
+      - **marketpicks.ai** — clicked *Is NVIDIA overvalued?* → `POST /api/chatbot → **200 in
+        8.3 s**` → real answer about NVDA's forward multiple with **named sources**, rendered
+        in the chat.
+      - **fashionistas.ai** — demo seller → *Add without a photo* → filled the form →
+        `POST /api/listings → **201 (963 ms)**` → item listed with price and department counts
+        updated, toast *Added ✓*, **0 console errors**.
+      - **createstuff.ai** — register → `cs_auth`/`cs_token`/`cs_user` stored → sign-in lands on
+        `#dashboard`; **session survives a plain reload** (keys still there, *Sign out* visible).
+- [x] **Two alarms I raised and then withdrew** (recorded so nobody re-litigates them):
+      1. *"/predict is stuck on Loading…"* — false. The harness **freezes background tabs**, so
+         `requestAnimationFrame`/`setTimeout` never fired and React's `$RV` flush (`$RB` stayed
+         at **6**, `$RT` stayed `undefined`) never ran. With the tab **focused**: `$RT=114`,
+         `$RB=0`, `S:1` consumed, page **509 px** tall with the ask box working. Retracted.
+      2. *"localStorage is wiped on every reload"* — false. After closing the sibling
+         createstuff.ai tabs, sign-in keys **survive a plain reload**. Both origins' storage was
+         empty only after ~12 h across a date change (browser profile restart), and the current
+         build's `logout()` runs **only** from the Sign-out buttons (`#logout-btn`,
+         `#mobile-logout`) — nothing auto-clears. Retracted.
+- [x] **The one real dead end found by doing it** (row F19): both add-item forms refused with a
+      **combined** message. Control: title typed, price left empty → *"Title and price are
+      required"* — the app blamed a field the seller had just filled. Fix: name the **one**
+      missing box, put the cursor in it.
+- [x] **TREATMENT (live, fresh load, demo seller):** price empty → **"Add a price — e.g. 45"**
+      with focus on `#m-price`; price filled, department empty → **"Pick a department — e.g.
+      Women's Clothing — so buyers can find it"** with focus on `#m-dept`; department chosen →
+      `POST /api/listings → 201 (963 ms)`, item visible, **0 console errors**. Same edit applied
+      to the main Sell form (`saveListing`) — **that path was not browser-proven here**.
+- [ ] Still open: mobile/Phase 5 (no device emulation tool in this harness), `/help`, createstuff
+      map #3–#8, and the four WAITING-ON-YOU items.

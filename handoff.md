@@ -1211,3 +1211,43 @@ Pages `createstuff-app` + `createstuff-marketing` both verified and **both custo
 probe repository stays on `placebetsai`. `createstuff-e2e-probe` was restored to `d40847eaf0`
 (`README.md + index.html`). Still unproven: the 60-file/4 MB rejections, a repo the account does
 not own, GitLab/Bitbucket.
+
+### 10.10 fashionistas.ai — the form told you that you had not typed what you had just typed
+
+**Found by walking the site as a user, not by reading code.** Both add-item forms rejected a
+half-filled form with one message for both fields: `saveListing()` said *"Title and a valid price
+are required"* and `saveManual()` said *"Title and price are required"* — shown even when the
+title **was** filled and only the price was empty. To a seller that reads as the app being broken.
+The department rule (`Pick a department…`) had the same problem in reverse: nothing on screen
+points at the select, so the click appears to do nothing.
+
+**CONTROL (live, pre-fix):** title `"Vintage Levi's Trucker Jacket"` typed, price empty → press
+*Save to my clothes* → toast **"Title and price are required"**, focus stays on the button, no
+field highlighted. Next: price filled, department empty → **"Pick a department so buyers can find
+this item"**, focus still on the button.
+
+**The fix** (`apps/fashionistas/index.html`, both `saveListing()` and `saveManual()`): say the
+**one** box that is empty and **move the cursor into it** —
+`Add a title first — e.g. Levi's Trucker Jacket` / `Add a price — e.g. 45` /
+`Pick a department — e.g. Women's Clothing — so buyers can find it`.
+
+**TREATMENT (live, fresh load, signed in as the demo seller):**
+
+| step | toast | focus lands on |
+|---|---|---|
+| title only | **Add a price — e.g. 45** | `#m-price` |
+| + price, no department | **Pick a department — e.g. Women's Clothing — so buyers can find it** | `#m-dept` |
+| department chosen | *Added ✓* → item on screen | — |
+
+`POST /api/listings → **201 (963 ms)**`, `GET /api/listings → 200`, **0 console errors**.
+
+**Gates:** acorn on the extracted inline script (1 JS block, JSON-LD skipped) → OK;
+`./deploy.sh pages fashionistas-ai apps/fashionistas` → verified; `fashionistas.ai` ==
+`fashionistas-ai.pages.dev` == local (**430,874 B**, sha `115602f2773b0d0b`), new copy served
+twice. *Not browser-proven:* the main Sell-form leg of the same edit.
+
+**Two claims withdrawn in this same pass** (so they are not repeated): `/predict` looked stuck
+only because the harness freezes background tabs (`$RT` undefined, `$RB=6` never flushed — with
+the tab focused it renders and answers); and createstuff's storage did **not** get wiped by the
+app (`logout()` only runs from the Sign-out buttons; the emptiness followed a ~12 h profile
+restart, and keys survive a plain reload with sibling tabs closed).
