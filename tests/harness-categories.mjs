@@ -9,10 +9,24 @@
    The functions under test are SLICED OUT OF THE APP and executed, so this
    cannot drift from what actually ships.
    Run: node tests/harness-categories.mjs                                */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 
-const html = readFileSync(new URL("../apps/fashionistas/index.html", import.meta.url), "utf8");
-const script = html.split("<script>").sort((a, b) => b.length - a.length)[0];
+/* On 2026-10-01 the app script moved out of index.html into /app.js (the shell
+   and the ~299 KB of JS are now separate cacheable resources). The functions
+   under test must be sliced out of whatever actually ships, so read both and
+   take the file that holds the code — falling back to the old inline split so
+   this harness keeps working if the script is ever moved back. */
+const dir = new URL("../apps/fashionistas/", import.meta.url);
+const html = readFileSync(new URL("index.html", dir), "utf8");
+const inline = [...html.matchAll(/<script(?![^>]*(?:\bsrc\s*=|ld\+json))[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+const appJs = existsSync(new URL("app.js", dir)) ? readFileSync(new URL("app.js", dir), "utf8") : "";
+const script = [appJs, ...inline].find((s) => s.includes("const TAX = {"))
+  ?? html.split("<script>").sort((a, b) => b.length - a.length)[0];
+if (!script.includes("const TAX = {")) {
+  console.log("FAIL  could not locate the app script (looked in app.js and inline index.html blocks)");
+  console.log("\nHARNESS 0/0\nRESULT FAIL");
+  process.exit(1);
+}
 
 let pass = 0, total = 0;
 const t = (name, got, want) => {
@@ -150,12 +164,22 @@ t("uncategorised filter on the closet", closetFilter(mine, "__none").length, 1);
 t("clearing shows everything", closetFilter(mine, "").length, mine.length);
 
 /* ---------- 9. saving requires a place to live ---------- */
+/* Copy asserted here is the SHIPPED validation copy, not a paraphrase: the
+   2026-10-01 fix replaced the vague "…so buyers can find this item" with a
+   message that names the one empty box and moves the cursor to it, so the
+   harness checked the old sentence and went red on a healthy build. The check
+   is scoped to saveListing()'s own body so the string cannot pass by living in
+   some other function. */
+const SAVE_DEPT_MSG = 'Pick a department — e.g. Women\'s Clothing — so buyers can find it';
+const slStart = script.indexOf("async function saveListing");
+const slRegion = slStart < 0 ? "" : script.slice(slStart, script.indexOf("async function", slStart + 20));
 has("saveListing reads the department select", script.includes('fReadCat("f-dept", "f-sub-wrap")'));
-has("saveListing refuses to save without a department",
-  script.includes('Pick a department so buyers can find this item'));
+has("saveListing refuses to save without a department", slRegion.includes(SAVE_DEPT_MSG));
+has("saveListing names the empty box and moves focus to it",
+  /const el = \$\("#f-dept"\)[\s\S]{0,120}el\.focus\(\)[\s\S]{0,60}return toast\("Pick a department/.test(slRegion));
 has("manual sheet reads its own department select", script.includes('fReadCat("m-dept","m-sub-wrap")'));
 has("manual sheet refuses to save without a department",
-  script.split('async function saveManual')[1].includes('Pick a department so buyers can find this item'));
+  (script.split('async function saveManual')[1] || "").includes(SAVE_DEPT_MSG));
 has("price estimator reads the department select", script.includes('fReadCat("sp-dept", "sp-sub-wrap")'));
 has("price estimator refuses a blank department", script.includes('Pick a department so we know what to price'));
 
