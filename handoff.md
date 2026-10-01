@@ -1251,3 +1251,43 @@ only because the harness freezes background tabs (`$RT` undefined, `$RB=6` never
 the tab focused it renders and answers); and createstuff's storage did **not** get wiped by the
 app (`logout()` only runs from the Sign-out buttons; the emptiness followed a ~12 h profile
 restart, and keys survive a plain reload with sibling tabs closed).
+
+### 10.11 placebets + marketpicks finally get a phone test — and it passed only after I fixed the test
+
+**The gap:** `tests/walk-390.mjs` covers fashionistas and `tests/measure-createstuff-390px.mjs`
+covers createstuff. placebets and marketpicks had **no mobile coverage at all**, so neither could
+be vouched for on the device most people use. `playwright` is available in this workspace
+(installed under `Placebetsai-src/node_modules`) — the blocker was that nobody ran it.
+
+**New: `tests/walk-390-pb-mp.mjs`** — iPhone 14 viewport (390×844, `isMobile`, `hasTouch`, iOS
+user agent). Per screen it records horizontal overflow (the sideways swipe that means the layout
+is broken), first-party load failures, whether the screen's own control is thumb-sized, and then
+**performs the screen's main action** and asserts on the result.
+
+**First run: FAIL (6).** Three were my test's fault, and saying so is the point:
+
+| first-run failure | what it actually was |
+|---|---|
+| "no console errors" ×3 | `Failed to load resource` lines carry **no URL**. A clean diagnostic load of all four pages showed the only failing resource on every one of them was `pagead2.googlesyndication.com` (AdSense) — DNS-blocked by this sandbox. The classifier now ignores URL-less resource lines (`requestfailed` reports the same event with a URL) and `net::ERR_ABORTED`, which is a normal SPA route change. |
+| "ask submits on a phone" | the assertion read only the first 400 characters of the page — on a phone that is nav and ticker, so a result that rendered further down looked absent. The URL *was* `/predict?q=NBA`. Fixed to search the whole page. |
+| "ask bar is thumb-sized" | I demanded a 200 px input. Measured: input **166×42**, submit **80×42** — both over the 40 px touch minimum. The rule now tests the standard, not my preference. |
+| "chat renders" (ready selector) | I guessed `[aria-label*=chat]`, which does not exist. The chat itself opened fine. |
+
+**TREATMENT — re-run after the fixes: `=== RESULT: PASS ===`**, with all four sites on a phone:
+
+- **placebets** home (no overflow), `/predict` — typed `NBA` on the phone → `/predict?q=NBA` →
+  *"Predictions for …"*, ask bar 166×42 / 80×42, **0 first-party failures**; `/parlay` — 3 flavor
+  tabs **300×126**, board renders.
+- **marketpicks** home (no overflow), chat opened → input **288×53**, send **48×48** → asked and
+  received an answer, **0 first-party failures**.
+- fashionistas (existing `walk-390.mjs`) and createstuff (`measure-createstuff-390px.mjs`)
+  re-run in the same pass: both **PASS**.
+
+**Also hunted, in case the complaint lives somewhere else:** every internal link on the four
+landings — the 13 marketpicks routes that return an empty `<main>` from a raw fetch all render
+real content in a browser (4k–72k chars); createstuff `#projects`/`#settings` render their empty
+states when clicked (my 400-char threshold was a false alarm); placebets `/games` "Coming soon" is
+a per-game status badge on a live catalog, not a stub; fashionistas **Create account** →
+`POST /api/auth/register → 201` → Home → `POST /api/listings → 201`, toast *Added ✓*, 0 errors.
+Reliability burst across five endpoints: **22/22 HTTP 200**. The single non-200 was my probe
+sending `message` where the API expects `query`.

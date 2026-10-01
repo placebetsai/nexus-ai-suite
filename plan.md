@@ -744,3 +744,49 @@ Nothing in this list may be shown as working before it is proven live end to end
       to the main Sell form (`saveListing`) — **that path was not browser-proven here**.
 - [ ] Still open: mobile/Phase 5 (no device emulation tool in this harness), `/help`, createstuff
       map #3–#8, and the four WAITING-ON-YOU items.
+
+### 2026-10-01 (later) — the phone path, tested for the first time on all four
+
+- [x] **Why.** The owner is still saying the apps don't work, and the one device class nobody
+      had ever executed was a phone — `tests/walk-390.mjs` (fashionistas) and
+      `tests/measure-createstuff-390px.mjs` (createstuff) existed; **placebets and marketpicks
+      had no mobile test at all.** `playwright` turned out to be installed under
+      `Placebetsai-src/node_modules`, so the excuse "no device emulation" was wrong: it is
+      available, it just was not being used for these two sites.
+- [x] **New test `tests/walk-390-pb-mp.mjs`** — iPhone 14 viewport (390×844, touch, iOS UA),
+      per screen: horizontal overflow, whether the screen's own control is thumb-sized, whether
+      the main action actually completes, and first-party load failures.
+- [x] **First run FAILed 6 checks**, which is what a test is for. Sorting them:
+      - **ad-host noise** — the console line `Failed to load resource: net::ERR_*` carries no URL,
+        so it cannot be attributed; a clean diagnostic load of all four pages at 390px showed the
+        only failing resource was `pagead2.googlesyndication.com` (AdSense, DNS-blocked in this
+        sandbox). The classifier now ignores URL-less resource lines (`requestfailed` already
+        reports the same event *with* a URL) and `net::ERR_ABORTED` (a normal SPA route change:
+        the new navigation cancels the old prefetch — it fires on every `router.push`).
+      - **my own thresholds were wrong** — the predict assertion read only the first 400 chars of
+        the page, which on a phone is nav and ticker; the result heading is further down. Fixed to
+        search the whole page. The "thumb-sized" bar rule demanded a 200 px input; measured
+        input is **166×42** with an **80×42** submit, which meets the 40 px touch minimum — the
+        rule now tests the standard, not my preference.
+      - **my ready selector for the chat was a guess** (`[aria-label*=chat]`) that never existed;
+        the chat itself opened fine (input **288×53**, send **48×48**).
+- [x] **TREATMENT — all four sites now have a phone walk and all four PASS:**
+      - fashionistas `tests/walk-390.mjs` — 10 screens, 0 overflow, 0 errors, Send tappable;
+      - createstuff `tests/measure-createstuff-390px.mjs` — A4 fit / A5 thumb controls / A6 land
+        on `#builder` all PASS;
+      - placebets + marketpicks (new) — home, `/predict` (typed a query on the phone →
+        `/predict?q=NBA` → *"Predictions for …"*), `/parlay` (3 flavor tabs 300×126, board
+        renders), marketpicks chat (opened → asked → answered), **0 first-party failures**.
+- [x] **Also swept while hunting the complaint:** all internal links on the four landings (13
+      marketpicks routes that a raw fetch returns empty for all **render real content** —
+      4k–72k chars, e.g. `/receipts` 72k, `/insider-trades` 39k); createstuff's hash routes
+      `#projects`/`#settings` render their empty states when **clicked** (my 400-char threshold
+      was the false alarm); `/games` "Coming soon" is a per-game status badge on a live 24-game
+      catalog, not a stub page; fashionistas **Create account** → `POST /api/auth/register →
+      201` → Home shows the add button → `POST /api/listings → 201`, toast *Added ✓*, 0 errors.
+- [x] **Reliability burst** (5× `/api/odds`, 4× `/api/news`, 4× `/api/parlay-showcase`, 4×
+      chatbot, 5× `/api/health`): **22/22 HTTP 200**, chatbot 0.9–3.1 s with live prices
+      (BTC $83.9k, NVDA $230.2x). The one non-200 in the burst was my own probe sending
+      `message` instead of the API's `query` field — recorded as a probe bug, not a product bug.
+- [ ] Still open: a real handset (Playwright fakes width, not touch hardware), `/help`,
+      createstuff map #3–#8, and the WAITING-ON-YOU list.
