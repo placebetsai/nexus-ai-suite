@@ -1291,3 +1291,181 @@ a per-game status badge on a live catalog, not a stub; fashionistas **Create acc
 `POST /api/auth/register → 201` → Home → `POST /api/listings → 201`, toast *Added ✓*, 0 errors.
 Reliability burst across five endpoints: **22/22 HTTP 200**. The single non-200 was my probe
 sending `message` where the API expects `query`.
+
+## 11. 2026-10-01 (data layer) — the owner's four complaints, each with a control and a treatment
+
+The owner's words, verbatim: the chat bots *"aren't predictive or conversational, they need
+database checked and internet enabled"*, *"the sites have bad data"*, fashionistas *"isn't ready
+for primetime for scalability"*, createstuff *"isn't a cheap free replit base44 killer yet"*.
+Every claim below was first reproduced against the live system, then fixed, then re-measured on
+the same endpoint. Nothing is claimed that was not run.
+
+### 11.1 The proof harness, and the two times it caught its own limits
+
+**`tests/data-layer-proof.mjs`** — five live checks against the production sites, each with a
+documented control payload, plus an offline **DISCRIMINATION** section that feeds every judge a
+broken payload and requires the judge to reject it (a judge that cannot fail proves nothing;
+failure there exits 2). Missing credentials = SKIP, never PASS; a non-200 or an empty body = FAIL.
+
+| check | control (what was broken) | treatment (what it measures now) |
+|---|---|---|
+| C1 trending feed | `topics: []` while answering `{ok:true, topics:0}` | `topics.length > 0` |
+| C2 probability vs prose | refusal prose scored `0.578` / `0.545` | refusal ⇒ `null`; an asserted % must match |
+| C3 Kalshi freshness | 20/20 markets past `closeDate` | 0 past-dated markets |
+| C4 marketpicks latency | 2/4 calls `503`, p50 ≈ 11 s | 4/4 `200`, p50 < 4000 ms |
+| C5 chatbot context | follow-up drops the matchup | names both teams |
+
+**Two honest failures of the harness itself, both fixed rather than worked around:**
+
+1. **C2 failed 1 run in 3 with `HTTP 502`** — not a flaky test: `POST /api/predict` was really
+   failing (root cause in 11.2). Reproduced outside the harness with 12/12 and 6/6 consecutive
+   branded Cloudflare `502` pages.
+2. **C2 then failed with `answer asserts 52.4% but probability is null`** — the *judge* was
+   wrong. It counted any percentage as a promise, so when the fallback model answered with odds
+   math (the system prompt's own worked example, *"a -110 line means 52.4% implied
+   probability"*) it demanded a number the prose never claimed for the asked question, while the
+   shipped `extractProbability()` had correctly returned `null`. `d40939a` makes a percentage
+   count as **asserted** only when its 70-character lookback carries no price/maths marker, and
+   adds three judges so the escape hatch is itself tested (D11 odds-math prose + `null` must
+   pass, D12 the model's own number left `null` must fail, D13 a number scraped out of odds math
+   must fail). **Judges 10/10 → 13/13.**
+
+**Final state:** judges **13/13**, `PROOF 5/5`, `RESULT PASS`, **exit 0**, reproduced on
+separate runs at 20:29Z and again in two later runs (C4 p50 **2151 / 2808 / 3067 / 3122 ms**).
+
+### 11.2 placebets — four dead-data defects, all reproduced first
+
+| # | control (measured on the live site) | treatment |
+|---|---|---|
+| trending cron | `app/api/cron/trending/route.js` named a bare `GROQ_KEY` (deleted in `eccbd0d`), the `ReferenceError` was swallowed by its own `catch`, and it answered `{ok:true, topics:0}` while writing **0 rows**; **4 of 21** cron routes had no caller at all | **7 rows**, `fetched_at 18:00:32Z`; scheduler `placebets-scheduler` `a66dca7e` calling **18 `/api/cron/*` paths** with the hourly gate, verified in the deployed bundle |
+| probability scraping | `probability` was simply the first `%` in the prose — including refusals (`0.578`, `0.545`) | 4/4 refusal answers → **`probability: null`**, 0 violations; **0 violations across 39 live answers** after the provider work |
+| Kalshi freshness | **20/20** markets served past their `closeDate`, presented as live | **0/20** past-dated, repeatedly, in every harness run |
+| chatbot not predictive | **0** references to `api/predict` in the chatbot — the engine could never have run | `prediction.consulted: true` with a real `as_of`; **negative control** on a greeting → `consulted: false`, no engine entry in `sources` |
+
+**Then the outage the harness found.** `POST /api/predict` failed **20+ consecutive times**:
+the apex returned Cloudflare's branded HTML (`placebets.ai | 502: Bad gateway … Host Error`,
+6,413 B, `text/html`) while the deployment host returned our own `{"error":"AI engine error"}`
+`502` — same build on both hosts (`/` byte-identical, 229,981 B), control routes all `200`
+(`/api/trending`, `/api/odds`, `/api/edges`, `POST /api/chatbot`, `GET` → `405`, `POST {}` →
+`400`), so the worker was healthy and **only the provider call failed**.
+
+- **Root cause, measured:** Groq returns **HTTP 429** on `openai/gpt-oss-120b` (tokens-per-minute
+  on the on-demand tier) — the first `429` arrived **62 ms** after the request, and one call
+  reported `rate_limit_seconds: 127`. The route had **one provider and no timeout**, so a dark
+  provider *was* an outage. A missing `GROQ_API_KEY` was a hard `500`.
+- **`ff6fbe7`:** Groq stays primary with `AbortSignal.timeout(6000)`; on failure the route falls
+  back to `chatbotResolve()` — the site's own chain (groq → openrouter → mimo → **workers_ai**,
+  which needs no key) that the chatbot already used. Dead-end router sources (`timeout`,
+  `budget_cap`, `paid_fallback_disabled`, `error`) are rejected rather than served as answers,
+  and the `502` body now carries a `providers` array so a failure is diagnosable from the
+  response alone. It stays a `5xx` on purpose: an engine that cannot answer must never look like
+  a passing answer.
+- **Treatment:** **14/14 HTTP 200 JSON, 0 branded HTML**, `workers_ai` serving 12 of 14; the old
+  build `0206993d` reproduced the branded `502` **3/3** as the control.
+
+**And the answer-clipping defect `92752b3`.** When the model replied in prose instead of JSON,
+`lib/llm-router.js` used `text.substring(0, 500)` as the answer — a character-count cut that
+lands inside words.
+
+- **Control (live, 10 calls):** one answer **exactly 500 chars** ending `…check the live lin`,
+  another 499 ending `…that's a 56.5% implied`, 3 of 10 with no terminal punctuation.
+- **Control reproduced on pre-fix code an hour later:** deployment `b9780a5b` (source
+  `8842ba4`, still `substring(0,500)`) → **1/20** answers at exactly 500 chars ending
+  `…but I'd put it aro`.
+- **Treatment:** **0/19** answers at the 500-char cap; answers now run to **779 chars** (the old
+  distribution stopped dead at 500).
+- **`finish_reason` now returned — and it retracts a hypothesis:** both Groq answers reported
+  `stop`, `length` **never** appeared, so **`max_tokens: 350` is not truncating anything**. The
+  incomplete sentence I had attributed to the token cap is **not** that, and I withdraw the
+  claim.
+- **Honest gap:** `clipProse()` never fired in production during those 40 calls (no answer
+  reached the 1200 ceiling), so the boundary behaviour is **proven by the unit suite only** —
+  8/8 including a CONTROL that runs the old expression and a 211-ceiling sweep where the old
+  code shows violations and the helper shows **exactly 0**. Marked untested live.
+
+### 11.3 marketpicks — the chat was pinned at its own 7-second budget
+
+**Control** (6 sequential live POSTs, same query, 500 ms apart): **6.68, 3.17, 7.28, 7.19, 7.60,
+6.70 s → p50 ≈ 6.95 s** — pinned at `REQUEST_BUDGET_MS`, plus empty bodies and `503`s (harness
+control: 2/4 `503`). Root cause read from the code: `findSources()` (default **6000 ms** across
+two RSS feeds) was awaited **to completion before the LLM was started**, so one cold feed spent
+most of the budget before a single token was generated.
+
+**`c5d5493`:** the news lookup starts in parallel, is capped at `NEWS_LOOKUP_MS` (1500) with a
+450 ms head-start before the prompt is built and at most 350 ms residual afterwards;
+`fetchNumericPrice` clamped to `trace.clamp(2500)`; **every** response body (200/400/429/catch)
+now carries `{total_ms, stages}` so a slow turn is attributable from the payload alone.
+
+**Treatment:** p50 **3072 / 3031 / 3075 / 2870 / 2923 / 3015 / 2151 / 2808 / 3067 / 3122 ms**
+across ten harness runs — **every one under the 4000 ms budget** — with 6/6 and 4/4 HTTP 200,
+non-empty, `timing` present on all calls. The `timeout` option `findSources` accepts was verified
+in its own JSDoc and implementation (`lib/real-sources.ts`), so the cap is honoured at the source
+and not merely by the wrapper.
+
+### 11.4 fashionistas — primetime means the page stops being one 432 KB lump
+
+**Control:** `index.html` was a single **432,399 B** document carrying a ~298,913 B inline
+`<script>` — every visitor parses the whole app up front, every change re-serves everything, and
+there is no cache granularity at all. Static assets on this domain are served
+`cache-control: public, max-age=14400` while HTML is `max-age=0`, so a naive external script
+could have left browsers on 4-hour-old JS behind fresh HTML.
+
+**`ced043d`:** the script lives in `apps/fashionistas/app.js`, loaded by
+`<script src="/app.js?v=1ca902262a62" defer>` where the `?v=` is a **sha256 of app.js's own
+bytes**, rewritten on every deploy. **HTML shell 133,520 B + app.js 298,913 B.**
+
+- **Live:** `GET /` → 200, **133,520 B**, sha256 **`143864b73113caca…` = the worktree byte for
+  byte** (local == git == live); `GET /app.js?v=…` → 200, **298,913 B**, `max-age=14400`.
+- **Browser:** `readyState` complete, script srcs = 3 JSON-LD + `/app.js`, and
+  `typeof saveListing / renderShop / taxPath / canonCat` **all `function`** — the externalised
+  script really executed — **0 console errors**.
+- **Tests:** `harness-categories.mjs` had been slicing the code under test out of `index.html`
+  and found nothing (`HARNESS 0/0`); it now reads whichever file holds the code. **Control at
+  committed HEAD 65/67 (two stale assertions), working tree 68/68 PASS, exit 0.**
+- **Hover tips — the alarm was mine, and the design was right.** My browser probe read
+  **64/64** elements with `data-tip` and no `title`, which looks like a broken hover rule until
+  you read `syncTips()`: it deliberately **removes** `title` on hover-capable devices (one
+  tooltip, not two) and **sets** it when the device cannot hover. Proven on both branches against
+  the live DOM: real `mouseover` **and** `focusin` both fill `#tip-bubble` (class `on`,
+  `role="tooltip"`, correct text), **8/8** icon-only tips carry `aria-label`, and re-running the
+  shipped function with `CAN_HOVER = false` gives **64/64 titles with `title === data-tip`**,
+  which the app's own `syncTips` then restores to **0**. Keyboard path works too; 0 console
+  errors.
+
+### 11.5 createstuff — the 401s were real, and the Replit comparison was never measured
+
+**Auth (control → treatment, `0bb3bde`, worker `efcb76d4`).** The session key was derived from
+**randomness per isolate**, so a token verified on one isolate was rejected by the next: **60
+parallel `GET /api/auth/me` → 13×`200` / 47×`401`**. The key is now derived once from the
+**bound secrets** (no secret material in source). **Treatment: 60/60 on the first run, 60/60 on
+a second run, 3× interleaved requests with `sleep 0.1` between batches, 0 failures.**
+
+**The Replit/Base44 comparison (measured for the first time).** A real build, timed end to end:
+`prepare` **598 ms** → `generate` **213,208 ms** → **214.0 s wall**, producing **3 files /
+9,361 B** (`index.html`, `styles.css`, `script.js`) on `@cf/meta/llama-3.3-70b-instruct-fp8-fast`.
+`GET /api/builds/:id/log` → **404** (the streaming route does not exist; only `POST …/log` does),
+and as observed by a 1-second poll the log showed **2 chunks in the first 2.4 s and then nothing
+for 212 s** — progress that only appears when the build ends. The gap table this produced is
+labelled **measured** for our own rows and **inferred, unverified** for every Replit/Base44 row,
+because those products were not run today.
+
+### 11.6 What is still true and not fixed (read this before claiming anything above)
+
+- **Groq is rate-limited, not fixed.** `429` on `openai/gpt-oss-120b` is the measured root cause;
+  the fallback keeps the product answering, but the **primary** provider is degraded (in the last
+  treatment sample: `workers_ai` 17, `groq` 2).
+- **`/api/predict` still fails intermittently:** one branded `502` in 19 treatment calls at
+  **9,613 ms**, and the earlier sample showed roughly 1 in 13. The `502` is Cloudflare's own
+  page, not our JSON, and the trigger at ~9.6 s is **not identified — untested, not explained.**
+- **The named control deployment `0206993d` now answers `502` on 24/24 `/api/predict` calls.**
+  It predates the provider fallback, so this is the *old* single-provider code failing, not a new
+  regression — but it means that host can no longer serve as a control.
+- **`clipProse()` has never been observed firing in production** (see 11.2). Unit-proven only.
+- **fashionistas inventory is still 2 items** — the honest copy from `3454c97` states it; filling
+  the shop needs the Q1 auto-posting decision (WAITING-ON-YOU).
+- **createstuff still loses rows** to Replit/Base44 on build speed (214 s vs the 60–150 s the UI
+  states), collaboration, terminal and per-generated-app database — none of that changed today.
+- **Disclosure:** earlier in this round a subagent's grep printed the value of `CS_API_TOKEN`
+  into a tool output. It was never written to any repository and `.secrets/cf.env` is
+  gitignored, but the token should be **rotated** — owner action, since minting it needs the
+  Cloudflare dashboard.

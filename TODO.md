@@ -159,6 +159,93 @@ Commits this session: `1555afa` `09a3ab2`.
 
 ---
 
+## Status board — 2026-10-01 (data-layer round; supersedes the 2026-09-30 board below)
+
+Standing gate after every ship: `node tests/data-layer-proof.mjs` → **judges 13/13,
+`PROOF 5/5`, `RESULT PASS`, exit 0** (repeatable; control mode documents what was broken).
+
+**CLOSED this round (12)** — each with a live control and a live treatment:
+
+1. **placebets trending cron was dead behind a `200`** — `app/api/cron/trending/route.js` named
+   a bare `GROQ_KEY`, the `catch` swallowed the `ReferenceError`, and it answered
+   `{ok:true, topics:0}` while writing **0 rows**; **4 of 21** cron routes had no caller →
+   **7 rows** at `18:00:32Z`, scheduler `placebets-scheduler` `a66dca7e` driving **18
+   `/api/cron/*` paths** hourly (verified in the deployed bundle).
+2. **probability scraped out of refusals** — control `0.578` / `0.545` on prose that says it
+   *cannot* give a number → **refusal ⇒ `null`**, 4/4, **0 violations across 39 live answers**.
+3. **Kalshi served dead markets** — **20/20 past `closeDate`**, presented as live → **0/20**.
+4. **the chatbot never consulted the engine** — **0** references to `/api/predict` →
+   `prediction.consulted: true` with a real `as_of`, plus the negative control (greeting →
+   `consulted: false`, no engine entry).
+5. **marketpicks empty bodies / `503`s** — control 2/4 `503` → **6/6 and 4/4 HTTP 200,
+   non-empty**, `timing` on every response.
+6. **marketpicks chat was pinned at its own 7 s budget** — control p50 **6.95 s** (news feed
+   awaited *before* the LLM) → **p50 3072 / 3031 / 3075 / 2870 / 2923 / 3015 / 2151 / 2808 /
+   3067 / 3122 ms across ten runs, every one under the 4000 ms budget** (C4 now green
+   run after run).
+7. **fashionistas was one 432 KB lump** — control **432,399 B** inline → **133,520 B HTML +
+   298,913 B `/app.js?v=1ca902262a62`**, live sha **`143864b73113caca…` == worktree byte for
+   byte**, browser: all four externalised functions defined, **0 console errors**; harness
+   **68/68** (control at HEAD **65/67**).
+8. **createstuff rejected its own logged-in users** — session key came from per-isolate
+   randomness → **control 60 parallel `GET /api/auth/me` = 13×`200` / 47×`401`** → derived once
+   from bound secrets → **60/60 twice, 3× interleaved, 0 failures** (worker `efcb76d4`,
+   commit `0bb3bde`).
+9. **"not a Replit/Base44 killer" was never measured** — now measured: real build **214.0 s**,
+   3 files / 9,361 B, `GET /api/builds/:id/log` → **404**, **2 log chunks in 214 s**; gap table
+   with `measured` on our rows and `inferred, unverified` on theirs.
+10. **there was no live data-layer gate** — `tests/data-layer-proof.mjs`: C1–C5 with documented
+    controls + control mode + **13 discriminating judges** (a judge that cannot fail proves
+    nothing), missing credentials = SKIP never PASS, non-200/empty = FAIL.
+11. **the bot cut answers in half** — control `substring(0,500)` → live `…check the live lin`
+    (exactly 500) and pre-fix deploy `b9780a5b` reproducing `…put it aro` 1/20 → `clipProse()`
+    cuts only on a confirmed boundary and ends `…`: **treatment 0/19 at the cap, answers run to
+    779 chars**; new `finish_reason` **retracts my `max_tokens` hypothesis** (`stop` only, never
+    `length`).
+12. **hover-tip `title` rule — alarm withdrawn with proof, not by argument:** probe read 64/64
+    `data-tip` without `title`, which is by design (one tooltip, not two). Both branches proven
+    on the live DOM: `mouseover` **and** `focusin` fill `#tip-bubble` (`role="tooltip"`),
+    8/8 icon-only tips have `aria-label`, and the shipped function with `CAN_HOVER=false` gives
+    **64/64 `title === data-tip`**, restored to **0** by the app's own `syncTips`.
+
+**OPEN (11)** — 7 carried over + 4 new, all measured: carried — a **real handset** (Playwright
+fakes width, not touch hardware; 320/768 unmeasured); `/help` pages; createstuff map #3–#8;
+fashionistas analytics token (needs a credential); `/api/projects/:id/preview` 404; hostname
+detach endpoint; pre-stamp visitors keep a cached `index.html` for up to 8 h (no purge rights on
+`createstuff-sites`). **New this round** — 8. `/api/predict` returns a branded Cloudflare `502`
+**1 time in 19** at **9,613 ms**, trigger **unidentified (untested, not explained)**; 9. Groq
+**`429`** on `openai/gpt-oss-120b` still degrades the primary provider (workers_ai now serves 17
+of 19 — the fallback carries it, the root cause is not fixed); 10. `clipProse` has **never been
+observed firing in production** (no answer reached the 1200 ceiling) — **unit-proven only**;
+11. createstuff build takes **214 s** while its own UI says 60–150 s, `GET /api/builds/:id/log`
+is **404** (no streaming progress), and the brief's ingredient checkboxes are unbuilt.
+
+**WAITING-ON-YOU (6)** — (1) the exact Cloudflare error text or a screenshot; (2) the apex
+domain you already own — which one?; (3) the **Q1 A/B/C auto-posting** answer (20 of 21
+marketplaces are guide-and-paste by design — this is also what blocks fashionistas' inventory,
+still **2 items**); (4) a mail credential for the placebets digest (all 4 Gmail app passwords
+dead, `535-5.7.8`); (5) which site/link/action failed when *"the apps don't do shit"* — URL,
+screenshot, phone model; (6) which Replit/Base44 feature createstuff must beat **first** (the
+gap table is measured; your priority pick is still open).
+
+**Rotations needed (owner):** `CS_API_TOKEN` — a subagent's grep printed its value into a tool
+output this round; never written to a repo (`.secrets/cf.env` is gitignored), but rotate it.
+
+**All three repos: local == git == live, `0 0` against origin** — nexus `master` `d40939a`,
+placebets `main` `92752b3`, marketpicks `live-source` `c5d5493`. Deploys: placebets `448ba7ce`
+(+ scheduler `a66dca7e`), marketpicks `b17dbebb`, createstuff worker `efcb76d4`, fashionistas
+pages (sha-verified above).
+
+Live links to test: `https://placebets.ai/api/predict` with `{"query":"Who wins Chiefs vs
+Bills and what's the probability?"}` (expect `probability: null` on a refusal and a
+`finish_reason`), `https://placebets.ai/api/trending` (7 rows), `https://marketpicks.ai/api/chatbot`
+(expect `timing`), `https://fashionistas.ai/` (133,520 B shell, `/app.js` cached 4 h),
+`https://createstuff.ai/#builder`.
+
+---
+
+### Previous board — 2026-09-30 (superseded, kept for history)
+
 ## Status board — 2026-09-30 (reposted after this stretch's ships)
 
 **CLOSED (22)** — **P19 phone coverage for placebets + marketpicks** (new `tests/walk-390-pb-mp.mjs`,

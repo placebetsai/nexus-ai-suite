@@ -790,3 +790,85 @@ Nothing in this list may be shown as working before it is proven live end to end
       `message` instead of the API's `query` field — recorded as a probe bug, not a product bug.
 - [ ] Still open: a real handset (Playwright fakes width, not touch hardware), `/help`,
       createstuff map #3–#8, and the WAITING-ON-YOU list.
+
+### 2026-10-01 (data layer) — the owner's four complaints, reproduced and then closed
+
+The instruction was: fix the data layer first, prove every claim live, label anything untested.
+Every row below started as a **reproduction against production**, not a code reading. Full
+control/treatment detail in `handoff.md` §11; the standing gate is
+`node tests/data-layer-proof.mjs` (**judges 13/13, PROOF 5/5, exit 0**, repeatable).
+
+- [x] **"the sites have bad data" — four defects on placebets, each reproduced first:**
+      - the trending cron named a bare `GROQ_KEY` (deleted in `eccbd0d`), its `catch` swallowed
+        the `ReferenceError`, and it replied **`{ok:true, topics:0}` while writing 0 rows**;
+        **4 of 21** cron routes had no caller → treatment **7 rows** at `18:00:32Z` with
+        scheduler `placebets-scheduler` `a66dca7e` driving **18 `/api/cron/*` paths** hourly;
+      - `probability` was the first `%` in the prose, **including refusals** (`0.578`, `0.545`)
+        → treatment **refusal ⇒ `null`**, 4/4, and **0 violations across 39 live answers**;
+      - `/api/kalshi` served **20/20 markets past `closeDate`** as if live → **0/20**;
+      - the chatbot had **0 references to `/api/predict`**, so the engine could never have run →
+        `prediction.consulted: true` with a real `as_of`, plus the negative control (greeting →
+        `consulted: false`).
+- [x] **The harness found an outage the calls had not:** `POST /api/predict` failed 20+
+      consecutive times — apex = Cloudflare's branded `502` HTML (6,413 B), deployment host = our
+      own `{"error":"AI engine error"}` `502`, `/` byte-identical on both hosts and every control
+      route `200`, so only the provider call was failing. **Root cause measured: Groq `429` on
+      `openai/gpt-oss-120b`** (first `429` at **62 ms**; one call `rate_limit_seconds: 127`), and
+      the route had **one provider, no timeout**, a missing key was a hard `500`. `ff6fbe7` keeps
+      Groq primary with a 6 s cap and falls back through the site's own chain to **workers_ai**
+      (no key needed), reporting `providers` on failure. **Treatment 14/14 `200` JSON, 0 branded
+      HTML; old build `0206993d` reproduces the `502` 3/3 as the control.**
+- [x] **"isn't ready for primetime for scalability" (fashionistas) — one 432 KB lump → two
+      cacheable pieces:** control `index.html` = **432,399 B** with the whole app inline (no
+      cache granularity; assets cache `max-age=14400` while HTML is `max-age=0`); `ced043d`
+      ships **133,520 B HTML + 298,913 B `/app.js?v=1ca902262a62`** where the `?v=` is sha256 of
+      app.js's own bytes. **Live sha `143864b73113caca…` == worktree byte for byte**, `/app.js`
+      200 / 298,913 B, browser reports all four externalised functions defined and **0 console
+      errors**; harness **68/68** (control at HEAD **65/67**).
+- [x] **The hover-tip alarm was mine, not the product's:** the probe read 64/64 `data-tip`
+      without `title` — by design (`syncTips()` removes `title` on hover-capable devices so you
+      do not get two tooltips, and sets it when the device cannot hover). Proven on **both**
+      branches against the live DOM: `mouseover` **and** `focusin` both fill `#tip-bubble`
+      (`role="tooltip"`, correct text), 8/8 icon-only tips have `aria-label`, and re-running the
+      shipped function with `CAN_HOVER=false` yields **64/64 `title === data-tip`**, which the
+      app's own `syncTips` restores to **0**. Nothing to fix; recorded so nobody re-opens it.
+- [x] **marketpicks chat pinned at its own 7 s budget:** control p50 **6.95 s** (6.68, 3.17,
+      7.28, 7.19, 7.60, 6.70) with 2/4 `503`s — `findSources()` (default **6000 ms**, two RSS
+      feeds) was awaited *before* the LLM started. `c5d5493` runs it in parallel with a 450 ms
+      head-start, a 1500 ms ceiling and 350 ms residual, and stamps `{total_ms, stages}` on
+      every response. **Treatment p50 3072 / 3031 / 3075 / 2870 / 2923 / 3015 / 2151 / 2808 /
+      3067 / 3122 ms across ten runs — every one under the 4000 ms budget.**
+- [x] **"not a cheap free Replit/Base44 killer" — the auth defect that made it feel broken:**
+      the session key came from **per-isolate randomness**, so a token was valid on one isolate
+      and rejected on the next: **control 60 parallel `GET /api/auth/me` → 13×`200` / 47×`401`**;
+      `0bb3bde` derives it once from the bound secrets (no secret in source) → **60/60 twice,
+      3× interleaved, 0 failures** (worker `efcb76d4`).
+- [x] **createstuff vs Replit/Base44 was INFERRED, now MEASURED:** real build **214.0 s**
+      (`prepare` 598 ms → `generate` 213,208 ms), **3 files / 9,361 B**;
+      `GET /api/builds/:id/log` → **404** (no streaming route) and a 1 s poll saw **2 chunks in
+      2.4 s then nothing for 212 s**. Gap table rows for our own site are `measured`; every
+      Replit/Base44 cell is `inferred, unverified` because those products were not run today.
+- [x] **The bot cut answers in half (`92752b3`):** control `substring(0, 500)` → live answers
+      ending **`…check the live lin`** (exactly 500 chars) and `…56.5% implied` (499); the same
+      fingerprint reproduced on pre-fix deployment `b9780a5b` an hour later (`…put it aro`).
+      `clipProse()` now cuts only on a boundary the original text confirms and always ends `…`;
+      **treatment 0/19 at the 500-char cap, answers run to 779 chars.** New `finish_reason`
+      field **retracts my own hypothesis**: both Groq answers reported `stop`, never `length`, so
+      `max_tokens: 350` is **not** truncating.
+- [x] **The harness itself was wrong twice, and both fixes are ships:** C2 failed 1 run in 3 on
+      real `502`s (a product defect it correctly caught), then on **odds math**
+      (`a -110 line means 52.4% implied probability` is not a promise about the asked question).
+      `d40939a` requires a maths marker-free context before a percentage counts as asserted, and
+      adds D11/D12/D13 so the escape hatch is tested in both directions: **judges 10/10 → 13/13,
+      PROOF 5/5, exit 0, repeatable.**
+- [ ] **Open, measured and not fixed:** Groq `429` still degrades the *primary* provider
+      (workers_ai now serves 17 of 19); `/api/predict` returned a branded `502` **1 time in 19**
+      at **9,613 ms** and the trigger is **unidentified (untested, not explained)**; control host
+      `0206993d` now answers `502` on 24/24 because it predates the fallback (so it can no longer
+      serve as a control); `clipProse` has **never been observed firing in production** —
+      unit-proven only; fashionistas still lists **2 items** (blocked on the Q1 auto-posting
+      decision); createstuff still loses on build speed (214 s vs the 60–150 s the UI states),
+      collaboration, terminal and per-generated-app database.
+- [ ] **Disclosure:** a subagent's grep printed the value of `CS_API_TOKEN` into a tool output
+      this round. Never written to a repo, `.secrets/cf.env` stays gitignored — **rotate the
+      token** (owner action).
