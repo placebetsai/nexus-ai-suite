@@ -321,7 +321,7 @@ const TAX_TREE = {
   "Bags & Luggage": ["Handbags", "Backpacks", "Totes & Shoppers", "Crossbody Bags", "Luggage & Suitcases"],
   "Accessories": ["Jewellery", "Watches", "Hats & Caps", "Belts", "Scarves & Wraps", "Sunglasses", "Wallets & Cardholders"],
   "Vintage & Designer": ["Vintage", "Designer", "Streetwear", "Band Merch"],
-  "Sports & outdoor": ["Activewear", "Camping & Hiking", "Cycling", "Yoga & Pilates", "Water Sports"]
+  "Sports & Outdoor": ["Activewear", "Camping & Hiking", "Cycling", "Yoga & Pilates", "Water Sports"]
 };
 function canonCategory(v) {
   if (typeof v !== "string") return null;

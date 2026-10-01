@@ -1643,8 +1643,8 @@ function roleSwitchHtml(){
   const r = getRole();
   return `<div class="card" style="margin-top:0">`
   + `<div style="display:flex;gap:8px;flex-wrap:wrap">`
-  + `<button class="chip${r==="selling"?" on":""}" onclick="setRole('selling')" data-tip="Show your seller tools and your own clothes.">I'm selling</button>`
-  + `<button class="chip${r==="shopping"?" on":""}" onclick="setRole('shopping')" data-tip="See what is for sale from other sellers.">I'm shopping</button>`
+  + `<button class="chip${r==="selling"?" on":""}" onclick="setRole('selling')" data-tip="Show your seller tools and your own clothes." title="Show your seller tools and your own clothes.">I'm selling</button>`
+  + `<button class="chip${r==="shopping"?" on":""}" onclick="setRole('shopping')" data-tip="See what is for sale from other sellers." title="See what is for sale from other sellers.">I'm shopping</button>`
   + `</div><p class="mut" style="margin:8px 0 0">Pick selling to list your own clothes, or shopping to see what is for sale.</p></div>`;
 }
 function refreshTips(){ try{ if (window.syncTips) window.syncTips(document); }catch(e){} }
@@ -1748,10 +1748,14 @@ function taxPath(raw){
   const v = raw.trim().replace(/^\/+/, ""); if (!v) return "";
   if (v.indexOf("/") > -1){
     const parts = v.split("/").map(s => s.trim()).filter(Boolean);
-    if (parts.length >= 1 && TAX[parts[0]]) {
+    /* Department names match ignoring case: the API canonicalises one tree
+       label with different capitalisation ("Sports & outdoor"), so an exact
+       key lookup would strand those rows outside every department. */
+    const deptHit = parts.length >= 1 ? taxDepts().find(d => d.toLowerCase() === parts[0].toLowerCase()) : null;
+    if (parts.length >= 1 && deptHit) {
       const sub = parts[1];
-      if (!sub) return parts[0];
-      return taxSubs(parts[0]).indexOf(sub) > -1 ? parts[0] + "/" + sub : parts[0];
+      if (!sub) return deptHit;
+      return taxSubs(deptHit).indexOf(sub) > -1 ? deptHit + "/" + sub : deptHit;
     }
   }
   const k = v.toLowerCase();
@@ -1889,10 +1893,16 @@ function catRailHtml(kind, depts, countFn, selectedDept, id){
 function heroArt(file){
   return `<div class="hero-art" style="background-image:url('${file}')"></div>`;
 }
-/* BUYER — top of the Shop. Leads with the market, then the moving words. */
+/* BUYER — top of the Shop. Leads with the market, then the moving words.
+   The count is the live seller feed only: external shops below are search
+   links, not live stock, and the sub-line says so when the shelf is thin. */
 function buyerHero(){
-  const n = (S.market || []).length;
+  const rows = shopPublicRows(S.market || []);
+  const n = rows.length;
   const caps = Object.keys(TAX).length;
+  const thin = n <= 5
+    ? ` Only ${n === 0 ? "no" : n} seller listing${n === 1 ? " is" : "s are"} live right now — departments with 0 are genuinely empty, and the shops below are search links, not live stock.`
+    : "";
   return `<section class="hero">`
     + heroArt("assets/fashionistas-bg-aurora-animated.svg")
     + `<div class="hero-scrim"></div>`
@@ -1900,7 +1910,7 @@ function buyerHero(){
     + `<div class="hero-in">`
     + `<div class="hero-eyebrow">Buy from real sellers</div>`
     + `<h2 class="hero-h">Find your next ${rollHtml(["vintage","statement piece","designer find","one-off","steal"])}</h2>`
-    + `<p class="hero-sub">${n} item${n===1?"":"s"} live across ${caps} departments. Search by photo, then narrow it down department by department.</p>`
+    + `<p class="hero-sub">${n} seller item${n===1?"":"s"} live across ${caps} departments.${thin} Search by photo, then narrow it down department by department.</p>`
     + `<div class="hero-cta">`
     + `<button type="button" class="btn btn-accent" onclick="document.getElementById('market-nav').scrollIntoView({behavior:'smooth',block:'start'})" data-tip="Jump straight to the departments." title="Jump straight to the departments.">Browse departments</button>`
     + `<button type="button" class="btn btn-soft" onclick="go('snap')" data-tip="Photograph something and we'll tell you what it is and what it sells for." title="Photograph something to identify it.">Search by photo</button>`
@@ -2221,7 +2231,7 @@ function affCard(){
     </div>
     ${rows}
     <div class="af-rest">
-      <span>Other marketplaces may also have this item. Check each site directly.</span>
+      <span>These are search links, not live stock or prices from those shops — they open each shop searched for your words.</span>
       <span class="af-date">Updated for your search.</span>
     </div>
   </div>`;
@@ -2357,8 +2367,8 @@ async function renderShop(el){
   + photoSearchCard()
   + affCard()
   + `<div class="closet-tools">`
-  + `<input class="input" id="market-search" placeholder="Search what is for sale…" value="${escapeAttr(S.marketQ||"")}" oninput="marketQ(this.value)" data-tip="Type words to find an item by name or description." style="margin:0">`
-  + `<select class="input" id="market-sort" onchange="marketSort(this.value)" data-tip="Change the order of the items you see." style="margin:0">`
+  + `<input class="input" id="market-search" placeholder="Search what is for sale…" value="${escapeAttr(S.marketQ||"")}" oninput="marketQ(this.value)" data-tip="Type words to find an item by name or description." title="Type words to find an item by name or description." style="margin:0">`
+  + `<select class="input" id="market-sort" onchange="marketSort(this.value)" data-tip="Change the order of the items you see." title="Change the order of the items you see." style="margin:0">`
   + `<option value="new"${S.marketSort==="new"?" selected":""}>Newest</option>`
   + `<option value="price-lo"${S.marketSort==="price-lo"?" selected":""}>Price low to high</option>`
   + `<option value="price-hi"${S.marketSort==="price-hi"?" selected":""}>Price high to low</option>`
@@ -2383,16 +2393,16 @@ function marketNavHtml(){
     return `<button type="button" class="chip${on?" on":""}" aria-pressed="${on?"true":"false"}" onclick="marketPick(decodeURIComponent('${taxQ(path)}'))" data-tip="${escapeAttr(tip)}" title="${escapeAttr(tip)}">${escapeHtml(label)}<b class="cnt">${n}</b></button>`;
   };
   const crumbs = `<nav aria-label="Where you are in the shop" data-tip="Where you are in the catalogue. Click a step to go back up." style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 8px;font-size:13px">`
-    + `<button type="button" class="chip${!S.marketCat?" on":""}" aria-pressed="${!S.marketCat}" style="font-size:12px" onclick="marketPick('')" data-tip="Back to every department.">All departments</button>`
-    + (mDept ? `<span style="opacity:.5">›</span><button type="button" class="chip${mDept&&!mSub?" on":""}" aria-pressed="${mDept&&!mSub}" style="font-size:12px" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}.">${escapeHtml(mDept)}</button>` : "")
-    + (mSub ? `<span style="opacity:.5">›</span><button type="button" class="chip on" aria-pressed="true" style="font-size:12px;cursor:default" data-tip="Currently showing ${escapeAttr(mSub)} only.">${escapeHtml(mSub)}</button>` : "")
+    + `<button type="button" class="chip${!S.marketCat?" on":""}" aria-pressed="${!S.marketCat}" style="font-size:12px" onclick="marketPick('')" data-tip="Back to every department." title="Back to every department.">All departments</button>`
+    + (mDept ? `<span style="opacity:.5">›</span><button type="button" class="chip${mDept&&!mSub?" on":""}" aria-pressed="${mDept&&!mSub}" style="font-size:12px" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}." title="Everything in ${escapeAttr(mDept)}.">${escapeHtml(mDept)}</button>` : "")
+    + (mSub ? `<span style="opacity:.5">›</span><button type="button" class="chip on" aria-pressed="true" style="font-size:12px;cursor:default" data-tip="Currently showing ${escapeAttr(mSub)} only." title="Currently showing ${escapeAttr(mSub)} only.">${escapeHtml(mSub)}</button>` : "")
     + `</nav>`;
   const deptRow = `<div class="cat-lead">Browse by department <span style="text-transform:none;letter-spacing:0;font-weight:600;opacity:.72">— swipe sideways for more</span></div>`
     + catRailHtml("market", taxDepts(), d => mCount(d), mDept, "market-rail");
   const subRow = mDept
     ? `<div class="cat-lead">Type of item in ${escapeHtml(mDept)}</div>`
-      + `<div class="chips" id="market-subs" aria-label="Types of item" data-tip="Types of item inside this department.">`
-      + `<button type="button" class="chip${!mSub?" on":""}" aria-pressed="${!mSub}" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}, whatever type it is.">All ${escapeHtml(mDept)}<b class="cnt">${mCount(mDept)}</b></button>`
+      + `<div class="chips" id="market-subs" aria-label="Types of item" data-tip="Types of item inside this department." title="Types of item inside this department.">`
+      + `<button type="button" class="chip${!mSub?" on":""}" aria-pressed="${!mSub}" onclick="marketPick(decodeURIComponent('${taxQ(mDept)}'))" data-tip="Everything in ${escapeAttr(mDept)}, whatever type it is." title="Everything in ${escapeAttr(mDept)}, whatever type it is.">All ${escapeHtml(mDept)}<b class="cnt">${mCount(mDept)}</b></button>`
       + taxSubs(mDept).map(s => mChip(s, mDept + "/" + s, mSub === s, "Show only " + s.toLowerCase() + " items.")).join("")
       + `</div>`
     : `<p class="mut" style="margin:2px 0 8px">Pick a department above to narrow the list down by type of item.</p>`;
@@ -2446,8 +2456,9 @@ function marketRefresh(){
   }
   if (!rows.length){
     const filtered = !!(S.marketCat || (S.marketQ||"").trim());
+    const live = shopPublicRows(S.market || []).length;
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><svg class='i20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 8.5v4.5M12 16.5v.01'/><circle cx='12' cy='12' r='9'/></svg>`
-    + `<p>${filtered ? "Nothing here matches" + (qbit||"") + where + "." : "Nothing is for sale right now. Check back soon, or list your own item to get started."}</p>`
+    + `<p>${filtered ? "Nothing here matches" + (qbit||"") + where + ". There are " + live + " seller listing" + (live===1?"":"s") + " in total — clear the filters to see them." : "No seller listings are live right now (0 seller items). The shops above are search links, not live stock. List your own item and it appears here for buyers."}</p>`
     + `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">`
     + (filtered ? `<button type="button" class="btn btn-soft" onclick="marketClearFilters()" data-tip="Show everything for sale again." title="Show everything for sale again.">Clear filters</button>` : "")
     + `<button type="button" class="btn btn-accent" onclick="go('snap')" data-tip="Photograph an item and describe it — it lands here for buyers." title="Photograph an item and describe it.">List your own item</button>`
@@ -2481,7 +2492,7 @@ function marketCard(m, i){
     ? `<img loading="lazy" src="${escapeAttr(m.photo_url)}" alt="" onerror="this.remove()"><div class="badge"></div>`
     : `<div class="ph"><span class="ph-ico">${catEmoji(m.category||"item")}</span></div>`;
   return `<div style="display:flex;flex-direction:column;gap:0">`
-  + `<div class="gitem" style="--gi:${Number(i)||0};cursor:pointer" tabindex="0" role="button" onclick="openMarketItem(${Number(m.id)})" onkeydown="if(event.key==='Enter')openMarketItem(${Number(m.id)})" data-tip="Open this item to see details and buy.">`
+  + `<div class="gitem" style="--gi:${Number(i)||0};cursor:pointer" tabindex="0" role="button" onclick="openMarketItem(${Number(m.id)})" onkeydown="if(event.key==='Enter')openMarketItem(${Number(m.id)})" data-tip="Open this item to see details and buy." title="Open this item to see details and buy.">`
   + photo
   + `<div class="meta"><div class="t">${escapeHtml(m.title||"Untitled")}</div><div class="p">${money(m.price)}</div></div>`
   + `</div>`
