@@ -3,6 +3,10 @@
 // Auth: HMAC-signed bearer token (id:username:expiry) via Web Crypto
 
 const SECRET = Uint8Array.from([102,97,115,104,105,111,110,105,115,116,97,115,45,118,50,45,104,109,97,99,45,107,101,121]);
+// The seeded demo account. Its password is never written to the client bundle —
+// it used to be, in demoLogin(), which published a working credential for a real
+// account in app.js.
+const DEMO_USERNAME = "demo";
 const enc = new TextEncoder();
 const b64u = (buf) => [...new Uint8Array(buf)].map((b) => String.fromCharCode(b)).join("");
 const toB64 = (s) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -605,7 +609,7 @@ function chatSystem(mode, ctx) {
     "- Fashionistas is free. It takes no commission and no fee on any sale; the seller keeps the whole price when they sell here.\n" +
     "- It does NOT connect to eBay, Depop, Poshmark or any other shop's account and never posts for you. " +
     "The Lister writes a ready title, description and tags for each shop; you copy them, open that shop's app and paste.\n" +
-    "- Other shops charge their own fees (for example Depop 10%, eBay about 13.25%, Poshmark 20%, Mercari about 13.9%); the Sell screen shows what you keep on each.\n" +
+    "- Other shops charge their own fees (for example eBay about 13.25%, Poshmark 20% on sales $15 and over, Mercari 10%, Etsy 6.5% plus $0.20 plus payment processing, Depop no selling fee but about 3.3% + $0.45 processing — the same figures the Sell screen's fee comparison uses); the Sell screen shows what you keep on each.\n" +
     "- Features: Photo (AI names the item and suggests a price), My clothes, Shop (buy from other sellers), Sell tools (fees, postage, pricing), Map (pop-up shops), Messages.\n" +
     "- If asked about a feature not listed here, say it is not available yet.";
   const role =
@@ -916,6 +920,22 @@ async function dispatch(request, env) {
         const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + 30 * 86400000 });
         return json({ user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email }, token });
       }
+      // Demo sign-in. The seeded account's password used to be written into the
+      // client bundle (`demoLogin()` filled the login form with it), which is a
+      // published credential for a real, populated account: anyone who opened
+      // devtools had it, and so did anyone who cached app.js. The password now
+      // stays here. The client posts nothing and learns nothing but a session.
+      if (path === "/api/auth/demo" && method === "POST") {
+        if (!(await rateLimit(env, request, "login", 20))) return err("Too many requests", 429);
+        const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE username=?").bind(DEMO_USERNAME).first();
+        if (!user) return err("The demo account is not available right now. Create a free account instead.", 503);
+        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + 30 * 86400000 });
+        return json({
+          user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email },
+          token,
+          demo: true,
+        });
+      }
       if (path === "/api/blog" && method === "GET") {
         const posts = await env.DB.prepare("SELECT id, title, slug, excerpt, category, read_time, created_at FROM blog_posts ORDER BY created_at DESC LIMIT 12").all();
         return json({ posts: posts.results });
@@ -1003,13 +1023,57 @@ async function dispatch(request, env) {
           return err("image must be base64-encoded image bytes");
 
         let ident = null, visionSource = "ai";
+        // Measured 2026-10-02: the old single-model call below (3.2-11b with
+        // legacy prompt+image params) answered "unavailable" on the sample
+        // jacket while /api/ai/analyze read the SAME bytes as "jean jacket,
+        // $25-60, 92%" — so photo-search now walks the same working chain
+        // (Scout messages format -> Groq -> 3.2-11b legacy) instead of failing
+        // first and only. Prompt keeps shopper keys (keywords for search links).
+        const PHOTO_PROMPT =
+          "You are helping a shopper find an item they just photographed. Reply with ONLY one raw JSON object, double quotes, no markdown, no code fences, no prose. " +
+          "Keys: type (e.g. 'denim jacket','white trainers','floral dress'), brand (string or 'Unknown'), color, " +
+          "category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), keywords (array of 5 short lowercase words someone would type into a search box), confidence (0-100). " +
+          "Be specific and honest about what you can actually see.";
         try {
+          const r4 = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
+            messages: [{ role: "user", content: [
+              { type: "text", text: PHOTO_PROMPT },
+              { type: "image_url", image_url: { url: "data:image/jpeg;base64," + image } },
+            ] }],
+            max_tokens: 300,
+          });
+          const t4 = typeof r4?.response === "string" ? r4.response : JSON.stringify(r4?.response ?? r4);
+          const p4 = aiJson(t4, null);
+          if (p4 && p4.type) ident = p4;
+          else console.error("photo-search scout: unparseable", String(t4).slice(0, 200));
+        } catch (e) {
+          console.error("photo-search scout:", (e && e.message) || e);
+        }
+        if (!ident && env.GROQ_API_KEY) {
+          try {
+            const g = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "qwen/qwen3.8-27b", max_tokens: 350, temperature: 0.2, reasoning_effort: "none",
+                messages: [{ role: "user", content: [
+                  { type: "text", text: PHOTO_PROMPT },
+                  { type: "image_url", image_url: { url: "data:image/jpeg;base64," + image } },
+                ] }],
+              }),
+              signal: AbortSignal.timeout(25000),
+            });
+            const gj = await g.json();
+            const pg = aiJson(gj?.choices?.[0]?.message?.content || "", null);
+            if (pg && pg.type) ident = pg;
+            else console.error("photo-search groq:", g.status, JSON.stringify(gj).slice(0, 200));
+          } catch (e) {
+            console.error("photo-search groq:", (e && e.stack) || e);
+          }
+        }
+        if (!ident) try {
           const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-            prompt:
-              "You are helping a shopper find an item they just photographed. Reply with ONLY one raw JSON object, double quotes, no markdown, no code fences, no prose. " +
-              "Keys: type (e.g. 'denim jacket','white trainers','floral dress'), brand (string or 'Unknown'), color, " +
-              "category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), keywords (array of 5 short lowercase words someone would type into a search box), confidence (0-100). " +
-              "Be specific and honest about what you can actually see.",
+            prompt: PHOTO_PROMPT,
             image,
             max_tokens: 300,
           });
@@ -1018,11 +1082,21 @@ async function dispatch(request, env) {
             text = typeof r === "string" ? r : JSON.stringify(r);
             if (r?.response) text = typeof r.response === "string" ? r.response : JSON.stringify(r.response);
           } catch { text = JSON.stringify(r); }
-          ident = aiJson(text, null);
-          if (!ident || !ident.type) { ident = null; visionSource = "unavailable"; }
+          const p = aiJson(text, null);
+          if (p && p.type) ident = p;
         } catch (e) {
           console.error("photo-search vision:", (e && e.message) || e);
-          visionSource = "unavailable";
+        }
+        if (!ident) visionSource = "unavailable";
+        // No invented data: when no model could read the photo there is no
+        // identification, no query and no matches — so answer 502 in plain
+        // words instead of 200 with empty lists the Shop cannot distinguish
+        // from "nothing for sale". The app's photoSearchGo catch paints this
+        // message with a Try-again button (measured 2026-10-02).
+        if (!ident) {
+          return json({
+            error: "We couldn't read that photo right now — the photo reader is unavailable. Try again in a minute, or type a few words in the Shop search instead.",
+          }, 502);
         }
 
         // Build the actual search phrase. Terms the model could not see are
@@ -1530,8 +1604,20 @@ async function dispatch(request, env) {
         const t = await aiText(env,
           "You are a resale pricing expert (Depop/eBay market value). Return JSON only: lowPrice,highPrice,suggestedPrice,compsNote.",
           `Suggest a resale price range for a ${brand || ""} ${category} item, ${condition || "good"} condition. JSON only.`, 250);
-        const m = t.match(/\{[\s\S]*\}/);
-        return json(aiJson(t, null) || { suggestedPrice: 25, lowPrice: 15, highPrice: 40, compsNote: "AI comp analysis unavailable" });
+        // Measured 2026-10-02: with Workers AI over quota aiText returns ""
+        // and this route answered 200 with an invented $25/$15/$40 triple no
+        // model ever said. A price no model produced is fabricated data, so a
+        // miss is now a 502 in plain words (the Sell screen toasts it) rather
+        // than a confident-looking number. Parsed output must carry real
+        // numbers or it is the same miss.
+        const parsed = aiJson(t, null);
+        const okNum = (v) => Number.isFinite(Number(v)) && Number(v) > 0;
+        if (!parsed || !okNum(parsed.suggestedPrice) || !okNum(parsed.lowPrice) || !okNum(parsed.highPrice)) {
+          return json({
+            error: "We couldn't work out a price right now — the pricing helper is unavailable. Try again in a minute, or check what the same item in the same condition actually sold for on eBay or Depop.",
+          }, 502);
+        }
+        return json(parsed);
       }
 
       // ── ORDERS ──────────────────────────────────────────────

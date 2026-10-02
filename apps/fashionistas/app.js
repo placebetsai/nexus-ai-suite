@@ -63,7 +63,18 @@ async function api(path, opts={}) {
 
 /* ================= AUTH ================= */
 // Demo CTA on the auth screen. Uses the seeded demo-seller credentials.
-function demoLogin(){ $("#login-u").value = "demo"; $("#login-p").value = "Primetime2026!"; doLogin(); }
+// Demo sign-in used to prefill the login form with the seeded account's
+// password, which meant anyone who opened the page had a working credential for
+// a real, populated account. The server now owns that password
+// (POST /api/auth/demo) and this function learns nothing but the session it
+// returns.
+async function demoLogin(){
+  try{
+    const d = await api("/api/auth/demo", { method:"POST" });
+    afterAuth(d);
+    toast("Signed in as the demo seller — anything you change is yours, nothing is saved to the demo account.");
+  }catch(e){ toast(e.message); }
+}
 async function doLogin(){
  const u = $("#login-u").value.trim(), p = $("#login-p").value;
  if (!u || !p) return toast("Enter username and password");
