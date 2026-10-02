@@ -1050,3 +1050,94 @@ provenance column everyone reads to answer "is live == HEAD?" was reporting the 
 - [ ] **Open:** the GH Actions deploy workflow still sits at `ci/deploy.yml` — pushing it is
       rejected because the gh token lacks `workflow` scope. Tennis/UFC/soccer coverage is
       still subject to theoddsgap `429` (restored once by `be6dc76`, rate-limited again).
+
+---
+
+### 2026-10-02 (GOALs 2–5) — AUDIT complete: 2 PASS, 2 BLOCKED
+
+**GOAL 2 marketpicks.ai — PASS.**
+live `ecb50ca` == `origin/live-source` == local HEAD (another session deployed it mid-audit).
+- Data: `AAPL` bot **331.5** / board **331.29** / **Yahoo 331.562** (0.08% apart, same minute).
+  `/api/politician-trades` → 136 KB, 4,840 rows, `lastSuccess 15:24:57`.
+- **Congress feed verified against the primary source**: the House Clerk PDF for Pelosi's
+  filing lists `BE Stock 07/24/2026 $1,000,001-$5,000,000`, `BE 07/28/2026 $500,001-$1,000,000`,
+  `INTC 07/24/2026 $250,001-$500,000`, filed `08/21/2026` — the bot quoted **all three bracket
+  amounts and the filing date verbatim**.
+- Bot 5/5: price, earnings date, congress, **declines sport** (*"outside what I cover — I'm the
+  markets bot"*), and an honest prediction frame.
+- Gaps measured, none goal-blocking: `/api/odds|markets|congress` → 404 (routes never existed);
+  wrong field `message` → `400 {"error":"Missing query"}` with no field-name hint;
+  `/api/health` `quotes.last_success` always equals its own `timestamp` (4/4 probes) — it proves
+  the *check* ran, not that data is fresh (real freshness is at `/api/stock/:t.updatedAt`);
+  board (15-min cron) vs bot (live Yahoo) can sit ~0.5% apart.
+
+**GOAL 3 createstuff.ai — PASS, one sub-item BLOCKED.**
+live `/` sha `4e27cc95` == `git show HEAD:apps/createstuff-marketing/index.html`;
+HEAD == `origin/master`. Deployed by `createstuff-marketing` (account CS) — *not* by the
+`createstuff-ai` repo, whose own `package.json` points at `createstuff-ai.pages.dev`
+(account CF, not bound to the domain). Repo and live are three different files
+(47,055 / 42,743 / 109,988 bytes).
+- Flow: register `201` → project `201 #283` → file `201 (924 B)` → build `186 completed 169.8 s`
+  → `POST /api/ai/publish` → `https://sites.createstuff.ai/283/index.html` → **curl `200`**,
+  h1 present, `script.js` 200, `styles.css` 200. Platform injects a 2,828 B `window.__APP`
+  runtime; nothing uploaded was dropped.
+- Chain: `planner=groq/openai/gpt-oss-120b`; writers were `openrouter/…:free` and
+  `openrouter/poolside/laguna-s-2.1:free` (**two different free models** across runs).
+  `/api/zen-probe` → **429 FreeUsageLimitError on all 4 User-Agents** (`workersAI:"ok"`) —
+  a link in the chain is measurably dead and builds still completed.
+- No fake success: build `190` → `422 model output did not contain a usable index.html`.
+- **BLOCKED — "first provider forced to fail":** no `provider`/`force` field exists on
+  `/api/ai/generate` (code-inspected). Forcing link #1 means editing the *deployed* worker's
+  env (`CLOUD_FIRST`/`RELAY_OFF`) — a production config change, not a test.
+- Other measured gaps: builds 169.8/259/109 s vs the 60–150 s promise (2 of 3 over);
+  `GET /api/builds/:id/log` 404 and `POST {}` → `400 "agent and message required"`
+  (provider trace unreadable after the fact); `GET /api/projects/:id` → 404;
+  `POST /api/builds` without `prepare:1` → 400; 10 `<h1>` on the homepage;
+  `app.createstuff.ai` is byte-identical to `createstuff.ai`.
+- Uncommitted `apps/createstuff-marketing/app.js` left unstaged: its comment claims
+  `window.open(result.url)` opened a blank tab. **Reachability disproved** — path
+  `/api/builds/:id/deploy` matches only shim branch :891, which returns a non-empty `url` or
+  throws. Live == git HEAD (buggy line present); fix is not on live and I did not ship it.
+
+**GOAL 4 fashionistas.ai — BLOCKED (4 of 6 clauses).**
+- PASS: photo→ID `POST /api/ai/analyze` `200 2.77s` →
+  `{"type":"denim jacket","category":"Outerwear","condition":"Good","confidence":80,
+  "priceMin":20,"priceMax":40,"sizeHint":"Women's medium"}`; price `suggest-price`
+  `15/30/22.5`; fees `platform=ebay` `fee 13.25 net 86.75 verified`,
+  `fees/compare` 21 platforms/12 verified/spread $10; multi-shop listing created `201`,
+  `crosspost` `5/5 status:"ready" saved:5`, independently read back as
+  `platforms:['depop','ebay','poshmark','mercari','vinted']`, note *"drafts only — no shop is
+  posted to automatically"*; MV3 extension `manifest_version:3` + `service_worker`, no MV2 APIs.
+- **BLOCKED prod eBay**: `ebay/status` → `env:"sandbox" available:false`;
+  `ebay/listing` → `501 ebay_not_configured`; **no `EBAY_*` secret exists in `.secrets/`**.
+- **BLOCKED Stripe test plan**: 0 Stripe keys, 0 billing/checkout routes; checkout says
+  *"Stripe and PayPal are not live yet"*; **no `STRIPE_*` secret exists**.
+- **BLOCKED no-demo-creds-in-JS**: `app.js:66` ships `Primetime2026!` behind two UI buttons.
+  Fix needs a backend endpoint; `workers/fashionistas-api/src/index.js` carries another
+  session's today-dated 77-line change and `wrangler deploy` uploads the working tree —
+  deploying would push their unverified work to production.
+- Other gaps: `GET /api/listings/:id` → 404; wrong fees param (`shop`/`marketplace`/`id`)
+  **silently falls back to Depop** instead of erroring; `/login` and `/dashboard` → 404.
+
+**GOAL 5 nine small sites — 3 PASS / 6 BLOCKED on deploy parity; user-facing checks 8/9.**
+All nine measured live: **HTTP 200, robots 200, sitemap 200, exactly one `<h1>`, load 0.17–1.31 s**.
+`religiousjews.com` is the only site with **no AI-bot rules** in robots.txt.
+Internal links: **8/9 all sampled links OK**.
+
+| site | HEAD | last successful deploy | = HEAD? |
+|---|---|---|---|
+| ihatecollege.com | `fbd3f70` | `fbd3f70` 2026-10-02 | YES |
+| spanishtvshows.com | `eefd3cf` | `eefd3cf` 2026-10-01 | YES |
+| wuwonline.com | `8a975d5` | `8a975d5` 2026-08-29 | YES |
+| hiddencameras.tv | `28f63cb` | none ever | NO |
+| religiousjews.com | `1d6571b` | none (last run **failure**) | NO |
+| scooter.exchange | `ed4c794` | `881662f` 2026-09-03 | NO |
+| diamonds.forsale | `5692dae` | `e6afecc` 2026-07-30 (later run **failure**) | NO |
+| israeljoffe.com | `01555e5` | no CI | NO |
+| israeljoffe.org | `62e3d50` | no CI | NO |
+
+- **spanishtvshows.com ships 100 broken URLs**: sitemap has 193 entries, **100 are `/show/…`**,
+  and **every `/show/` URL tested returned `500` (7/7**, homepage-linked and sitemap-linked);
+  homepage also links `/Netflix-spanish-shows` → `404`. `/`, `/blog`, `/sitemap.xml` are 200.
+- `religiousjews.com` / `wuwonline.com` are additionally routed through the `app-host` Worker
+  (wildcard routes, content in KV+D1), so Pages CI is not their only serving path.

@@ -1776,3 +1776,36 @@ and set only by a CLI flag. Invoking it with the env var performs a real deploy.
 - theoddsgap `429` still gates tennis/UFC/soccer coverage.
 - Two sessions work this repo concurrently; `components/ProWrestlingPage.js` and
   `package-lock.json` are not mine — stage files explicitly, never `git add -A`.
+
+## 15. 2026-10-02 — GOALs 2–5 audit (2 PASS, 2 BLOCKED)
+
+**GOAL 2 marketpicks.ai — PASS.** live == HEAD == `origin/live-source` `ecb50ca`.
+AAPL bot/board/Yahoo agreed to 0.08%; congress feed matched the House Clerk PDF
+bracket-for-bracket (BE 07/24/26 `$1,000,001-$5,000,000`, BE 07/28/26 `$500,001-$1,000,000`,
+INTC 07/24/26 `$250,001-$500,000`, filed `08/21/26`); bot declines sport 1/1.
+Gaps: `/api/odds|markets|congress` 404; chatbot 400 omits the field name;
+`health.quotes.last_success` is a heartbeat, not a write.
+
+**GOAL 3 createstuff.ai — PASS** (register → build → publish → curl 200, all measured).
+Chain proven: `planner=groq`, writers two different `:free` OpenRouter models, Zen measurably
+429-dead yet builds completed, one build honestly `422`. **BLOCKED:** forcing the *first*
+provider to fail — no request field exists; needs a deployed-env change.
+Live source of createstuff.ai is `nexus-ai-suite/apps/createstuff-marketing/` (sha matches live),
+**not** the `createstuff-ai` repo (which points at an unbound project).
+
+**GOAL 4 fashionistas.ai — BLOCKED 4/6.** photo→ID/price/fees/multi-shop and MV3 all pass.
+**prod eBay** blocked: `env:"sandbox"`, `501 ebay_not_configured`, no `EBAY_*` secret.
+**Stripe test plan** blocked: no keys, no billing routes.
+**no-demo-creds-in-JS** blocked: `app.js:66` ships `Primetime2026!`; the fix needs the worker,
+and deploying that worker would ship another session's uncommitted 77-line change.
+
+**GOAL 5 — 3 PASS / 6 BLOCKED on `live deploy hash == HEAD?`.** All nine are 200 with a valid
+sitemap and exactly one `<h1>`; 8/9 have clean internal links. **spanishtvshows.com is the
+exception and is genuinely broken**: 100 of 193 sitemap URLs are `/show/…` and every one
+tested returns `500` (7/7), plus a homepage 404 at `/Netflix-spanish-shows`.
+`religiousjews.com` has no AI-bot rules in robots.txt.
+
+**Gotcha worth remembering:** wrangler's `pages deployment list` resolved to the wrong account
+even under `env -i`; the Cloudflare REST API with `Authorization: Bearer` is the reliable way to
+read deployment provenance. Pass `CLOUDFLARE_ACCOUNT_ID` explicitly — the CS token's
+`GET /accounts` returns an empty list, so account discovery cannot be used to identify it.
