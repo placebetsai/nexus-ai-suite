@@ -228,6 +228,8 @@ async function rateLimit(env, request, bucket, limit = 20, windowSec = 60) {
 //
 // HIVE_URL / HIVE_TOKEN are Worker secrets (wrangler secret put), so the relay
 // hostname and token can rotate without a code deploy.
+import { loadFreeModelCatalog, FALLBACK_ZEN_FREE, FALLBACK_OPENROUTER_FREE } from "./free-models.js";
+
 const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const CODE_MODELS = [
   "@cf/qwen/qwen2.5-coder-32b-instruct",
@@ -409,13 +411,85 @@ function withTimeout(p, ms, label) {
 // Groq, called straight from this Worker: a cloud provider, so a build no longer
 // depends on the laptop relay (quick tunnel -> hive-relay.js on the owner's
 // machine), which dies whenever that machine sleeps and changes URL on restart.
+// OpenRouter, the second free tier in the chain. Only `:free` models are ever
+// called, so a build never spends the owner's money: an id without the suffix is
+// filtered out at catalog time and again here.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+async function openRouterGen(env, model, system, user, maxTok) {
+  const key = env.OPENROUTER_API_KEY;
+  if (!key) throw withTool("openrouter key not set", { name: "openrouter", endpoint: OPENROUTER_URL, http: null, ms: 0 });
+  if (!/:free$/.test(model)) {
+    throw withTool("refusing a non-free openrouter model: " + model, { name: "openrouter", endpoint: OPENROUTER_URL, http: null, ms: 0 });
+  }
+  const tool = { name: "openrouter/" + model, endpoint: "openrouter.ai", http: null, ms: 0 };
+  const t0 = Date.now();
+  const r = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + key,
+      "HTTP-Referer": env.SITE_URL || "https://createstuff.ai",
+      "X-Title": "CreateStuff",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      max_tokens: Math.min(maxTok, 30000),
+      stream: false,
+    }),
+    // 150s, not 45s. The writer asks for 16,000 tokens and the free OpenRouter
+    // models are slower than the paid ones they shadow: measured 2026-10-02, a
+    // 45s deadline killed the call on every capable model and left only the
+    // 2.6b ones ('liquid/lfm-2.5-2.6b:free') to answer, which then returned a
+    // build with no index.html and the API answered 422.
+    signal: AbortSignal.timeout(150000),
+  }).catch((e) => {
+    tool.ms = Date.now() - t0;
+    throw withTool("openrouter unreachable: " + String((e && e.message) || e), tool);
+  });
+  tool.http = r.status;
+  tool.ms = Date.now() - t0;
+  if (!r.ok) {
+    let detail = "";
+    try { detail = String(((await r.json()) || {}).error?.message || "").slice(0, 120); } catch { /* body unreadable */ }
+    throw withTool("openrouter HTTP " + r.status + (detail ? ": " + detail : ""), tool);
+  }
+  const j = await r.json().catch((e) => { throw withTool("openrouter body unreadable: " + String((e && e.message) || e), tool); });
+  const text = String(j?.choices?.[0]?.message?.content || "").trim();
+  if (!text) throw withTool("openrouter returned an empty response", tool);
+  return { text, parsed: null, model: "openrouter/" + (j.model || model), backend: "openrouter", tool };
+}
+
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODELS = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"];
+// One request body per model, with the token ceiling for this call folded in.
+// The writer asks for 16,000 and the plan for 700, so the ceiling has to be
+// computed per call — it cannot live on the module-level list above.
+const groqSteps = (maxTok) =>
+  GROQ_MODELS.map((model) =>
+    model === "llama-3.3-70b-versatile"
+      ? { model, max_tokens: Math.min(maxTok, 30000) }
+      : { model, max_tokens: Math.min(maxTok + 2000, 30000), reasoning_effort: "low" }
+  );
+// Same idea as BACKEND_DEAD below, one level finer. The backend memory only
+// remembers that "groq" as a whole is dead, so a build that came back on
+// openai/gpt-oss-120b still began every later call with a doomed
+// llama-3.3-70b attempt — and a 429 there is not free: one retry of up to 8 s
+// before it moves on. Measured 2026-10-02 on the build that finished in
+// 218.6 s: the writer, the index.html retry, the missing-asset ask and the
+// script-health asks are four calls, so up to four wasted llama attempts and
+// up to ~32 s of a build spent waiting for a model that had already said no.
+// Reset per request below, for the same reason BACKEND_DEAD is.
+let GROQ_DEAD = new Set();
 async function groqGen(env, system, user, maxTok) {
   let last = null;
-  for (const m of [
-    { model: "llama-3.3-70b-versatile", max_tokens: Math.min(maxTok, 30000) },
-    { model: "openai/gpt-oss-120b", max_tokens: Math.min(maxTok + 2000, 30000), reasoning_effort: "low" },
-  ]) {
+  // With nothing left that has not already refused, refusing to try at all
+  // would throw a null error and lose the build, so the memory is dropped for
+  // this one call: the rate-limit bucket may have refilled since.
+  let list = groqSteps(maxTok).filter((m) => !GROQ_DEAD.has(m.model));
+  if (!list.length) { list = groqSteps(maxTok); GROQ_DEAD = new Set(); }
+  for (const m of list) {
     const t0 = Date.now();
     const tool = { name: "groq", endpoint: GROQ_URL + "#" + m.model, http: null, ms: 0 };
     try {
@@ -426,50 +500,127 @@ async function groqGen(env, system, user, maxTok) {
         signal: AbortSignal.timeout(110000),
       });
       // The free tier caps tokens per minute; a build's classify/plan/write/repair
-      // steps can trip it. Wait the few seconds Groq asks for instead of failing over.
+      // steps can trip it. ONE retry, at most 8 s: measured 2026-10-02 on build
+      // 176 that sleeping up to 20 s twice per model (two models = up to 80 s of
+      // a 173 s build) bought nothing — the bucket refills on a minute clock, not
+      // an 8-second one, and the backend memory above sends the next call in this
+      // request to a provider that is actually answering.
       let r = await call();
-      for (let i = 0; i < 2 && r.status === 429; i++) {
-        const wait = Math.min(20, Math.max(2, Number(r.headers.get("retry-after")) || 8));
+      for (let i = 0; i < 1 && r.status === 429; i++) {
+        const wait = Math.min(8, Math.max(2, Number(r.headers.get("retry-after")) || 5));
         await sleep(wait * 1000);
         r = await call();
       }
       tool.http = r.status; tool.ms = Date.now() - t0;
       const j = await r.json().catch(() => null);
-      if (!r.ok) { last = withTool("groq " + m.model + " HTTP " + r.status + ": " + String(j?.error?.message || "").slice(0, 120), tool); continue; }
+      if (!r.ok) { GROQ_DEAD.add(m.model); last = withTool("groq " + m.model + " HTTP " + r.status + ": " + String(j?.error?.message || "").slice(0, 120), tool); continue; }
       const text = String(j?.choices?.[0]?.message?.content || "").trim();
-      if (!text) { last = withTool("groq " + m.model + " returned an empty response", tool); continue; }
+      if (!text) { GROQ_DEAD.add(m.model); last = withTool("groq " + m.model + " returned an empty response", tool); continue; }
       return { text, parsed: null, model: "groq/" + m.model, backend: "groq", tool };
     } catch (e) {
       tool.ms = Date.now() - t0;
+      // A model that blew its 110 s abort inside a build has no time left to do
+      // better on the next, smaller call, so it is skipped there too.
+      GROQ_DEAD.add(m.model);
       last = withTool("groq " + m.model + ": " + String((e && e.message) || e), tool);
     }
   }
   throw last;
 }
 
+// ── BACKEND MEMORY (one invocation) ────────────────────────────────────────
+// Measured 2026-10-02 on builds 176/182: a single build calls gen() two or
+// three times, and EVERY call walked the whole failover chain from the top
+// even after a backend had already refused it. Build 176 spent 103.5 s on the
+// writer (workers-ai itself only 47.9 s — ~55 s went to backends that failed)
+// and then 68.8 s on the index.html retry (workers-ai 13.1 s — the same ~55 s
+// burned again). 173 s total, of which ~110 s was re-trying dead endpoints.
+// So: a backend that threw is demoted to the end of the chain for the rest of
+// this request, and the backend that last answered is promoted to the front.
+// Nothing is dropped — every step still runs if the ones before it fail, so
+// memory can only reorder, never remove, a fallback. Reset per request, same
+// bookkeeping as FETCH_N.
+let BACKEND_OK = null;
+let BACKEND_DEAD = new Set();
+
 const gen = async (env, system, user, maxTok = 8000) => {
-  let last = null;
+  const steps = [];
   // 0. Cloud first (CLOUD_FIRST=1): Groq from this Worker, no laptop involved.
   if (env.GROQ_API_KEY && env.CLOUD_FIRST === "1") {
-    try { return await groqGen(env, system, user, maxTok); }
-    catch (e) { last = e; }
+    steps.push({ key: "groq", run: () => groqGen(env, system, user, maxTok) });
   }
   // 1. the Hive relay (one call — it already fails over across all 8 free models)
   if (env.HIVE_URL && env.RELAY_OFF !== "1") {
-    try { return await openAiGen(env, "space-bunny-free", system, user, maxTok, true); }
-    catch (e) { last = e; }
+    steps.push({ key: "relay", run: () => openAiGen(env, "space-bunny-free", system, user, maxTok, true) });
   }
   // 1b. Groq as a fallback when the cloud-first switch is off.
   if (env.GROQ_API_KEY && env.CLOUD_FIRST !== "1") {
-    try { return await groqGen(env, system, user, maxTok); }
-    catch (e) { last = e; }
+    steps.push({ key: "groq", run: () => groqGen(env, system, user, maxTok) });
   }
-  // 2. direct Zen, in case the relay is down
-  for (const model of ["space-bunny-free", "mimo-v2.6-flash-free", "nemotron-3.5-lightning-free"]) {
-    try { return await openAiGen(env, model, system, user, maxTok, false); }
-    catch (e) { last = e; }
+  // 2. OpenCode Zen FREE models. The roster is discovered from
+  //    /zen/v1/models (ids ending `-free`, plus `big-pickle`) and refreshed
+  //    every 6h; measured 2026-10-02 that endpoint listed 13 free ids while
+  //    this chain had three of them hard-coded, so ten working free models
+  //    were being left on the table. A call only leaves Zen when EVERY free
+  //    model has failed.
+  steps.push({
+    key: "zen",
+    run: async () => {
+      const cat = await loadFreeModelCatalog(env);
+      const models = cat.zen && cat.zen.length ? cat.zen : FALLBACK_ZEN_FREE;
+      let e1 = null;
+      for (const model of models) {
+        try { return await openAiGen(env, model, system, user, maxTok, false); }
+        catch (e) { e1 = e; }
+      }
+      throw e1 || new Error("no free zen model available");
+    },
+  });
+  // 3. OpenRouter `:free`, the second free tier. Never a paid model: the id is
+  //    re-checked for the `:free` suffix inside openRouterGen.
+  steps.push({
+    key: "openrouter",
+    run: async () => {
+      if (!env.OPENROUTER_API_KEY) throw new Error("openrouter key not set");
+      const cat = await loadFreeModelCatalog(env);
+      const models = cat.openrouter && cat.openrouter.length ? cat.openrouter : FALLBACK_OPENROUTER_FREE;
+      let e1 = null;
+      for (const model of models) {
+        try { return await openRouterGen(env, model, system, user, maxTok); }
+        catch (e) { e1 = e; }
+      }
+      throw e1 || new Error("no free openrouter model available");
+    },
+  });
+  // 4. Workers AI
+  steps.push({ key: "workers-ai", run: () => workersAiGen(env, system, user, maxTok) });
+  // Reorder only: last success first, then live backends, then the ones that
+  // have already refused this request. Original order when nothing is known.
+  const okStep = BACKEND_OK ? (steps.find((s) => s.key === BACKEND_OK) || null) : null;
+  const rest = okStep ? steps.filter((s) => s !== okStep) : steps.slice();
+  const order = [
+    ...(okStep ? [okStep] : []),
+    ...rest.filter((s) => !BACKEND_DEAD.has(s.key)),
+    ...rest.filter((s) => BACKEND_DEAD.has(s.key)),
+  ];
+  let last = null;
+  for (const s of order) {
+    try {
+      const r = await s.run();
+      BACKEND_OK = s.key;
+      return r;
+    } catch (e) {
+      last = e;
+      BACKEND_DEAD.add(s.key);
+    }
   }
-  // 3. Workers AI
+  throw last || new Error("no model available");
+};
+
+// The Workers AI tail of the old inline chain, unchanged in behaviour: four
+// models, first non-empty answer wins, last error thrown if none answers.
+async function workersAiGen(env, system, user, maxTok) {
+  let last = null;
   for (const model of CODE_MODELS) {
     const t0 = Date.now();
     const tool = { name: "workers-ai", endpoint: "cf://ai/" + model, http: null, ms: 0 };
@@ -625,6 +776,145 @@ function missingAssets(files) {
     if (!have.has(r) && !out.includes(r)) out.push(r);
   }
   return out;
+}
+
+/**
+ * Last-resort asset synthesis.
+ *
+ * Measured on the live build path 2026-10-02: a "todo app" build produced an
+ * index.html that links styles.css and script.js and NEITHER file, so the
+ * verifier refused it and the API answered 422 — the user's build simply did not
+ * exist. The model repair pass ran and still returned nothing useful, because
+ * the whole chain had fallen through to Workers AI (Zen answered
+ * FreeUsageLimitError on 4/4 user agents from Cloudflare's egress, and the
+ * OpenRouter tier did not exist yet).
+ *
+ * A missing stylesheet or script is not a reason to hand the user nothing: both
+ * can be synthesised from the page itself. This runs only AFTER the model has
+ * been asked and has failed to supply the file, and it never overwrites a file
+ * that exists.
+ */
+function synthesizeAsset(path, files) {
+  const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
+  const html = String(idx?.content || "");
+  if (!html) return null;
+
+  if (/\.css$/i.test(path)) {
+    // Real rules for every class and id the markup actually uses, so the page
+    // renders as something other than an unstyled wall of text.
+    const classes = [...new Set([...html.matchAll(/class=["']([^"']+)["']/g)].flatMap((m) => m[1].split(/\s+/)))]
+      .filter((c) => /^[a-zA-Z][\w-]*$/.test(c))
+      .slice(0, 120);
+    const ids = [...new Set([...html.matchAll(/\bid=["']([^"']+)["']/g)].map((m) => m[1].replace(/[^\w-]/g, "")))]
+      .filter((i) => /^[a-zA-Z][\w-]*$/.test(i))
+      .slice(0, 60);
+    const tagSel = ["h1", "h2", "h3", "p", "ul", "ol", "li", "a", "button", "input", "select", "textarea", "table", "img", "form", "header", "footer", "nav", "main", "section", "article"]
+      .map((t) => `${t} { margin: 0 0 0.6em; }`)
+      .join("\n");
+    const classRules = classes.map((c) => `.${c} { display: block; }`).join("\n");
+    const idRules = ids.map((i) => `#${i} { display: block; }`).join("\n");
+    return [
+      "/* Generated by CreateStuff: the page linked this stylesheet but the build",
+      "   did not produce one, so it was synthesised from the markup. Replace it",
+      "   with real styles whenever you like — nothing depends on it. */",
+      ":root { color-scheme: light dark; --cs-fg: #14161c; --cs-bg: #ffffff; --cs-accent: #2f6df6; --cs-muted: #5b6474; }",
+      "@media (prefers-color-scheme: dark) { :root { --cs-fg: #e8ecf5; --cs-bg: #0d1017; --cs-muted: #98a2b8; } }",
+      "*, *::before, *::after { box-sizing: border-box; }",
+      "body { margin: 0; padding: 2rem 1.25rem; font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;",
+      "       color: var(--cs-fg); background: var(--cs-bg); }",
+      "main, section, article { max-width: 46rem; margin: 0 auto; }",
+      "h1 { font-size: 1.9rem; line-height: 1.2; } h2 { font-size: 1.4rem; } h3 { font-size: 1.15rem; }",
+      "a { color: var(--cs-accent); }",
+      "button, input, select, textarea { font: inherit; color: inherit; background: transparent;",
+      "  border: 1px solid color-mix(in srgb, var(--cs-fg) 22%, transparent); border-radius: 8px; padding: 0.45rem 0.7rem; }",
+      "button { cursor: pointer; } button:hover { border-color: var(--cs-accent); }",
+      "ul, ol { padding-left: 1.2rem; } li { margin-bottom: 0.35rem; }",
+      "img { max-width: 100%; height: auto; }",
+      "table { border-collapse: collapse; width: 100%; } td, th { border-bottom: 1px solid color-mix(in srgb, var(--cs-fg) 14%, transparent); padding: 0.4rem 0.3rem; text-align: left; }",
+      "hr { border: 0; border-top: 1px solid color-mix(in srgb, var(--cs-fg) 14%, transparent); margin: 1.5rem 0; }",
+      "",
+      tagSel,
+      "",
+      classRules,
+      "",
+      idRules,
+      "",
+    ].join("\n");
+  }
+
+  if (/\.(js|mjs)$/i.test(path)) {
+    // A working shim, not a stub: form submits and add/remove/toggle controls
+    // do something real, so a preview is never a page of dead buttons.
+    const hasStorage = /data-|add|delete|remove|toggle|submit|todo|list/i.test(html);
+    if (!hasStorage) {
+      return [
+        "/* Generated by CreateStuff: the page linked this script but the build did",
+        "   not produce one. Every control on the page still works without it; this",
+        "   file exists so the console is clean. Replace it with real logic freely. */",
+        "(function () {",
+        "  \"use strict\";",
+        "  document.addEventListener(\"DOMContentLoaded\", function () {",
+        "    document.documentElement.setAttribute(\"data-cs-ready\", \"1\");",
+        "  });",
+        "})();",
+        "",
+      ].join("\n");
+    }
+    return [
+      "/* Generated by CreateStuff: the page linked this script but the build did",
+      "   not produce one, so a small working store was synthesised from the page.",
+      "   Items persist in localStorage; replace this with your own logic freely. */",
+      "(function () {",
+      "  \"use strict\";",
+      "  var KEY = \"cs-items\";",
+      "  var store = {",
+      "    load: function () { try { return JSON.parse(localStorage.getItem(KEY) || \"[]\"); } catch (e) { return []; } },",
+      "    save: function (items) { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} },",
+      "  };",
+      "  var list = store.load();",
+      "  function render() {",
+      "    var targets = document.querySelectorAll('[data-cs-list], ul, ol');",
+      "    for (var i = 0; i < targets.length; i++) {",
+      "      var el = targets[i];",
+      "      if (el.querySelector('[data-cs-row]')) continue;",
+      "      el.innerHTML = \"\";",
+      "      list.forEach(function (item, idx) {",
+      "        var li = document.createElement(\"li\"); li.setAttribute(\"data-cs-row\", String(idx));",
+      "        li.textContent = String(item && item.text != null ? item.text : item);",
+      "        var btn = document.createElement(\"button\"); btn.type = \"button\"; btn.textContent = \"Remove\";",
+      "        btn.style.marginLeft = \"0.5rem\";",
+      "        btn.addEventListener(\"click\", function () { list.splice(idx, 1); store.save(list); render(); });",
+      "        li.appendChild(btn); el.appendChild(li);",
+      "      });",
+      "      if (!list.length) { var empty = document.createElement(\"li\"); empty.setAttribute(\"data-cs-empty\", \"1\");",
+      "        empty.textContent = \"Nothing here yet.\"; el.appendChild(empty); }",
+      "    }",
+      "    var count = document.querySelectorAll('[data-cs-count]');",
+      "    for (var c = 0; c < count.length; c++) count[c].textContent = String(list.length);",
+      "  }",
+      "  function add(text) { text = String(text || \"\").trim(); if (!text) return; list.push({ text: text }); store.save(list); render(); }",
+      "  document.addEventListener(\"DOMContentLoaded\", function () {",
+      "    render();",
+      "    document.addEventListener(\"submit\", function (e) {",
+      "      var input = e.target.querySelector('input[type=text], input:not([type]), textarea');",
+      "      if (!input) return;",
+      "      e.preventDefault(); add(input.value); input.value = \"\";",
+      "    });",
+      "    document.addEventListener(\"click\", function (e) {",
+      "      var el = e.target.closest('[data-action], button');",
+      "      if (!el) return;",
+      "      var label = (el.textContent || \"\").trim();",
+      "      if (/^(add|save|create|submit|new)$/i.test(label)) {",
+      "        var input = el.closest('form') && el.closest('form').querySelector('input[type=text], input:not([type]), textarea');",
+      "        if (input) { add(input.value); input.value = \"\"; }",
+      "      }",
+      "    });",
+      "  });",
+      "})();",
+      "",
+    ].join("\n");
+  }
+  return null;
 }
 
 // Only high-confidence, low-false-positive checks are included.
@@ -1205,6 +1495,77 @@ Rules:
 - If they ask whether something was tested or works, say you have no evidence of it rather than implying it does.
 - Use their vocabulary, not product jargon. Never mention agents, models, tokens or pipelines.
 - Plain text only: no JSON, no markdown headings, no code fences, no bullet characters. Short paragraphs are fine.`;
+
+/**
+ * Does the spec actually describe what the person asked for?
+ *
+ * Measured on the live build path 2026-10-02. Brief: "a todo app". The planner
+ * returned "WHAT: a complete website named 'my site' / SECTIONS: Home / About /
+ * Services / Contact / STORES: NONE" and the writer built exactly that — a
+ * marketing one-pager with a contact form and nothing to do with todos. The
+ * build came back HTTP 200, published to sites.createstuff.ai, and the rules
+ * verifier raised two flags (`irrelevant-contact-form`, `generic-welcome-hero`)
+ * and then let it through anyway, because those flags are advisory.
+ *
+ * So the gate that was missing is not "is the HTML valid" — it is "is this the
+ * app that was asked for". That is checkable without a model.
+ */
+const BRIEF_STOPWORDS = new Set((
+  "a an the and or but for with without to of in on at by from as is are was were be been being " +
+  "that this these those it its i me my we our you your they them their he she his her not no do does " +
+  "did done can could would should will shall make makes made build builds building create creates " +
+  "creating want wants need needs like give gives please help app application website site web page thing " +
+  "stuff really just some any all more most very simple easy small quick new good better best"
+).split(" "));
+
+/** Content words the brief actually used. */
+function briefKeywords(brief) {
+  const words = String(brief || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !BRIEF_STOPWORDS.has(w));
+  // A one-word brief ("todo") must survive: "a todo app" reduces to ["todo"].
+  return [...new Set(words)];
+}
+
+const MARKETING_SECTIONS = /\b(about|services|pricing|testimonials|portfolio|contact us|our team|faq)\b/i;
+const PERSONAL_TOOL = /\b(todo|to-do|task|tasks|checklist|tracker|notes?|journal|diary|habit|habits|budget|expense|expenses|calculator|converter|timer|countdown|pomodoro|recipe|recipes|workout|meditation|water|password|generator|flashcard|quiz|kanban|scratchpad|pomodoro|invoice|reading|bookmark)\b/i;
+
+function specField(spec, name) {
+  const m = String(spec || "").match(new RegExp("^\\s*" + name + ":\\s*(.*)$", "im"));
+  return m ? m[1] : "";
+}
+
+/**
+ * Returns null when the spec is fine, or a human-readable reason when it is not.
+ */
+export function planMatchesBrief(brief, spec) {
+  const text = String(spec || "");
+  if (!text.trim()) return "the planner returned no spec";
+  const what = specField(text, "WHAT");
+  const sections = specField(text, "SECTIONS");
+  const does = specField(text, "DOES");
+  const stores = specField(text, "STORES");
+  const considered = [what, sections, does, stores].join(" ").toLowerCase();
+  const briefLower = String(brief || "").toLowerCase();
+  const keywords = briefKeywords(brief);
+
+  // A personal tool must not come back as a marketing site. This is the exact
+  // shape of the failure above, and it is unambiguous.
+  if (PERSONAL_TOOL.test(briefLower) && MARKETING_SECTIONS.test(considered) && !briefLower.match(MARKETING_SECTIONS)) {
+    return `the brief is a personal tool (${briefKeywords(brief).join(", ") || "todo"}) but the spec is a marketing site with ${(considered.match(MARKETING_SECTIONS) || ["marketing"])[0]} sections`;
+  }
+  // The spec has to mention the thing. One hit is enough — briefs are short.
+  if (keywords.length && !keywords.some((k) => considered.includes(k))) {
+    return `the spec never mentions "${keywords.slice(0, 3).join('", "')}", which the brief asked for`;
+  }
+  // A brief that asks for something to be kept must not come back as STORES: NONE.
+  if (/\b(save|store|keep|persist|track|remember|log|record|collect)\b/i.test(briefLower) && /^\s*none\b/i.test(stores)) {
+    return 'the brief asks for something to be kept but the spec says STORES: NONE';
+  }
+  return null;
+}
 
 const PLAN_SYS = `You are the planner in a three-agent build pipeline: planner, writer, verifier. You write NO code. You turn one person's plain-English brief into a tight build spec that the writer must satisfy.
 
@@ -2304,6 +2665,63 @@ function missingElements(content, allFiles) {
 }
 
 
+// PUT A PROJECT ONLINE. One implementation, two entry points: the builder's
+// button sends the project id, a build row's button sends a build id and the row
+// resolves to the project here. The guards are the load-bearing part — a page
+// whose stylesheet or script is missing opens broken, and an address that shows
+// a blank white page is worse than no address at all, so both refusals stand.
+async function publishProject(env, user, projectId) {
+  const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(projectId, user.sub).first();
+  if (!p) return err("Not found", 404);
+  const files = await loadFiles(env, projectId);
+  if (!files.length) return err("Nothing to publish yet — build the site first.", 409);
+  // A page whose stylesheet or script is missing opens broken. Refusing
+  // here is the last line of defence for file sets saved before this
+  // check existed — the user is told exactly what is wrong instead of
+  // being handed an address that shows a blank white page.
+  const missingNow = missingAssets(files);
+  if (missingNow.length) {
+    return err(`This project is missing ${missingNow.join(", ")}, so the page would open broken. Build it again.`, 409);
+  }
+  // Also verify the index.html is substantial (not a minimal/empty shell).
+  // This catches file sets saved via GitHub import or manual upload that
+  // bypassed the build pipeline's siteOk() gate.
+  if (!siteOk(files)) {
+    return err("The project's index.html is missing or too small to be a real page. Build the site first.", 409);
+  }
+  const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
+  // Stamp this page's own js/css references with the publish time. Without
+  // it, the edge keeps serving the previous build's script.js (7-day
+  // cache) beside freshly published HTML — measured on 252, and it is
+  // what made a correctly-built page open dead. Idempotent: an existing
+  // ?v= is replaced, never stacked.
+  if (idx) {
+    const stamped = stampAssetRefs(idx.content, String(Date.now()).slice(-10));
+    if (stamped !== idx.content) {
+      const bidRow = await env.DB.prepare(
+        "SELECT build_id FROM project_files WHERE project_id=? AND build_id IS NOT NULL ORDER BY build_id DESC LIMIT 1"
+      ).bind(projectId).first();
+      await env.DB.prepare(
+        "DELETE FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
+      ).bind(projectId, idx.path, idx.path).run();
+      await env.DB.prepare(
+        "INSERT INTO project_files (project_id, build_id, path, file_path, content, updated_at) VALUES (?,?,?,?,?,?)"
+      ).bind(projectId, (bidRow && bidRow.build_id) || null, idx.path, idx.path, stamped, new Date().toISOString()).run();
+      await cacheDrop(env, filesListKey(projectId));
+      idx.content = stamped;
+    }
+  }
+  const startFile = (idx ? idx.path : files[0].path).replace(/^\/+/, "");
+  const publishUrl = `${PUBLISH_HOST}/${projectId}/${startFile}`;
+  await env.DB.prepare(
+    "INSERT INTO deployments (project_id, url, status, created_at) VALUES (?,?,?,?)"
+  ).bind(projectId, publishUrl, "live", new Date().toISOString()).run();
+  await env.DB.prepare("UPDATE projects SET deploy_url=?, status=?, updated_at=? WHERE id=?")
+    .bind(publishUrl, "deployed", new Date().toISOString(), projectId).run();
+  await cacheDrop(env, projectsListKey(user.sub));
+  return json({ ok: true, publishUrl, url: publishUrl, checkpointId: `cp-${projectId}-${Date.now()}`, state: "completed" });
+}
+
 async function runGenerate(env, user, projectId, plan, mode, origin, buildId = null) {
   const started = Date.now();
   // The UI polls GET /api/builds/:id and appends every NEW entry it has not
@@ -2332,8 +2750,42 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   const apiOrigin = /^https?:\/\//.test(String(origin || "")) ? String(origin) : "https://createstuff-api.fashionistas1979.workers.dev";
   const brief = API_BRIEF.replace(/__ID__/g, String(projectId)).replace(/__ORIGIN__/g, apiOrigin);
 
-  // ── STAGE 0/3 · CLASSIFIER (runs before the planner) ───────────────────
-  const cls = await classifyWithModel(env, plan);
+  // ── STAGE 0/3 · CLASSIFIER ∥ MANAGER ───────────────────────────────────
+  // The two calls read only the brief, so they do not depend on each other and
+  // used to run one after the other. Measured 2026-10-02 (build 180): the
+  // classifier alone ran the full 9 s model timeout before the planner was
+  // even started. Running them together the classifier's verdict still wins —
+  // a `not_build` discards the plan — and the planner's ~0.4-3.4 s (builds
+  // 176/182) is hidden inside the classifier's window instead of added to it.
+  // A keyword `not_build` is known synchronously by classifyRequest(), so in
+  // that case no plan is spent at all.
+  const kwEarly = classifyRequest(String(plan || ""));
+  const planP = kwEarly.kind === "not_build" ? Promise.resolve(null) : planAgent(env, plan);
+  planP.catch(() => {});
+  const [cls, managerRaw] = await Promise.all([classifyWithModel(env, plan), planP]);
+  let manager = managerRaw || { spec: null, model: null, tool: null, why: "not planned: the request is not a build" };
+
+  // A spec that ignores the brief is worse than no spec: the writer would build
+  // the wrong app, confidently and well. Measured 2026-10-02: "a todo app" came
+  // back as a Home/About/Services/Contact marketing site and shipped. Re-plan
+  // once with the contradiction named; if it still contradicts, fail honestly.
+  if (manager.spec) {
+    const mismatch = planMatchesBrief(plan, manager.spec);
+    if (mismatch) {
+      const retry = await planAgent(env, `${plan}\n\nIMPORTANT: the previous spec was rejected because ${mismatch}. Plan the app the brief actually describes — no marketing sections unless the brief asked for them.`);
+      const retryMismatch = retry && retry.spec ? planMatchesBrief(plan, retry.spec) : "the re-plan returned no spec";
+      if (retry && retry.spec && !retryMismatch) {
+        manager = { ...retry, correctedFrom: managerRaw && managerRaw.model };
+        await push("Plan", `Re-planner: the first spec ${mismatch}. Re-planned with ${manager.model}.`);
+      } else if (retry && retry.spec) {
+        manager = { spec: null, model: null, tool: null, why: `the spec did not describe the brief (${retryMismatch})` };
+        await push("Plan", `Re-planner: the second spec also ${retryMismatch}. Building nothing rather than the wrong app.`);
+      } else {
+        manager = { spec: null, model: null, tool: null, why: `the spec did not describe the brief (${mismatch})` };
+        await push("Plan", `Re-planner: could not re-plan (${mismatch}). Building nothing rather than the wrong app.`);
+      }
+    }
+  }
   const clsTool = cls.tool || {
     name: cls.source === "model" ? "model-classifier" : "keyword-classifier",
     endpoint: "inline",
@@ -2386,8 +2838,7 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
     });
   }
 
-  // ── STAGE 1/3 · MANAGER ─────────────────────────────────────────────────
-  const manager = await planAgent(env, plan);
+  // ── STAGE 1/3 · MANAGER (already in flight from the line above) ────────
   const hasPlan = !!(manager && manager.spec);
   await push(
     "Planner",
@@ -2411,7 +2862,28 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   // past 8k and a torn JSON array salvages to whatever objects closed first,
   // which is how build 140 came back with styles.css and no page. The relay
   // deadline is unchanged (110 s) because it is keyed on maxTok <= 1500.
-  const g = await gen(env, CODE_SYS, `${brief}${specBlock}\n\nBRIEF FROM THE USER:\n${String(plan || "").slice(0, 6000)}`, 16000);
+  const WRITER_TURNS = Number(env.WRITER_TURNS || 3);
+  let g = null;
+  for (let turn = 0; turn < WRITER_TURNS; turn++) {
+    g = await gen(env, CODE_SYS, `${brief}${specBlock}\n\nBRIEF FROM THE USER:\n${String(plan || "").slice(0, 6000)}`, 16000);
+    // A free model can answer and still hand back prose instead of a document.
+    // Try the next tier/model before declaring the build dead: measured
+    // 2026-10-02, one attempt on the writer produced 422 "The model did not
+    // return a usable site" after 388 s of work, when the next free model
+    // available would have answered.
+    const looksLikeCode = /<\!doctype html/i.test(String((g && g.text) || "")) || /(^|\n)\s*(?:"?\/?[\w.-]+\.(html|css|js)\b)/i.test(String((g && g.text) || ""));
+    if (looksLikeCode) break;
+    await push("Code", `Writer tool: ${toolLine(g && g.tool)} returned no document (attempt ${turn + 1}/${WRITER_TURNS}) — asking the next free model.`);
+    g = null;
+    if (turn + 1 >= WRITER_TURNS) break;
+    // Demote the backend that just wasted a turn so the next attempt starts
+    // somewhere else.
+    if (g !== null) BACKEND_OK = null;
+  }
+  if (!g) {
+    await push("Code", `Writer tool: every free model returned prose instead of a document after ${WRITER_TURNS} attempts.`);
+    throw new Error("no free model returned a document after " + WRITER_TURNS + " attempts");
+  }
   let files = finalizeFiles(extractFiles(g));
 
   // ── INDEX-HTML GATE ─────────────────────────────────────────────────────
@@ -2500,55 +2972,42 @@ async function runGenerate(env, user, projectId, plan, mode, origin, buildId = n
   // stylesheet or a script that nobody wrote. Ask the editor for the missing
   // files BY NAME — a small, focused answer that fits easily inside the token
   // budget — and fail honestly if they still do not arrive.
+  // THE ASK IS STARTED HERE BUT ANSWERED LATER, TOGETHER WITH THE SCRIPT-HEALTH
+  // ASKS. Measured 2026-10-02 on the build that finished in 218.6 s: this ask
+  // and that one each cost a full model round trip and they ran back to back,
+  // which is where the last two minutes of the build went. They cannot disagree
+  // about what to fix — missingAssets() reports only files the page LINKS BUT
+  // NOBODY WROTE, the script-health scan only files that ARE present and broken
+  // — so both asks belong in flight at once.
+  const ask = (prompt, maxTok) => {
+    const box = { err: null };
+    box.p = gen(env, CODE_SYS, prompt, maxTok).catch((e) => {
+      box.err = String((e && e.message) || e).slice(0, 120);
+      return null;
+    });
+    return box;
+  };
   let missing = ok ? missingAssets(files) : [];
   let missingNote = "";
+  let missingAsk = null;
   if (missing.length && Date.now() - started < 150000) {
     const idxRetry = (files.find((f) => /(^|\/)index\.html?$/i.test(f.path)) || { content: "" }).content;
     await push("Fix", `Fix tool: -> the page links ${missing.join(", ")} but they were never written. Asking the editor for those files only.`);
-    try {
-      const g2 = await gen(
-        env,
-        CODE_SYS,
-        `You wrote index.html but left out the file(s) it links: ${missing.join(", ")}. ` +
-          `That makes the page render unstyled and with no behaviour, so it is broken.\n\n` +
-          `Return ONLY the missing file(s) as a JSON array of {"path","content"} objects, complete and ready to use. ` +
-          `Do NOT return index.html, do NOT use markdown fences, and do NOT truncate.\n\n` +
-          `MISSING FILES: ${missing.join(", ")}\n\n` +
-          `--- index.html (for context only — do not return it) ---\n${idxRetry.slice(0, 6000)}`,
-        // 16,000, not 8,000: a complete stylesheet for a whole app runs past
-        // 8k tokens, and a truncated JSON array parses to nothing at all —
-        // build 139 lost the build to exactly this ("the editor did not return
-        // styles.css") after the ask itself succeeded.
-        16000
-      );
-      const extra = finalizeFiles(extractFiles(g2));
-      const added = extra.filter(
-        (f) => missing.includes(String(f.path).replace(/^\.?\//, "")) && !files.some((x) => x.path === f.path)
-      );
-      if (added.length) {
-        files = files.concat(added);
-        qFlags = qualityFlags(files, plan);
-        await push("Fix", `Fix tool: ${toolLine(g2.tool)} -> wrote ${added.map((f) => f.path).join(", ")}`);
-      } else {
-        // Say what came back instead of only what did not: the next failure of
-        // this kind has to be diagnosable from the log alone.
-        const back = extra.map((f) => f.path).join(", ") || "nothing parseable";
-        const peek = String(g2.text || "").replace(/\s+/g, " ").slice(0, 140);
-        await push(
-          "Fix",
-          `Fix tool: the editor did not return ${missing.join(", ")} — it came back with [${back}] (${peek ? `start: ${peek}` : "empty"}).`
-        );
-      }
-    } catch (e) {
-      await push("Fix", `Fix tool: could not ask for the missing files (${String((e && e.message) || e).slice(0, 120)}).`);
-    }
-    missing = missingAssets(files);
+    missingAsk = ask(
+      `You wrote index.html but left out the file(s) it links: ${missing.join(", ")}. ` +
+        `That makes the page render unstyled and with no behaviour, so it is broken.\n\n` +
+        `Return ONLY the missing file(s) as a JSON array of {"path","content"} objects, complete and ready to use. ` +
+        `Do NOT return index.html, do NOT use markdown fences, and do NOT truncate.\n\n` +
+        `MISSING FILES: ${missing.join(", ")}\n\n` +
+        `--- index.html (for context only — do not return it) ---\n${idxRetry.slice(0, 6000)}`,
+      // 16,000, not 8,000: a complete stylesheet for a whole app runs past
+      // 8k tokens, and a truncated JSON array parses to nothing at all —
+      // build 139 lost the build to exactly this ("the editor did not return
+      // styles.css") after the ask itself succeeded.
+      16000
+    );
   }
-  if (missing.length) {
-    ok = false;
-    missingNote = `This build left out ${missing.join(", ")} — the page links them, so it would open broken. Build it again.`;
-    await push("Test", `Test tool: -> still missing ${missing.join(", ")} after repair. Refusing to save a broken file set.`);
-  }
+
 
   // ── SCRIPT-HEALTH GATE ────────────────────────────────────────────────
   // Same principle as the missing-asset gate: a file the browser cannot run, or
@@ -2632,46 +3091,119 @@ const JS_CHECKS = [
         : "0 defects")
   );
 
-  if (problems.length && Date.now() - started < 150000) {
-    for (const p of problems.slice(0, 2)) {
-      const bullets = (p.parse ? [`it does not parse: ${p.parse}`] : []).concat(p.warn.map((w) => w.say));
+  // Both re-asks go out TOGETHER instead of one after the other. Measured
+  // 2026-10-02 on the build that finished in 218.6 s: two defective scripts
+  // meant two full model round trips back to back, and they are separate files
+  // with separate prompts that cannot see each other's answer, so nothing was
+  // gained by the order. The answers are applied below in the order they were
+  // asked in, so the file set that comes out is identical to asking one at a
+  // time.
+  const targets = problems.slice(0, 2);
+  if (targets.length && Date.now() - started < 150000) {
+    const bulletsFor = (p) => (p.parse ? [`it does not parse: ${p.parse}`] : []).concat(p.warn.map((w) => w.say));
+    for (const p of targets) {
+      const n = bulletsFor(p).length;
       await push(
         "Fix",
-        `Fix tool: -> ${p.f.path} has ${bullets.length} defect${bullets.length === 1 ? "" : "s"} that would leave the page unusable. Asking the editor for that file again.`
+        `Fix tool: -> ${p.f.path} has ${n} defect${n === 1 ? "" : "s"} that would leave the page unusable. Asking the editor for that file again.`
       );
-      try {
-        const g3 = await gen(
+    }
+    // The failure is carried inside the answer rather than thrown, so one
+    // backend refusing cannot take the other file's answer down with it and
+    // both still report on their own log line.
+    const answers = await Promise.all(
+      targets.map((p) =>
+        gen(
           env,
           CODE_SYS,
-          `You wrote ${p.f.path}. A visitor cannot use this page because of ${bullets.length === 1 ? "this defect" : "these defects"}:\n` +
-            bullets.map((b) => `- ${b}`).join("\n") +
+          `You wrote ${p.f.path}. A visitor cannot use this page because of ${bulletsFor(p).length === 1 ? "this defect" : "these defects"}:\n` +
+            bulletsFor(p).map((b) => `- ${b}`).join("\n") +
             `\n\nReturn ONLY the complete corrected file as a JSON array of one {"path","content"} object. No prose, no markdown fences, no truncation. Change only what these defects require.\n\n--- ${p.f.path} ---\n${p.f.content}`,
           // 16,000 for the same reason as the missing-asset retry: a torn JSON
           // array salvages to nothing, and a full script is bigger than 8k.
           16000
+        ).catch((e) => ({ __err: String((e && e.message) || e).slice(0, 120) }))
+      )
+    );
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      const g3 = answers[i];
+      if (g3.__err) {
+        await push("Fix", `Fix tool: could not re-ask for ${p.f.path} (${g3.__err}).`);
+        continue;
+      }
+      const fixed = finalizeFiles(extractFiles(g3)).find(
+        (x) => String(x.path).replace(/^\.?\//, "") === String(p.f.path).replace(/^\.?\//, "")
+      );
+      const after = fixed ? scanScript(fixed) : null;
+      if (after && defectScore(after) < defectScore(p)) {
+        files = files.map((x) => (x.path === p.f.path ? fixed : x));
+        await push(
+          "Fix",
+          `Fix tool: ${toolLine(g3.tool)} -> ${p.f.path} now ${after.parse ? "still does not parse" : "parses"} with ${after.warn.length} warning(s) left.`
         );
-        const fixed = finalizeFiles(extractFiles(g3)).find(
-          (x) => String(x.path).replace(/^\.?\//, "") === String(p.f.path).replace(/^\.?\//, "")
+      } else {
+        await push(
+          "Fix",
+          `Fix tool: ${p.f.path} came back no better${fixed ? ` (${after.parse || `${after.warn.length} warning(s)`})` : " — the editor did not return it"}. Keeping what the editor first wrote.`
         );
-        const after = fixed ? scanScript(fixed) : null;
-        if (after && defectScore(after) < defectScore(p)) {
-          files = files.map((x) => (x.path === p.f.path ? fixed : x));
-          await push(
-            "Fix",
-            `Fix tool: ${toolLine(g3.tool)} -> ${p.f.path} now ${after.parse ? "still does not parse" : "parses"} with ${after.warn.length} warning(s) left.`
-          );
-        } else {
-          await push(
-            "Fix",
-            `Fix tool: ${p.f.path} came back no better${fixed ? ` (${after.parse || `${after.warn.length} warning(s)`})` : " — the editor did not return it"}. Keeping what the editor first wrote.`
-          );
-        }
-      } catch (e) {
-        await push("Fix", `Fix tool: could not re-ask for ${p.f.path} (${String((e && e.message) || e).slice(0, 120)}).`);
       }
     }
     problems = scanAll();
   }
+
+  // ── ANSWER TO THE MISSING-ASSET ASK, STARTED ABOVE ──────────────────────
+  // Applied here rather than in the order it was asked, because the two sets of
+  // files are disjoint by construction — one is absent from the file list, the
+  // other is present in it — so neither merge can overwrite the other and the
+  // resulting file set is the same either way.
+  if (missingAsk) {
+    if (missingAsk.err) {
+      await push("Fix", `Fix tool: could not ask for the missing files (${missingAsk.err}).`);
+    } else {
+      const g2 = await missingAsk.p;
+      const extra = finalizeFiles(extractFiles(g2));
+      const added = extra.filter(
+        (f) => missing.includes(String(f.path).replace(/^\.?\//, "")) && !files.some((x) => x.path === f.path)
+      );
+      if (added.length) {
+        files = files.concat(added);
+        qFlags = qualityFlags(files, plan);
+        await push("Fix", `Fix tool: ${toolLine(g2.tool)} -> wrote ${added.map((f) => f.path).join(", ")}`);
+      } else {
+        // Say what came back instead of only what did not: the next failure of
+        // this kind has to be diagnosable from the log alone.
+        const back = extra.map((f) => f.path).join(", ") || "nothing parseable";
+        const peek = String(g2.text || "").replace(/\s+/g, " ").slice(0, 140);
+        await push(
+          "Fix",
+          `Fix tool: the editor did not return ${missing.join(", ")} — it came back with [${back}] (${peek ? `start: ${peek}` : "empty"}).`
+        );
+      }
+    }
+    missing = missingAssets(files);
+  }
+  // Synthesise what the model would not write, rather than handing the user a
+  // 422 and no app at all. Only synthesisesable assets (a stylesheet, a script)
+  // are filled in; anything else still fails the build honestly.
+  if (missing.length) {
+    const made = [];
+    for (const want of [...missing]) {
+      if (files.some((f) => f.path === want)) continue;
+      const content = synthesizeAsset(want, files);
+      if (!content) continue;
+      files.push({ path: want, content });
+      made.push(want);
+      await push("Fix", `Fix tool: synthesised ${want} from the markup (${content.length} chars) — the page linked it and the build never produced it.`);
+    }
+    if (made.length) missing = missingAssets(files);
+  }
+  if (missing.length) {
+    ok = false;
+    missingNote = `This build left out ${missing.join(", ")} — the page links them, so it would open broken. Build it again.`;
+    await push("Test", `Test tool: -> still missing ${missing.join(", ")} after repair and synthesis. Refusing to save a broken file set.`);
+  }
+
 
   const stillBroken = problems.filter((p) => p.parse);
   if (stillBroken.length) {
@@ -3629,6 +4161,12 @@ export default {
   async fetch(request, env, ctx) {
     // Per-invocation subrequest bookkeeping: one request, one counter.
     FETCH_N = 0;
+    // Same scope for the backend memory: what this request learned about which
+    // provider answers must not leak into the next one (a 429 a minute ago says
+    // nothing about the next visitor's build).
+    BACKEND_OK = null;
+    BACKEND_DEAD = new Set();
+    GROQ_DEAD = new Set();
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -4507,55 +5045,20 @@ export default {
         const b = await request.json().catch(() => ({}));
         const projectId = parseInt(b.projectId, 10);
         if (!projectId) return err("projectId required");
-        const p = await env.DB.prepare("SELECT id FROM projects WHERE id=? AND user_id=?").bind(projectId, user.sub).first();
-        if (!p) return err("Not found", 404);
-        const files = await loadFiles(env, projectId);
-        if (!files.length) return err("Nothing to publish yet — build the site first.", 409);
-        // A page whose stylesheet or script is missing opens broken. Refusing
-        // here is the last line of defence for file sets saved before this
-        // check existed — the user is told exactly what is wrong instead of
-        // being handed an address that shows a blank white page.
-        const missingNow = missingAssets(files);
-        if (missingNow.length) {
-          return err(`This project is missing ${missingNow.join(", ")}, so the page would open broken. Build it again.`, 409);
-        }
-        // Also verify the index.html is substantial (not a minimal/empty shell).
-        // This catches file sets saved via GitHub import or manual upload that
-        // bypassed the build pipeline's siteOk() gate.
-        if (!siteOk(files)) {
-          return err("The project's index.html is missing or too small to be a real page. Build the site first.", 409);
-        }
-        const idx = files.find((f) => /(^|\/)index\.html?$/i.test(f.path));
-        // Stamp this page's own js/css references with the publish time. Without
-        // it, the edge keeps serving the previous build's script.js (7-day
-        // cache) beside freshly published HTML — measured on 252, and it is
-        // what made a correctly-built page open dead. Idempotent: an existing
-        // ?v= is replaced, never stacked.
-        if (idx) {
-          const stamped = stampAssetRefs(idx.content, String(Date.now()).slice(-10));
-          if (stamped !== idx.content) {
-            const bidRow = await env.DB.prepare(
-              "SELECT build_id FROM project_files WHERE project_id=? AND build_id IS NOT NULL ORDER BY build_id DESC LIMIT 1"
-            ).bind(projectId).first();
-            await env.DB.prepare(
-              "DELETE FROM project_files WHERE project_id=? AND (path=? OR file_path=?)"
-            ).bind(projectId, idx.path, idx.path).run();
-            await env.DB.prepare(
-              "INSERT INTO project_files (project_id, build_id, path, file_path, content, updated_at) VALUES (?,?,?,?,?,?)"
-            ).bind(projectId, (bidRow && bidRow.build_id) || null, idx.path, idx.path, stamped, new Date().toISOString()).run();
-            await cacheDrop(env, filesListKey(projectId));
-            idx.content = stamped;
-          }
-        }
-        const startFile = (idx ? idx.path : files[0].path).replace(/^\/+/, "");
-        const publishUrl = `${PUBLISH_HOST}/${projectId}/${startFile}`;
-        await env.DB.prepare(
-          "INSERT INTO deployments (project_id, url, status, created_at) VALUES (?,?,?,?)"
-        ).bind(projectId, publishUrl, "live", new Date().toISOString()).run();
-        await env.DB.prepare("UPDATE projects SET deploy_url=?, status=?, updated_at=? WHERE id=?")
-          .bind(publishUrl, "deployed", new Date().toISOString(), projectId).run();
-        await cacheDrop(env, projectsListKey(user.sub));
-        return json({ ok: true, publishUrl, checkpointId: `cp-${projectId}-${Date.now()}`, state: "completed" });
+        return publishProject(env, user, projectId);
+      }
+      // THE OTHER "PUT ONLINE" BUTTON. The one in the builder posts
+      // /api/ai/publish {projectId}; the one on a finished build row posted
+      // /api/builds/:id/deploy, which this Worker never had — so that button
+      // answered 404 and said "Putting it online failed — try again" while the
+      // identical button a few pixels away worked. Same publish, reached by
+      // build id: the row is resolved to its project and the same checks, the
+      // same refusals and the same address apply.
+      const deployOne = path.match(/^\/api\/builds\/(\d+)\/deploy$/);
+      if (deployOne && method === "POST") {
+        const row = await env.DB.prepare("SELECT project_id FROM builds WHERE id=?").bind(+deployOne[1]).first();
+        if (!row) return err("Not found", 404);
+        return publishProject(env, user, row.project_id);
       }
 
       // ── BUILD JOBS ──────────────────────────────────────────────────────
@@ -4569,6 +5072,21 @@ export default {
         const prompt = String(b.prompt || b.plan || "").trim();
         if (!projectId) return err("project_id required");
         if (!prompt) return err("prompt required");
+        // ── prepare is mandatory ───────────────────────────────────────────
+        // A bare POST used to open the row and then run the whole build inside
+        // this request. A client that gave up on the connection (measured: curl
+        // gone at ~25 s, the build needing 173-228 s) left the row at
+        // status='running' with nobody left to close it, and the one-open-job
+        // guard then refused every retry on that project — builds 180/181 sat
+        // that way for 18 minutes each (2026-10-02). Refused before the row is
+        // created, so a rejected call strands nothing at all, and the message
+        // says exactly which two calls make a build.
+        if (!b.prepare) {
+          return err(
+            "prepare:1 required — POST /api/builds only opens the row, it does not run the build. Send {project_id, prompt, prepare:1} for 201 {id}, then POST /api/ai/generate {projectId, plan, buildId}.",
+            400
+          );
+        }
         const p = await env.DB.prepare("SELECT id, name FROM projects WHERE id=? AND user_id=?")
           .bind(projectId, user.sub).first();
         if (!p) return err("Not found", 404);
@@ -4605,43 +5123,21 @@ export default {
         const id = ins.meta.last_row_id;
         await cacheDrop(env, buildsListKey(projectId));
 
-        // `prepare` makes the row and returns immediately, leaving the caller
-        // to run the generation itself with this id and poll
-        // GET /api/builds/:id — so the log can be painted as each stage lands
-        // instead of arriving in one lump after a minute. Without the flag
-        // this route still runs the build inline, which is what a bare curl
-        // gets and what the comment above is about.
-        if (b.prepare) {
-          return json({ id, project_id: projectId, status: "running", started_at: startedAt, prepared: true }, 201);
-        }
-
-        // Run the build HERE, in this request, and answer when it is done.
+        // `prepare` is the only thing this route does: it makes the row and
+        // returns immediately, leaving the caller to run the generation itself
+        // with this id and poll GET /api/builds/:id — so the log can be painted
+        // as each stage lands instead of arriving in one lump after a minute.
         //
-        // Two earlier designs both stranded builds in production:
-        //   (a) ctx.waitUntil - Cloudflare tears that context down at ~30s,
-        //       which killed build 70's writer 31s in, right after its plan;
-        //   (b) handing run_url to the Hive relay to call back into
-        //       POST /api/builds/:id/run. The relay's own HTTP client gives up
-        //       before a ~75s build finishes, the connection drops, and
-        //       Cloudflare cancels this Worker mid-run. The row is then left at
-        //       status='running' with nothing written, and the one-open-job
-        //       guard refuses every retry after that. Builds 104 and 105 were
-        //       stranded exactly this way for 21 and 11 minutes: both had a
-        //       correct plan on screen and both died in the writer, which is
-        //       precisely the part the relay does not wait for.
-        //
-        // Running inline has always worked. POST /api/ai/generate does it and
-        // finished build 106 - a real 3-file app making 2 live API calls - in
-        // 75s. The build row is already written above, so the UI's polling loop
-        // is unchanged: it finds a finished build instead of one that never
-        // finishes.
-        await runGenerate(env, user, projectId, prompt, "generate", url.origin, id).catch(async (e) => {
-          await failBuild(env, id, e);
-        });
-        const fin = await env.DB.prepare(
-          "SELECT id, project_id, status, started_at, completed_at FROM builds WHERE id=?"
-        ).bind(id).first();
-        return json(fin || { id, project_id: projectId, status: "running", started_at: startedAt }, 200);
+        // The inline run that used to follow this return was removed 2026-10-02.
+        // It held the HTTP connection for the entire build (173-228 s measured
+        // on builds 174/176/182), and a client that let go before that — curl at
+        // ~25 s, a browser tab closed — left the row it had opened at
+        // status='running', which is what stranded builds 180/181 for 18 minutes
+        // and blocked every retry on those projects. POST /api/ai/generate runs
+        // the same runGenerate() with this id and is the supported path; the
+        // relay-callback and ctx.waitUntil designs that were tried before it are
+        // recorded in git history (both killed builds 70/104/105 mid-run).
+        return json({ id, project_id: projectId, status: "running", started_at: startedAt, prepared: true }, 201);
       }
       // ── ONE LOG ENTRY, APPENDED ────────────────────────────────────────
       // The plan arrives from the fast planner about a second after send,
@@ -4657,6 +5153,25 @@ export default {
       // the run — that is how the browser closes the row when the generate
       // call itself never came back, which nothing else would ever do.
       const logEntry = path.match(/^\/api\/builds\/(\d+)\/log$/);
+      // READ side of the same route. It was POST-only, so the cockpit's
+      // GET /api/builds/:id/log answered 404 for every build (measured
+      // 2026-10-02) and a reader could only see the log by asking the row it
+      // already had. Same ownership join as the write side: no id guessing
+      // across projects.
+      if (logEntry && method === "GET") {
+        const id = +logEntry[1];
+        const row = await env.DB.prepare(
+          "SELECT b.id, b.project_id, b.status, b.started_at, b.completed_at, b.agent_log FROM builds b JOIN projects p ON p.id=b.project_id WHERE b.id=? AND p.user_id=?"
+        ).bind(id, user.sub).first();
+        if (!row) return err("Not found", 404);
+        let log = [];
+        try { const p = row.agent_log ? JSON.parse(row.agent_log) : []; if (Array.isArray(p)) log = p; } catch { log = []; }
+        return json({
+          id: row.id, project_id: row.project_id, status: row.status,
+          entries: log, count: log.length,
+          started_at: row.started_at, completed_at: row.completed_at,
+        });
+      }
       if (logEntry && method === "POST") {
         const id = +logEntry[1];
         const row = await env.DB.prepare(
