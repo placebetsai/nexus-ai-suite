@@ -407,3 +407,40 @@ listing page* link), `https://sites.createstuff.ai/255/index.html` (your refusal
 includes **Connect GitHub**), `https://sites.createstuff.ai/251/index.html` (E2E-proven),
 `https://sites.createstuff.ai/250/index.html` (control that cannot register),
 `https://createstuff.ai/#builder`.
+
+
+---
+
+## GOAL STATUS BOARD — reposted 2026-10-02 (after `38fe822`)
+
+| # | GOAL | status | live == HEAD? |
+|---|---|---|---|
+| 1 | placebets.ai — real odds + bookie bot | **PASS** | `64e86f2` ✅ |
+| 2 | marketpicks.ai — real finance data + market bot | **PASS** | `ecb50ca` ✅ |
+| 3 | createstuff.ai — free builder, model chain, publish | **PASS** (1 sub-item blocked) | content sha `4e27cc95` ✅ |
+| 4 | fashionistas.ai — photo→listing, prod eBay, MV3, no demo creds, Stripe | **BLOCKED** 4/6 | not re-deployed this round |
+| 5 | nine small sites | **3 PASS / 6 BLOCKED** | see table in `plan.md` |
+
+**GOAL 4 blocked, exactly why**
+- **prod eBay** — `ebay/status` → `env:"sandbox" available:false`; `ebay/listing` → `501
+  ebay_not_configured`; no `EBAY_*` secret exists in `.secrets/`.
+- **Stripe test plan** — no `STRIPE_*` secret, no billing/checkout route anywhere.
+- **no demo creds in JS** — `app.js:66` ships `Primetime2026!`. The fix needs a backend
+  endpoint, and `wrangler deploy` uploads the working tree, so deploying that worker would push
+  another session's uncommitted 77-line change to production.
+- Passing: photo→ID/price/fees, multi-shop crosspost (5/5 drafts read back), MV3 manifest.
+
+**GOAL 5 blocked, exactly why** — `live deploy hash == HEAD?` fails for 6 sites:
+`hiddencameras.tv` (no deploy run ever), `religiousjews.com` (last run failed),
+`scooter.exchange` (last good deploy is `881662f`, HEAD is `ed4c794`),
+`diamonds.forsale` (last run failed, last good is `e6afecc`), `israeljoffe.com` / `.org` (no CI).
+
+**New live defects measured today**
+- **spanishtvshows.com is partly broken**: 100 of 193 sitemap URLs are `/show/…` and
+  **every `/show/` tested returned 500 (7/7)**; homepage also links `/Netflix-spanish-shows` → 404.
+- `religiousjews.com` has **no AI-bot rules** in `robots.txt` (the other 8 do).
+
+**Blocked by tooling, not by the product**
+- GH Actions workflow still parked at `ci/deploy.yml` — gh token lacks `workflow` scope.
+- Wrangler resolves the wrong account even under `env -i`; read deployment provenance through
+  the Cloudflare REST API instead, passing `CLOUDFLARE_ACCOUNT_ID` explicitly.
