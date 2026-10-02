@@ -462,15 +462,22 @@ async function openRouterGen(env, model, system, user, maxTok) {
 }
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODELS = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"];
+// Measured 2026-10-02 against this account's /models list: Groq answers
+// "does not exist or you do not have access to it" for llama-3.3-70b-versatile,
+// which was the first entry of this list, so every Groq-first build burned a
+// call on a model that cannot answer. The ids below are the ones this key
+// actually serves.
+const GROQ_MODELS = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"];
 // One request body per model, with the token ceiling for this call folded in.
 // The writer asks for 16,000 and the plan for 700, so the ceiling has to be
 // computed per call — it cannot live on the module-level list above.
 const groqSteps = (maxTok) =>
   GROQ_MODELS.map((model) =>
-    model === "llama-3.3-70b-versatile"
-      ? { model, max_tokens: Math.min(maxTok, 30000) }
-      : { model, max_tokens: Math.min(maxTok + 2000, 30000), reasoning_effort: "low" }
+    // reasoning_effort is a gpt-oss-only parameter; sending it to qwen3.8 is
+    // rejected, so it is attached per model rather than to the whole list.
+    model.startsWith("openai/gpt-oss")
+      ? { model, max_tokens: Math.min(maxTok + 2000, 30000), reasoning_effort: "low" }
+      : { model, max_tokens: Math.min(maxTok, 30000) }
   );
 // Same idea as BACKEND_DEAD below, one level finer. The backend memory only
 // remembers that "groq" as a whole is dead, so a build that came back on
@@ -543,6 +550,22 @@ async function groqGen(env, system, user, maxTok) {
 let BACKEND_OK = null;
 let BACKEND_DEAD = new Set();
 
+// Cloudflare's free plan allows 50 subrequests per Worker invocation, shared by
+// every tier in one build. With 13 Zen free ids and 17 OpenRouter free ids a
+// full walk needs 30 subrequests before Workers AI, and each model call is
+// preceded by others elsewhere in the build — measured 2026-10-02, the build
+// died with "Too many subrequests by single Worker invocation" and returned 500.
+const ZEN_ATTEMPTS = 3;
+const OPENROUTER_ATTEMPTS = 4;
+
+/** A quota/rate refusal is about the account, not about this one model. */
+function isQuotaRefusal(err) {
+  const t = String((err && (err.tool || err).http) || "");
+  const msg = String((err && err.message) || "").toLowerCase();
+  if (/\b429\b/.test(t)) return true;
+  return /freeusagelimit|rate limit|too many subrequests|quota/.test(msg);
+}
+
 const gen = async (env, system, user, maxTok = 8000) => {
   const steps = [];
   // 0. Cloud first (CLOUD_FIRST=1): Groq from this Worker, no laptop involved.
@@ -561,17 +584,31 @@ const gen = async (env, system, user, maxTok = 8000) => {
   //    /zen/v1/models (ids ending `-free`, plus `big-pickle`) and refreshed
   //    every 6h; measured 2026-10-02 that endpoint listed 13 free ids while
   //    this chain had three of them hard-coded, so ten working free models
-  //    were being left on the table. A call only leaves Zen when EVERY free
-  //    model has failed.
+  //    were being left on the table.
+  //
+  //    Attempts per provider are BOUNDED, and a quota answer ends the provider
+  //    immediately. Both because of the free plan's 50-subrequest cap per
+  //    invocation, which is shared across every tier in this request: measured
+  //    2026-10-02 with the first provider forced to fail, walking all 13 Zen
+  //    models then all 17 OpenRouter ones died on
+  //    "Too many subrequests by single Worker invocation" and the API answered
+  //    500 after 737 s. Trying thirteen models that all answer the same
+  //    FreeUsageLimitError cannot reach a working tier — it just spends the
+  //    budget the next tier needed.
   steps.push({
     key: "zen",
     run: async () => {
       const cat = await loadFreeModelCatalog(env);
-      const models = cat.zen && cat.zen.length ? cat.zen : FALLBACK_ZEN_FREE;
+      const models = (cat.zen && cat.zen.length ? cat.zen : FALLBACK_ZEN_FREE).slice(0, ZEN_ATTEMPTS);
       let e1 = null;
       for (const model of models) {
         try { return await openAiGen(env, model, system, user, maxTok, false); }
-        catch (e) { e1 = e; }
+        catch (e) {
+          e1 = e;
+          // 429 is a quota answer for the ACCOUNT, not for this model: no other
+          // free id will do better, and the subrequests are needed downstream.
+          if (isQuotaRefusal(e)) throw e;
+        }
       }
       throw e1 || new Error("no free zen model available");
     },
@@ -583,11 +620,11 @@ const gen = async (env, system, user, maxTok = 8000) => {
     run: async () => {
       if (!env.OPENROUTER_API_KEY) throw new Error("openrouter key not set");
       const cat = await loadFreeModelCatalog(env);
-      const models = cat.openrouter && cat.openrouter.length ? cat.openrouter : FALLBACK_OPENROUTER_FREE;
+      const models = (cat.openrouter && cat.openrouter.length ? cat.openrouter : FALLBACK_OPENROUTER_FREE).slice(0, OPENROUTER_ATTEMPTS);
       let e1 = null;
       for (const model of models) {
         try { return await openRouterGen(env, model, system, user, maxTok); }
-        catch (e) { e1 = e; }
+        catch (e) { e1 = e; if (isQuotaRefusal(e)) throw e; }
       }
       throw e1 || new Error("no free openrouter model available");
     },
