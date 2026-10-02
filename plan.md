@@ -932,3 +932,121 @@ form (`extensions/crosslister/`) — the Connect panel simply never surfaced it.
       documented route, unverified by us); the helper path still needs the extension
       installed and a **Chrome Web Store listing was not verified this round** — the
       zero-install bookmark remains the path that needs no install at all.
+
+### 2026-10-02 (four-site complaint round) — "the chatbots aren't conversational or accurate"
+
+- [x] **Measured before asking.** The complaint named no URL, so all four sites were probed
+      first-hand. Two claims were **retracted as probe bugs**: marketpicks `/api/odds|markets|
+      congress` 404 (my probe hit a host the frontend never calls; real endpoints 200), and
+      placebets chatbot "400 on every follow-up" from a parallel walker (my own runs → **200**
+      with a priced parlay and a context-honest reply).
+- [x] **fashionistas chat restored (control 3×`backup`/`unavailable` → treatment 4×`agent`).**
+      Cause measured: the cloudflared quick-tunnel log spammed `Unauthorized: Tunnel not
+      found`, so `HIVE_URL` pointed at a dead hostname — the exact failure mode already
+      documented on 2026-09-25. Tunnel restarted, verified through the **public** URL
+      (`202 → job → 200 "ok"`, 1.4 s), `HIVE_URL` re-put on `fashionistas-api` and
+      `createstuff-api`.
+- [x] **fabricated sales removed (revenue 197 → 162, sales 7 → 5).** New `DELETE /api/orders/:id`
+      (`62f1d97`), caller-scoped, 404 on a bogus id, relists only when it was the last order
+      for that listing. Cleared the two probe orders (20, 21) and returned listing 126 to
+      `active`. Also **retracted** two walker claims: `PUT {"status":"active"}` *does* revert
+      sold→active and `DELETE /api/dm/block/62` *does* unblock (both proven live).
+- [x] **marketpicks stops inventing (`453215d`).** Sports gate → `off_domain` in 0.43 s
+      (was a 2.9 s fabrication of `Chiefs vs Ravens 8:15`); recency gate on news citations
+      (`tests/recency-gate.test.mjs` **4/4**, control returns the 40-day-old article);
+      honest `ensemble_noground` label; `sources` added to the wikipedia/llm_factual returns.
+      `tsc`: 0 errors in touched files, total 135 == HEAD.
+- [x] **placebets trending content is real or absent (`cba4073`).** The cron's LLM published
+      refusals, then — once grounded — **fabricated trades and scores** ("Oladipo to the
+      Lakers", "Warriors 120-112 Rockets"; the feed held one NBA item). Model authorship
+      removed: `buildTopicContent()` filters the site's own 100 headlines per topic, and a
+      topic with no story is **failed and its stale row deleted**, never filled in.
+      Tests **37/37**, live `topics:6 failed:1`, 0 malformed lines, none of the fabricated
+      strings in the payload.
+- [x] **createstuff's payoff chain measured:** prepare 0.58 s → generate **218.6 s** →
+      publish 1.69 s → `sites.createstuff.ai/281/index.html` **200, 5,253 B,
+      `<title>Lemonade Stand</title>`**. *"Doesn't do shit"* does not reproduce.
+- [x] **Gates after the round, all exit 0:** connect-fill 37/37 · crosslister 31/31 ·
+      bookmarklet 26/26 · harness-categories 68/68 · live crosspost 26/26 ·
+      data-layer-proof 5/5 · recency-gate 4/4 · trending 37/37 · syntax 301/301.
+- [ ] **Open:** the tunnel is **still** a quick-tunnel (chat silently degrades when it dies;
+      the named tunnel recommended 2026-09-25 remains unbuilt); createstuff **218.6 s** vs
+      60–150 s; fashionistas photo-search vision returns a labelled-but-empty stub when the
+      provider is down; the six WAITING-ON-YOU items stand.
+
+### 2026-10-02 (GOAL 1) — placebets: the board is clean and the bookie stops inventing
+
+Federation GOAL 1 is "real odds + a shit-talking bookie bot". Worked AUDIT → BUILD → PROVE,
+every claim below carrying the raw output that backs it.
+
+**AUDIT — three defects, each measured on the live bot.**
+- `POST /api/chatbot` with *"Give me a lock of the week with some trash talk"* →
+  `source=news+llm`, an answer about Drew Lock's press conference, **zero odds**;
+  *"who do you like tonight … trash talk"* → `source=news+llm`, answered about Trump.
+  `isNewsAsk` matched the word `trash`, so both pick/banter asks left for the news path.
+- *"Will the Cowboys win this weekend?"* → the reply contradicted itself: it said
+  *"No live line for Cowboys on the board right now"* and then printed
+  *"1. [NFL] Dallas Cowboys @ Houston Texans — … ML Dallas Cowboys -120 (implied 54.5%)"*
+  directly underneath. The lead line was written whenever `meta.askedTeams` was non-empty
+  instead of whenever the team was actually absent.
+- The three trash-talk curls came back as flat number recitals with **no jab anywhere**.
+
+- [x] **Routing fixed** — `bookieTakeAsk()` at module scope routes pick/banter asks to the
+      live board. Measured after: all three asks now return `source=workers_ai`.
+- [x] **Fabrication gates** — `fabricatedOddsNumbers()` rejects any American-odds-shaped
+      number absent from the board rows the model was handed; `fabricatedInjuries()` rejects
+      a person named as out whose surname is not in the data, with one corrective retry then
+      the grounded take. Both answer paths run one shared `enforceGroundedAnswer()`. The
+      injury check runs against the **full** block (board rows + the real INJURY REPORT +
+      PUBLIC BETTING), so a legitimately listed player is never accused.
+- [x] **Banter specified where style is written** — rule 6b alone was being overwritten by
+      each branch's own per-request prompt ("3-5 plain sentences"). `banterInstruction()`
+      appends the ask to both, only when the query asks for it, every jab tied to a number.
+- [x] **The self-contradicting lead** — `subjectPresent` hoisted out of the league-only
+      branch and re-checked against the final list; a listed team now gets a lead that says so.
+
+**PROVE — five proof scripts, all exit 0, run against the live site.**
+| proof | result |
+|---|---|
+| `board-integrity-proof.mjs` | **PASS** — 413 rows, duplicate ids **0**, team pairs listed twice **0**, contradictory lines **0**, status vocabulary `["scheduled"]`, started games **0**, implausible moneylines **0**, home/away inverted **0** |
+| `fanduel-orientation-proof.mjs` | **PASS** — compared **37**, control wrong 37/37, **treatment wrong 0** |
+| `parlay-proof.mjs` | **PASS** — 18 parlays / 66 legs, **no repeated team**, every leg a real fixture at a real board price |
+| `chatbot-gates-proof.mjs` | **PASS 31/31** (routing, fabrication, injury, banter, self-contradicting lead) |
+| `bookie-proof.mjs` | **PASS** — 4/4 live API cases, **every quoted price and team on the live board** |
+
+**Three bookie curls, every number checked against `/api/odds` in the same minute:**
+- *"lock of the week … trash talk"* → Iga Swiatek **-3474 (implied 97.2%)**, Gao **+2244 (4.3%)**,
+  board has exactly those, implied arithmetic exact. Jab present: *"don't @ me."*
+- *"who do you like tonight … trash talk"* → Liberty **-265 at BetRivers** (board books row:
+  `('BetRivers', -265, 205)`), Delaware **+225**, jab present: *"You want to take Delaware at
+  +225, be my guest, but that's a fat price…"*
+- *"Will the Cowboys win this weekend?"* → Dallas **+144 (implied 41.0%)**, board
+  `away Dallas Cowboys 144`, implied exact; **no "No live line" contradiction**.
+
+**Two of my own earlier claims RETRACTED — they did not reproduce.**
+- *"the bot invented G. Spiller"* — **wrong.** The injuries feed (`lib/injuries.js`, key `cfb`)
+  lists `Delaware Fightin' Blue Hens | G. Spiller | Out | Undisclosed`. I had only searched
+  `/api/odds`, which is a different feed from the one the injury report is built from.
+  `C. Wood` and `J. Marshall` (Liberty, Questionable) are also real. The gate checks the full
+  block precisely so these are never flagged.
+- *"invented the Texans"* — **wrong.** `Dallas Cowboys @ Houston Texans` is a real board row;
+  the away price swings between `144` (theoddsgap) and `-120` (actionnetwork) as the feed
+  source changes, which is why `-120` looked invented against a snapshot taken at the other
+  source's moment.
+
+**Deploy provenance bug fixed in `deploy.sh`.** wrangler fills the `Source` column of
+`wrangler pages deployment list` from `git rev-parse HEAD` of the *current* directory.
+deploy.sh always runs from `nexus-ai-suite`, so a placebets.ai deploy was labelled
+`62f1d97` — nexus-ai-suite's own HEAD — while Placebetsai-src was at `9f42b29`. The
+provenance column everyone reads to answer "is live == HEAD?" was reporting the wrong repo.
+`commit_arg()` now passes `--commit-hash` from the directory actually being uploaded.
+
+- [x] **live == git == HEAD**, measured after every deploy this round:
+      `64e86f2` = `origin/main` = live Pages deployment `Source`.
+- [x] Gates: `check-syntax 311 clean`, `check-bindings 0 violations`.
+      `chatbot-quality.test.mjs` still fails 1–2 live assertions (`history-followup`) —
+      **it fails identically in a clean worktree at HEAD**, so it is pre-existing and flaky,
+      not a regression; measured both ways before claiming it.
+- [ ] **Open:** the GH Actions deploy workflow still sits at `ci/deploy.yml` — pushing it is
+      rejected because the gh token lacks `workflow` scope. Tennis/UFC/soccer coverage is
+      still subject to theoddsgap `429` (restored once by `be6dc76`, rate-limited again).

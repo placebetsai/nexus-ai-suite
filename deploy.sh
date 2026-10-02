@@ -64,6 +64,19 @@ run_wrangler(){
 # inside a subshell (the worker branch cds first). "n/a" when wrangler did not run.
 observed_rc(){ [[ -f "$WORK/last_rc" ]] && cat "$WORK/last_rc" || printf 'n/a'; }
 
+# --commit-hash for the Source column of `wrangler pages deployment list`.
+# Measured 2026-10-02: with no flag, wrangler fills Source from `git rev-parse
+# HEAD` of the CURRENT directory. deploy.sh always runs from nexus-ai-suite, so
+# a placebets.ai deploy was labelled 62f1d97 (nexus-ai-suite's own HEAD) while
+# Placebetsai-src was at 9f42b29 — the provenance column everyone reads to
+# answer "is live == HEAD?" was silently reporting the wrong repo. The hash of
+# the directory actually being uploaded is the only one that belongs there.
+commit_arg(){
+  local src="$1" hash=""
+  hash=$(git -C "$src" rev-parse HEAD 2>/dev/null) || hash=""
+  if [[ -n "$hash" ]]; then printf -- '--commit-hash=%s' "$hash"; fi
+}
+
 # run_wrangler + policy. Prints the observed exit code for every deploy.
 deploy_gate(){
   local rc=0
@@ -257,6 +270,10 @@ case "$ACTION" in
     [[ -d "$DIR" ]] || fail "pages source directory not found: $DIR (nothing was sent to wrangler)"
     bust_assets "$DIR"
     echo ">> Deploying Pages project '$PROJ' from '$DIR'"
+    # Hash of the repo whose bytes are being uploaded — see commit_arg above.
+    HASHARG=()
+    _h=$(commit_arg "$DIR" || true)
+    if [[ -n "$_h" ]]; then HASHARG=("$_h"); echo ">> source commit: ${_h#--commit-hash=}"; fi
     # placebetsai / placebets-ai-v2 / purlaw live ONLY on the second account
     # (2765cb27…). Measured 2026-09-29: `placebetsai` comes back from
     # CS_API_TOKEN and returns nothing from CF_API_TOKEN, so sending it with the
@@ -264,11 +281,11 @@ case "$ACTION" in
     # is deliberately left on the default branch.
     if [[ "$PROJ" == createstuff* || "$PROJ" == app-createstuff* || "$PROJ" == placebets* || "$PROJ" == purlaw ]]; then
       CLOUDFLARE_API_TOKEN="$CS_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CS_ACCOUNT_ID" \
-        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main
+        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main ${HASHARG[@]+"${HASHARG[@]}"}
       verify_pages "$PROJ" "$DIR"
     else
       CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
-        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main
+        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main ${HASHARG[@]+"${HASHARG[@]}"}
       verify_pages "$PROJ" "$DIR"
     fi
     if (( DRY_RUN )); then

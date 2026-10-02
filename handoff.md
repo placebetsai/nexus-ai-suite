@@ -1550,3 +1550,229 @@ local, `app.js?v=a4308ffb48d8` (deployment `8e334053`); commit **`372c234`** pus
   `forge-api`/`api.createstuff.ai` undeployable, Groq unreachable from this machine (403),
   `createstuff-wholeapp-probe` undeletable, account A cron ceiling full (5/5), and the six
   WAITING-ON-YOU items in `TODO.md`.
+
+---
+
+## 13. 2026-10-02 (four-site complaint round) — chatbots that answered nothing, data that was never real
+
+The owner's report, verbatim: *"these fucking apps dont do shit … marketpicks and
+placebets have shit data and the chatbots arent conversaitonal or accurate."* No URL was
+given, so the round opened by **measuring all four sites first-hand** rather than asking
+again (the same question had already been asked once and answered with a repeat of the
+complaint).
+
+### 13.1 What the measurements actually found
+
+| Site | Claim | Measured |
+|---|---|---|
+| placebets | chatbot not conversational | **Did not reproduce.** `POST /api/chatbot` answered every follow-up 200: *"build me a 2-leg parlay"* → priced live legs (`Seahawks -360 · Combined -149 · $10 pays $17`), *"what about the other game?"* → *"We didn't discuss another game yet…"* — context-honest, not canned. Latency 4.7 s greeting / 7.1 s question. |
+| placebets | shit data | **Partly real.** `/api/odds` 200, 489 events, `updatedAt` = now; `/api/news` 30 items today. But `/api/trending` served **7 rows of AI refusal text** ("As an AI, my responses are based on a mixture of licensed data…", "my knowledge cut-off is September 2021") as trending content, written by the hourly cron at 00:06. |
+| marketpicks | chatbot not accurate | **Real.** *"is there a football game tonight"* → invented `Chiefs vs Ravens 8:15 PM ET` (neither was playing), labelled *"the live schedule says"* with `sources:[]`; *"hi"* → *"Just got done scanning the markets"* with `sources:[]` and `source:"ensemble"`; a factual question cited a **2026-08-23** preseason article on 2026-10-01. |
+| marketpicks | shit data endpoints | **Did not reproduce — retracted.** The 404s were my own probe hitting `/api/odds` on a host the frontend never calls. Real endpoints (`/api/news` 200/3.7 kB, `/api/trending` 200/71 kB, `/api/politician-trades`) all answered. |
+| fashionistas | chatbot not conversational | **Real.** `POST /api/chat` returned `source:"backup"`, `fallback_reason:"it was unavailable"` on **3/3** — the agent path was dead. |
+| createstuff | doesn't do shit | **Did not reproduce.** Login 200, projects 200, `POST /api/ai/discuss` 200 with a *correct* answer in 275 ms, and the real UI build path ran end to end (below). The walk's two "failures" were the walker's own harness: it used `POST /api/chatbot` (route does not exist — the chat route is `/api/ai/discuss`) and a bare `POST /api/builds` with a 25 s curl timeout, which is the documented inline path and which stranded row 181 until the 5-minute sweeper closed it (measured: it did). |
+
+### 13.2 fashionistas — the dead agent path
+
+**Root cause (measured, not assumed):** the Worker's `hiveChat` throws
+`hive relay not configured`-class errors and falls back to Workers AI. A `cloudflared`
+quick-tunnel was running but its log spammed `ERR Register tunnel error … Unauthorized:
+Tunnel not found` — the random hostname had been re-issued and the `HIVE_URL` secret
+still pointed at the dead one. That is the failure mode `HANDOFF-2026-09-25.md:251` and
+`HANDOFF-2026-09-27.md:83` already documented ("quick-tunnel hostname is random per
+restart → must re-put HIVE_URL").
+
+**Treatment:** tunnel restarted (`parliament-traditions-statements-discuss.trycloudflare.com`),
+verified end to end through the **public** URL (`202 → job-24 → 200 "ok"`, 1.4 s), then
+`wrangler secret put HIVE_URL` on `fashionistas-api` **and** `createstuff-api` (creds
+sourced from `.secrets/cf.env`, never printed).
+
+**Control → treatment, live:**
+
+| | control (before) | treatment (after) |
+|---|---|---|
+| `source` | `backup` ×3 | **`agent` ×4** |
+| `fallback_reason` | `it was unavailable` ×3 | absent |
+| reply | generic | *"Check sold listings for the same model on eBay or Depop… open Photo and upload clear photos"* — names the app's own tool |
+| latency | 0.78–1.00 s | 2.76–7.32 s (real model, re-checked after the worker redeploy) |
+
+**Carried risk:** this is still a *quick* tunnel. When it dies again the chat silently
+falls back to `source:"backup"`. A named tunnel with stable DNS is the fix that was
+already recommended on 2026-09-25 and is **still not done** — recorded here so nobody
+reads `source:"agent"` as permanent.
+
+### 13.3 fashionistas — two diagnostic claims retracted, one real bug fixed
+
+A parallel diagnostic walk reported *"no endpoint reverts sold→active"* and *"no unblock
+endpoint"*. **Both failed to reproduce and are retracted:**
+
+- `PUT /api/listings/126 {"status":"active"}` → **200**, listing `sold → active`.
+- `DELETE /api/dm/block/62` → **200** `{"blocked":false,"id":62}`, block list **1 → 0**
+  (the UI has always sent this — `app.js:3712`).
+
+**The real bug:** that same walk had marked listing 126 sold **twice** (orders **20**
+`sale=35 profit=35` and **21** `sale=0`, both 00:15–00:16 on 2026-10-02). `/api/analytics`
+`SUM`s every `orders` row, so those two fabricated sales were counted as revenue
+**forever** — control `revenue 197, sales 7` against the five real orders from 2026-09-25 —
+and there was no way to remove an order. A seller who mis-taps *Mark sold* had exactly the
+same one-way door.
+
+**Fix shipped (`62f1d97`): `DELETE /api/orders/:id`** — scoped to the caller (bogus id →
+**404**, not a silent 200), deletes the order, and returns the listing to `active` with
+`sold_price`/`sold_platform` cleared **only when it was that listing's last order**;
+other sales for the same listing keep it sold, because those really happened.
+
+**Control → treatment, live on the demo account:**
+
+| | control | treatment |
+|---|---|---|
+| revenue | 197 | **162** |
+| sales | 7 | **5** |
+| profit | 119.8 | **84.8** |
+| listing 126 | `sold`, `sold_price 35` | **`active`, `sold_price null`** |
+| orders 20, 21 | present | **gone**; 15–19 untouched |
+
+### 13.4 marketpicks — three defects, all measured, shipped `453215d`
+
+1. **Sports fabrication.** `isSportsQuestion()` gate before any data path →
+   `source:"off_domain"` with an honest redirect (*"I'm the markets bot"*), **0.43 s**
+   instead of a 2.9 s invention. Ambiguous one-word "teams" (`jets`, `bills`, `bulls`,
+   `heat`, `nets`, `rockets`…) only match **with fixture context nearby**, so a *"bull
+   market"* question can never be declined as sports.
+2. **Stale citations.** `findSources()` sorted news by date but never *filtered* by age —
+   sorting is not a freshness rule. Added a recency gate (`maxAgeDays = 14`; wiki/ddg
+   undated reference material still passes). **Proof `tests/recency-gate.test.mjs`
+   4/4 PASS exit 0**: control (`maxAgeDays:0`) returns the 40-day-old article, treatment
+   drops it and keeps the fresh one — the control is the old behaviour, so the test fails
+   if the gate is ever removed.
+3. **Dishonest labels.** `source:"ensemble"` is now `ensemble_noground` when no live data
+   was consulted; the `wikipedia` and `llm_factual` returns now carry `sources` at all
+   (they previously rendered an unclickable `[1]`); PERSONA forbids claiming a scan that
+   never ran.
+
+**Live after deploy, apex == pages.dev:** `hi` → `ensemble_noground`, football questions →
+`off_domain`, *"best etf for AI exposure"* → `market_quote` with **5 sources**, *"latest
+news on nvda"* → 5 sources all dated **2026-10-01**. `tsc`: **0 errors in the touched
+files**, total 135 == the 135 on HEAD (no regression).
+
+### 13.5 placebets — the trending corpus was never real (shipped `cba4073`)
+
+The same defect in three acts, each measured before the next was attempted:
+
+- **Act 1 — refusals published.** The hourly cron asked an LLM *"top 5 … right now?"*; a
+  model with no live feed cannot answer "now", so all 7 rows came back *"As an AI…"* and
+  `extractContent` (any non-empty string) wrote them over the good rows. Serving had no
+  opinion about it.
+- **Act 2 — grounding stopped refusals and started fabrication.** Feeding the prompt this
+  deployment's own `/api/news` + `/api/odds?light=1` made the model write **"Victor Oladipo
+  traded to Lakers"**, **"Jayson Tatum traded to Celtics"**, **"Warriors 120-112 Rockets"** —
+  none of which are in the feed (it carried exactly **one** NBA item, a Wembanyama quote),
+  and it put a high-school football story under **UFC, MLB and NBA**. Fabricated scores and
+  trades are the one thing this product must never ship, so **model authorship was removed
+  entirely**.
+- **Act 3 — deterministic.** `buildTopicContent()` filters this deployment's own
+  `/api/news` (100 real headlines) per topic. A topic with no matching story is reported
+  **failed** and its stale row **deleted** rather than filled in.
+
+**Proof:** tests **37/37** (the two refusal strings and the fabricated lines are fixtures,
+taken verbatim from what was served); syntax gate 301/301. **Live after deploy:**
+cron `ok:true, topics:6, failed:1` (WWE — honest, no story in the feed), 6 topics served,
+**0 malformed lines**, and none of `Oladipo`, `Tatum`, `120-112`, `As an AI`, `Jericho`
+present anywhere in the payload. Regression: chatbot, `/api/odds` (486 events, `updatedAt`
+= now), `/api/news`, `/` all re-checked **200** after the deploy.
+
+The serving side keeps `isAnswerText()` as defence in depth, so any row written *before*
+this change still cannot be shown.
+
+### 13.6 createstuff — the payoff chain, measured end to end
+
+`prepare:1` → **201 in 0.58 s** → `POST /api/ai/generate` with the buildId → **200 in
+218.6 s**, 3 files, 6,224 chars, row closes `status: completed` with **9 log entries**.
+`POST /api/ai/publish` → **200 in 1.69 s** →
+`https://sites.createstuff.ai/281/index.html` → **HTTP 200, 5,253 bytes, real
+`<title>Lemonade Stand</title>` markup** (`h1×1 h2×5 p×8`, mentions "lemonade").
+
+So *"doesn't do shit"* does not reproduce: brief → build → publish → a live URL that
+renders. **Open, measured, not fixed:** **218.6 s** against the 60–150 s promise (carried
+gap, unchanged); the probe row opened by the walker's bare POST was closed by the sweeper
+(measured working), and the row I opened to watch the sweeper was closed honestly via
+`POST /api/builds/183/log {"close":"failed"}` rather than left `running`.
+
+### 13.7 Gates after the round (all exit 0)
+
+`connect-fill` **37/37** · `crosslister` **31/31** · `bookmarklet` **26/26** ·
+`harness-categories` **68/68** · live `crosspost` **26/26** · `data-layer-proof`
+**PROOF 5/5** · marketpicks `recency-gate` **4/4** · placebets `trending-*` **37/37** ·
+placebets `check-syntax` **301/301**.
+
+Commits: marketpicks **`453215d`** (pushed) · placebets **`cba4073`** (pushed) ·
+nexus **`62f1d97`** (pushed). Every deploy verified by `deploy.sh` (sha == live);
+`STATUS.html` and `extensions/crosslister/poshmark-post.js` belong to another session and
+were never staged.
+
+### 13.8 Still open and not fixed
+
+- **The tunnel is still a quick-tunnel.** Chat degrades to `source:"backup"` the next time
+  it dies; the named tunnel from 2026-09-25 was never built.
+- createstuff **218.6 s** vs the 60–150 s promise; `GET /api/builds/:id/log` still 404
+  (POST-only, by design).
+- fashionistas `photo-search` vision returns an empty stub when vision is unavailable —
+  it is **labelled** (`vision:"unavailable"`), so it is honest, but it is not a working
+  photo search.
+- The six WAITING-ON-YOU items in `TODO.md` are unchanged, including *"which site/link
+  failed"* — this round proceeded by measurement instead of re-asking.
+
+## 14. 2026-10-02 (GOAL 1) — placebets proven end to end, and two claims I had to retract
+
+### What ships
+`Placebetsai-src` @ `64e86f2` = `origin/main` = live Pages `Source`. Five proof scripts, all
+exit 0: `board-integrity` · `fanduel-orientation` · `parlay` · `chatbot-gates` (31/31) ·
+`bookie-proof` (4/4 live).
+
+### The bookie bot's four gates — all in `lib/llm/chatbot-placebets.js`
+| gate | exported as | what it stops |
+|---|---|---|
+| routing | `bookieTakeAsk(query)` | a pick/banter ask being answered from the news feed with no odds |
+| prices | `fabricatedOddsNumbers(answer, boardBlock)` | citing an American-odds number that is not in the board rows the model was shown |
+| lineup | `fabricatedInjuries(answer, fullBlock)` | naming a player as out who is not in the data → one corrective retry, then the grounded take |
+| banter | `banterInstruction(query)` | the trash-talk ask being specified away by each branch's own per-request prompt |
+
+The first three run through one shared `enforceGroundedAnswer({answer, boardBlock, fullBlock,
+userQuery, db})`. **`fullBlock` must be `liveDataSection`, not `promptData`** — the injury
+report and public-betting sections are appended to `liveDataSection` after `promptData` is
+built, so checking injuries against `promptData` would falsely accuse every legitimately
+listed player.
+
+Run `node scripts/chatbot-gates-proof.mjs` after any change to those four. It exits 0/1.
+
+### Retracted — do not repeat these
+- **"The bot invented G. Spiller."** False. `lib/injuries.js` under key `cfb` lists
+  `Delaware Fightin' Blue Hens | G. Spiller | Out`. Searching `/api/odds` for a player name
+  is the wrong test: the injury report comes from a different feed. (`C. Wood`, `J. Marshall`
+  also real.) The gate deliberately reads the whole block so these pass.
+- **"The bot invented the Texans."** False. `Dallas Cowboys @ Houston Texans` is a real row.
+  Its away price swings `144` ↔ `-120` depending on which feed (theoddsgap / actionnetwork)
+  supplied it last. Snapshotting the board at the wrong moment makes a real number look
+  fabricated. Re-check against a fresh `/api/odds` before calling anything invented.
+
+### `deploy.sh` provenance fix
+`Source` in `wrangler pages deployment list` comes from the *current directory's* git HEAD.
+deploy.sh runs from `nexus-ai-suite`, so it labelled placebets.ai deploys with
+nexus-ai-suite's hash (`62f1d97` while Placebetsai-src was `9f42b29`). New `commit_arg()`
+passes `--commit-hash` from the directory being uploaded — it prints `>> source commit: …` on
+every run, and wrangler also prints `fatal: bad object <hash>` because it tries to resolve
+that object against nexus-ai-suite's repo. **That line is harmless and expected**; the deploy
+completes and `verify_pages` confirms the bytes.
+
+Note `DRY_RUN=1 ./deploy.sh …` does **not** dry-run: `DRY_RUN` is reset to `0` at line ~230
+and set only by a CLI flag. Invoking it with the env var performs a real deploy.
+
+### Known gaps carried forward
+- GH Actions deploy workflow still at `ci/deploy.yml` — pushing into `.github/workflows/`
+  is rejected, gh token has `gist, read:org, repo` and no `workflow` scope.
+- `chatbot-quality.test.mjs` fails 1–2 live assertions (`history-followup`). **Verified to
+  fail identically at HEAD in a clean worktree** — pre-existing, flaky, not a regression.
+  Compare against HEAD before blaming a change.
+- theoddsgap `429` still gates tennis/UFC/soccer coverage.
+- Two sessions work this repo concurrently; `components/ProWrestlingPage.js` and
+  `package-lock.json` are not mine — stage files explicitly, never `git add -A`.
