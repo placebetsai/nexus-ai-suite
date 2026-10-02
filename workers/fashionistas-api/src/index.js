@@ -1564,6 +1564,36 @@ async function dispatch(request, env) {
         if (r?.meta?.changes === 0) return err("Not found", 404);
         return json({ ok: true });
       }
+      // UNDO A SALE. Measured 2026-10-02: a diagnostic probe marked listing
+      // 126 sold twice (orders 20 and 21, one of them sale_price 0) and there
+      // was no way back — /api/analytics sums every orders row, so those two
+      // rows counted as real revenue forever, and the listing sat at
+      // status='sold' with no revert. A seller who mis-taps "Mark sold" is in
+      // the same position, so this is a real action, not just a cleanup tool:
+      //   - deletes the order row (scoped to the caller, so no IDOR)
+      //   - if that order was the only one for its listing, the listing goes
+      //     back to 'active' and its sold_* fields clear
+      // Nothing else is touched: other orders for the same listing keep the
+      // listing sold, because those sales really happened.
+      if (ordId && method === "DELETE") {
+        const id = ordId[1];
+        const row = await env.DB.prepare("SELECT id, listing_id FROM orders WHERE id=? AND user_id=?").bind(id, user.sub).first();
+        if (!row) return err("Not found", 404);
+        await env.DB.prepare("DELETE FROM orders WHERE id=? AND user_id=?").bind(id, user.sub).run();
+        let listingReverted = false;
+        if (row.listing_id) {
+          const others = await env.DB.prepare(
+            "SELECT COUNT(*) c FROM orders WHERE listing_id=? AND user_id=?"
+          ).bind(row.listing_id, user.sub).first();
+          if (!others || !Number(others.c)) {
+            await env.DB.prepare(
+              "UPDATE listings SET status='active', sold_price=NULL, sold_platform=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
+            ).bind(row.listing_id, user.sub).run();
+            listingReverted = true;
+          }
+        }
+        return json({ ok: true, listingReverted });
+      }
 
       // ── HAULS ───────────────────────────────────────────────
       if (path === "/api/hauls" && method === "GET") {
