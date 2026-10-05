@@ -20,6 +20,59 @@ async function get(url, init = {}, timeout = 20000) {
   return { status: r.status, text, ms: Date.now() - t };
 }
 const json = (s) => { try { return JSON.parse(s); } catch { return null; } };
+
+// MEASURED 2026-10-05 via Cloudflare GraphQL (sum{cpuTimeUs}, corroborated by
+// quantiles{cpuTimeP50}): this Worker used 33.6 ms of CPU per invocation,
+// P50 33.4 ms, over 157 invocations in 24h. The free plan allows 10 ms per
+// invocation — so every single one of those runs was over the limit. The cost
+// was decoding whole HTML documents (12 pages + 2 blogs, hundreds of KB each)
+// to look at the first few kilobytes. Reading a response body IS CPU: every
+// byte gets UTF-8 decoded into a JS string.
+//
+// Stream it instead and stop the instant the answer is known. The early exit
+// is logically sound, so results do not change:
+//   * a marker found anywhere stays found — later bytes cannot un-find it;
+//   * a date inside the freshness window proves the NEWEST date is inside it,
+//     because the newest is >= that one. If nothing recent turns up we keep
+//     reading to the end exactly as before, so a real failure costs what it
+//     always did. Test slices overlap by OVERLAP bytes so no token (a date is
+//     10 chars) can straddle two reads and be missed.
+async function getUntil(url, test, timeout = 20000) {
+  const t = Date.now();
+  const r = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(timeout) });
+  // Non-200 already decides ok/fail for every caller — no body is worth
+  // decoding, so drop it instead of paying to read it.
+  if (r.status !== 200 || !r.body) {
+    try { if (r.body) await r.body.cancel(); } catch { /* closing anyway */ }
+    return { status: r.status, text: "", ms: Date.now() - t, match: false };
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  const OVERLAP = 64;
+  let text = "", scanned = 0, match = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += dec.decode(value, { stream: true });
+      const from = scanned > OVERLAP ? scanned - OVERLAP : 0;
+      if (text.length > from && test(text.slice(from))) { match = true; break; }
+      scanned = text.length;
+    }
+    if (!match) {
+      // Flush any bytes held back mid-sequence, then cover them too.
+      const tail = dec.decode();
+      if (tail) {
+        const from = scanned > OVERLAP ? scanned - OVERLAP : 0;
+        text += tail;
+        if (text.length > from) match = test(text.slice(from));
+      }
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* already closed */ }
+  }
+  return { status: r.status, text, ms: Date.now() - t, match };
+}
 const age = (iso) => (iso ? Date.now() - Date.parse(iso) : Infinity);
 const hrs = (ms) => (Number.isFinite(ms) ? `${(ms / HOUR).toFixed(1)}h` : "never");
 
@@ -33,16 +86,35 @@ const PAGES = [
 
 function pageChecks() {
   return PAGES.map(([host, marker]) => [`page ${host}`, async () => {
-    const r = await get(`https://${host}/`);
-    const ok = r.status === 200 && r.text.includes(marker);
+    const r = await getUntil(`https://${host}/`, (t) => t.includes(marker));
+    const ok = r.status === 200 && r.match;
     return { ok, detail: `${r.status}, ${Math.round(r.text.length / 1024)}KB, ${r.ms}ms${ok ? "" : r.status === 200 ? `, "${marker}" missing` : ""}` };
   }]);
 }
 
 const FEEDS = [
+  // MEASURED 2026-10-05: /api/odds is 1,489,871 bytes and the whole thing was
+  // JSON.parsed every run (12.4 ms in python alone) just to read one timestamp
+  // and one count — inside a free plan that allows 10 ms of CPU per
+  // invocation. Both facts we need sit in the first 1,151 bytes: updatedAt at
+  // byte 20, stats.events just before the events array opens. So read the
+  // prefix and regex them out; only if the payload has no stats.events do we
+  // fall back to parsing the full body, which keeps the verdict correct if the
+  // response shape ever changes (that path is slow on purpose, not broken).
   ["placebets odds", async () => {
-    const d = json((await get("https://placebets.ai/api/odds")).text) || {};
-    const n = (d.events || []).length, a = age(d.updatedAt);
+    const r = await getUntil("https://placebets.ai/api/odds",
+      (t) => /"updatedAt"\s*:/.test(t) && /"stats"\s*:\s*\{[^}]*?"events"\s*:/.test(t));
+    const head = r.text.match(/"updatedAt"\s*:\s*"([^"]+)"/);
+    const stats = r.text.match(/"stats"\s*:\s*\{[^}]*?"events"\s*:\s*(\d+)/);
+    let n, a;
+    if (r.match && stats) {
+      n = Number(stats[1]);
+      a = age(head && head[1]);
+    } else {
+      const d = json(r.text) || {};
+      n = (d.events || []).length;
+      a = age(d.updatedAt);
+    }
     return { ok: n >= 20 && a < 2 * HOUR, detail: `${n} events, updated ${hrs(a)} ago` };
   }],
   ["marketpicks news", async () => {
@@ -69,9 +141,23 @@ const FEEDS = [
   ["spanishtvshows blog fresh", async () => blogFresh("https://spanishtvshows.com/blog")],
 ];
 
+// A date inside the freshness window settles the check on its own: the newest
+// date is >= that one, so the newest is inside the window too. That makes it a
+// safe early exit for getUntil(). If no recent date exists we read the whole
+// document and reach exactly the verdict we always did.
+const DATE_RE = /\b(20\d\d-\d\d-\d\d)\b/g;
+function recentDate(t) {
+  const now = Date.now();
+  for (const m of t.matchAll(DATE_RE)) {
+    const at = Date.parse(m[1]);
+    if (at <= now + DAY && now - at < 4 * DAY) return true;
+  }
+  return false;
+}
+
 async function blogFresh(url) {
-  const r = await get(url);
-  const dates = [...r.text.matchAll(/\b(20\d\d-\d\d-\d\d)\b/g)].map((m) => m[1]).filter((d) => Date.parse(d) <= Date.now() + DAY).sort();
+  const r = await getUntil(url, recentDate);
+  const dates = [...r.text.matchAll(DATE_RE)].map((m) => m[1]).filter((d) => Date.parse(d) <= Date.now() + DAY).sort();
   const newest = dates.pop();
   return { ok: r.status === 200 && age(newest) < 4 * DAY, detail: `newest post ${newest || "none found"}` };
 }
