@@ -22,3 +22,7 @@
 
 /og.png
   Cache-Control: public, max-age=604800
+
+/ads.txt
+  Content-Type: text/plain
+  Cache-Control: public, max-age=3600
