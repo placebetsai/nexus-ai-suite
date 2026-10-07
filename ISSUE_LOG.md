@@ -36,7 +36,7 @@ Risk register lives in `nexus-ai-suite/HANDOFF-2026-10-06.md` §8.
 | 42 | spanishtvshows.com | **the TMDB key + `/show/*` 500 fix round** (closes #18 and #28) | two stacked causes: key on the wrong project (see #18), **and** Cloudflare only applies a project's env to a **new** deployment — after setting the secret on the right project, `/show/1399` *still* returned 500 because production was running the 2026-10-06 build | see **#42 evidence** below: key stored → secret on `spanishtvshows-site` (prod **and** preview) → local `next-on-pages` build → **preview branch validated first** (`tmdb-check…pages.dev` `/show/1399` 200) → production `--branch=main` → **13/13 `/show/` ids 200** |
 | 44 | fashionistas.ai | **the app signed users out itself** — every 401 in the shared `api()` helper ran `logout()` after 600 ms, so a wrong password came back as "Session expired"; `auth/me` was referenced **0×** so the stored session was never checked; a response with no `token` was saved as the string `undefined`; and nothing told the user what to do next | old `index.html:1459` `if (r.status === 401) { toast("Session expired — please log in"); setTimeout(()=>logout(), 600); throw new Error("unauthorized"); }` — the login POST went through the same helper | commit `3cfe08b` deployed to Pages project `fashionistas-ai` (`version.txt` == `3cfe08b`, live == `3cfe08b`), **4 live browser tests** below, `npm test` **267 pass / 0 fail**, ads untouched — see **#44 evidence** below |
 
-| 45 | fashionistas.ai | **Try-on page 404'd its own pipeline** — `/try-on/` imported `/try-on/tryon_pipeline.js` but the file was only under `/core/` | path mismatch after earlier move | commit `c8776cd` → live `/try-on/tryon_pipeline.js` **200** 20,019 B; `/core/tryon_pipeline.js` **404**; Photoreal + Instant modes restored; tip advanced to `593418e` — see **#45 evidence** |
+| 45 | fashionistas.ai | **Try-on page 404'd its own pipeline** — `/try-on/` imported `/try-on/tryon_pipeline.js` but the file was only under `/core/` | path mismatch after earlier move | commit `c8776cd` → live `/try-on/tryon_pipeline.js` **200** 20,019 B; `/core/tryon_pipeline.js` **404**; Photoreal + Instant modes restored; tip advanced to `593418e` via **wrangler pages deploy** (not Actions) — see **#45 evidence** |
 | 46 | fashionistas.ai | **Multilist one-click without Stripe** — server `/api/list/*` still 402, but the Chrome extension can post from logged-in shop tabs | paywall on server path; extension path was incomplete | commit `e768c8f` → live zip `…/fashionistas-extension-v1.0.1.zip` **200** 109,648 B; `ADAPTERS` includes **ebay+etsy**; `docs/MULTILIST-ONE-CLICK.md`; `tests/multilist-one-click.test.mjs` **7/7**; still needs human Load unpacked + shop logins — see **#46 evidence** |
 | 47 | fashionistas.ai | **Chatbot refused non-fee / non-listing questions** (Depop how-to, try-on, connect shops) | grounding allow-list too narrow | commit `593418e` (live `version.txt`) → topics `connect_shops`, `chrome_extension`, `try_on`, `listing_from_photo`, `pricing_plan`, `how_to_list` + fees/listings; smoke Depop/try-on/fees **200 refused=false**; grounding tests **19/19** — see **#47 evidence** |
 
@@ -213,6 +213,9 @@ generated inside the page and never written down):
 
 ### #45 evidence — try-on pipeline path fix (2026-10-07 night ET)
 
+**Deploy:** **not** GitHub Actions — `scripts/deploy-local.sh` → `wrangler pages deploy` → Pages
+project `fashionistas-ai`. Push ≠ ship; live tip = `version.txt` after wrangler.
+
 Commit `c8776cd` (`fix(try-on): serve pipeline from /try-on/, restore Photoreal path`): added
 `try-on/tryon_pipeline.js` (510 lines), updated `try-on/index.html` import to
 `/try-on/tryon_pipeline.js`, kept Photoreal → `POST /api/tryon/hd` and Instant as experimental
@@ -231,6 +234,9 @@ Live `/try-on/` shows **Photoreal · Pro** and **Instant · experimental overlay
 
 ### #46 evidence — multilist extension one-click (2026-10-07 night ET)
 
+**Deploy:** wrangler Pages only (no Actions). Zip is on the live Pages artifact after
+`wrangler pages deploy`; pushing the repo alone does not publish it.
+
 Commit `e768c8f` (`feat(multilist): one-click via extension without Stripe`). Server `/api/list/all`
 remains **402** until Stripe (`#24` / `#43`); the extension path does not need Stripe.
 
@@ -248,6 +254,9 @@ vinted, grailed, facebook, kidizen, vestiaire, whatnot). Repo doc: `docs/MULTILI
 real marketplace post; that post has **never** been executed in Chrome.
 
 ### #47 evidence — chatbot scope expand (2026-10-07 night ET)
+
+**Deploy:** `593418e` is live because of a **wrangler pages deploy**, not because of a git push.
+Fashionistas has **no** GitHub Actions deploy path for production.
 
 Commit `593418e` (`feat(chat): expand stylist scope beyond fees and own listings`). Live tip =
 `version.txt` **593418e**. Allowed topics include `connect_shops`, `chrome_extension`, `try_on`,

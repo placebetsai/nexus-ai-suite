@@ -2029,6 +2029,11 @@ left, and it says so out loud instead of failing silently.
 Three live ships after the login fix (`3cfe08b`). Tip is now **`593418e`** (`version.txt` == live).
 Prior tonight: `e768c8f` multilist extension one-click; `c8776cd` try-on pipeline fix; `3cfe08b` auth session fix.
 
+> **Deploy path (mandatory):** Fashionistas does **NOT** deploy via GitHub Actions.
+> Production = `bash scripts/deploy-local.sh` → `npx wrangler pages deploy . --project-name=fashionistas-ai --branch=main`
+> (Cloudflare Pages project `fashionistas-ai`). **Pushing to GitHub does not ship the site.**
+> Live tip is whatever `version.txt` says after a wrangler deploy — not `git ls-remote`.
+
 #### A. Try-on pipeline 404 → 200 (`c8776cd`)
 
 The `/try-on/` page imported `/try-on/tryon_pipeline.js`, but the file lived under `/core/` → **404**.
@@ -2045,7 +2050,7 @@ $ curl -sS https://fashionistas.ai/version.txt
 ```
 
 UI modes on live `/try-on/`: **Photoreal · Pro** and **Instant · experimental overlay** (import =
-`/try-on/tryon_pipeline.js`). Commit then tip advanced past `c8776cd`.
+`/try-on/tryon_pipeline.js`). Shipped by **wrangler Pages deploy** (not Actions); tip advanced past `c8776cd` to live `593418e`.
 
 #### B. Multilist one-click via Chrome extension — no Stripe (`e768c8f`)
 
