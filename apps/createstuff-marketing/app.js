@@ -2176,8 +2176,14 @@ window.deployBuild = async function(buildId) {
   try {
     showToast('Putting it online…');
     const result = await api(`/api/builds/${buildId}/deploy`, { method: 'POST', body: JSON.stringify({}) });
+    // The Worker answers with `publishUrl`; `url` is there too so this button
+    // and the builder's own "Put online" read the same field. It used to read
+    // only `result.url`, which was undefined, so window.open(undefined) opened
+    // a blank tab even on a build that published successfully.
+    const address = (result && (result.publishUrl || result.url)) || '';
+    if (!address) throw new Error('no address came back');
     showToast('It is online!');
-    window.open(result.url, '_blank');
+    window.open(address, '_blank');
   } catch (err) {
     showToast('Putting it online failed — try again');
   }

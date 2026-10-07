@@ -9,6 +9,7 @@ import ARScreen from './screens/ARScreen';
 import MarketplaceScreen from './screens/MarketplaceScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import CheckoutScreen from './screens/CheckoutScreen';
+import ConnectScreen from './screens/ConnectScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -17,6 +18,7 @@ const tabConfig = {
   Snap: { emoji: '\uD83D\uDCF7', label: 'Snap' },
   'AR Try-On': { emoji: '\uD83D\uDD76\uFE0F', label: 'AR Try-On' },
   Marketplace: { emoji: '\uD83D\uDED2', label: 'Marketplace' },
+  Connect: { emoji: '\uD83D\uDD17', label: 'Connect' },
   Profile: { emoji: '\uD83D\uDC64', label: 'Profile' },
 };
 
@@ -41,6 +43,7 @@ export default function App() {
         <Tab.Screen name="Snap" component={SnapScreen} />
         <Tab.Screen name="AR Try-On" component={ARScreen} />
         <Tab.Screen name="Marketplace" component={MarketplaceScreen} />
+        <Tab.Screen name="Connect" component={ConnectScreen} />
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>
     </NavigationContainer>

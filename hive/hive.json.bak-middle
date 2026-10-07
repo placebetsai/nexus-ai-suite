@@ -128,7 +128,7 @@
       "id": "forge",
       "name": "Forge",
       "role": "CreateStuff engine: agent-hive backend, editor sandbox, project build pipeline",
-      "model": "longcat-2.5-preview-free",
+      "model": "mimo-v2.6-flash-free",
       "fallback": "nemotron-3.5-lightning-free",
       "free": true,
       "workstreams": [
@@ -214,7 +214,7 @@
   ],
   "dispatch": {
     "parallelism": 10,
-    "timeout_per_task_ms": 420000,
+    "timeout_per_task_ms": 300000,
     "probe_timeout_ms": 120000,
     "fallback_on_error": true,
     "strip_ansi": true
