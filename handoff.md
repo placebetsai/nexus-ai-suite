@@ -2026,6 +2026,8 @@ left, and it says so out loud instead of failing silently.
 
 ### 16.8 2026-10-07 (night ET) — fashionistas functionality ship: try-on path, multilist extension, chatbot scope
 
+**Product SoT:** `~/fashionistas-ai/docs/AGENT_HANDOFF.md` → **CURRENT STATE** (laptop repo preferred). This §16.8 is the federation mirror.
+
 Three live ships after the login fix (`3cfe08b`). Tip is now **`593418e`** (`version.txt` == live).
 Prior tonight: `e768c8f` multilist extension one-click; `c8776cd` try-on pipeline fix; `3cfe08b` auth session fix.
 
