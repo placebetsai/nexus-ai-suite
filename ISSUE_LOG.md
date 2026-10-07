@@ -188,8 +188,6 @@ regenerated on every build — read only by `app/sitemap.js` — so it was rever
 | 25 | fashionistas.ai | **8 env vars** (eBay / Etsy / Google / Stripe) | → OAuth, billing, and the first real marketplace post are all dead. **Zero real posts ever** |
 | 26 | fashionistas.ai | **Try-on credits: 9 left** | Modal free credit burning down; `MAX_MONTHLY_TRYON_SPEND` set but no replacement tier |
 | 27 | fashionistas.ai | `OPENCODE_API_KEY` absent | opencode leg of the provider chain inert |
-| 29 | spanishtvshows.com | **token for account `555c6765…`** | project `spanishtvshows-site` is not in `7eb89b01…` |
-| 30 | scooter.exchange | **no local repo** | cannot be rebuilt from this laptop |
 | 31 | all | **wrangler OAuth refresh** (`zone:read`) | current token expires `2026-10-06T20:58:54Z`, missing `zone` scope — one click, allowed ask #3 |
 | 32 | admin UI | **approval** | proposed Worker + D1 + R2 + Cloudflare Access on `/admin`; user must pick (a) admin panel or (b) finish checklist/handoff first |
 
@@ -204,4 +202,3 @@ regenerated on every build — read only by `app/sitemap.js` — so it was rever
 | 33 | Wildcard DNS on israeljoffe.com/.org + wuwonline.com/.org | user edits those sites; mitigated instead (`409a496` per-isolate cache → ~10 scans/hour, was ~1,500) |
 | 34 | `/how-to-crosspost/` guide "live at `0a30892`" (claimed in `HANDOFF-2026-09-29.md`) | **that commit does not exist in any of the 7 fashionistas clones and the URL 404s** — the claim was false. Real guides are `/guide/…` (16 URLs in sitemap) |
 | 35 | GitHub `hiddencameras-tv` legacy Pages build can't be disabled (422) | blocked at repo level instead (`actions_enabled=false`); the domain is served by Cloudflare |
-| 36 | Ads never render on this laptop | ProtonVPN NetShield blocks `pagead2.googlesyndication.com` — verify from another network |
