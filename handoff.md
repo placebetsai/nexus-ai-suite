@@ -2102,5 +2102,47 @@ Unit: `node --test functions/api/chat/__tests__/grounding.test.mjs` → **19 pas
 chat after sign-in. Write-up: `ISSUE_LOG.md` **#45–#47**, `HANDOFF-2026-10-06.md` **§14**.
 
 
+
+### 16.9 2026-10-07 — independent audit of §16.8 (the round another agent shipped)
+
+Asked to confirm that round rather than take it on trust. Everything below was re-run against the
+**live site** and the **local repo** by this agent. Full write-up: `ISSUE_LOG.md` **#48 evidence**.
+
+**Verdict: the three ships are real and in production. Two evidence lines in §16.8 are stale, and
+the test suite it left behind was red — that red suite is now fixed.**
+
+| §16.8 claim | my measurement | verdict |
+|---|---|---|
+| `/try-on/tryon_pipeline.js` → 200 | **200 / 20,019 B**; `/try-on/` 200 / 43,479 B and loads `"/try-on/tryon_pipeline.js"`; `Photoreal` ×10, `Instant` ×6 | CONFIRMED |
+| `/core/tryon_pipeline.js` → 404 | **200 / 19,809 B** — deliberately served by the new `functions/core/[[path]].js` allow-list; everything else under `/core/` still blocks | **STALE** (behaviour intentional) |
+| "tip is now `593418e` (`version.txt` == live)" | live `version.txt` = **`4a0c395`**, repo HEAD = **`a870888`** | **STALE** — but `3cfe08b`, `c8776cd`, `e768c8f`, `593418e` are all ancestors of `4a0c395` (**YES**), so every ship *is* live |
+| extension zip 200 / 109,648 B | **200 / 109,648 B** exact | CONFIRMED |
+| `ADAPTERS` includes ebay + etsy | 11 adapters incl. **ebay**, **etsy** | CONFIRMED |
+| multilist test 7 pass | **10 pass / 0 fail** | CONFIRMED (better) |
+| chat: 3 prompts → 200, `refused:false`, `how_to_list` / `try_on` / `marketplace_fees` | re-run on a fresh account → **200 / ["how_to_list"]**, **200 / ["try_on"]**, **200 / ["marketplace_fees"]**; anonymous chat → **401** | CONFIRMED |
+| `grounding.test.mjs` 19 pass | **19 pass / 0 fail** | CONFIRMED |
+| server `/api/list/*` still paywalled | `POST /api/list/all` with a live session → **402 `subscription_required`** | CONFIRMED |
+| *(not mentioned)* full suite | **`npm test` → 312 tests, 311 pass, 1 FAIL** | **MISSED → fixed** |
+
+**The failure (row #48):** `tests/api-auth-matrix.test.mjs` demands every `functions/api/` route
+answer an anonymous caller **401/403** or sit on the explicit, justified `PUBLIC` allowlist. The
+identify-fill ship added `functions/api/ai/analyze.js` ungated →
+`not ok 195 — an anonymous caller never gets past a gated route`. Fixed in **`a841924`**
+(`placebetsai/fashionistas-ai`, pushed) by allowlisting it with a *measured* justification — no
+user data stored, no key exposed, 20/min/IP cap. **Tests were not weakened**: the allowlist is the
+mechanism the test's own error message names, and it still asserts a written reason. Result:
+**`npm test` 312 pass / 0 fail**.
+
+**Why that route needed checking, measured not assumed:** an anonymous `POST /api/ai/analyze` with a
+real image returns **200 / 2.43 s / `"model":"groq_vision"`** — a stranger reaches a paid Groq vision
+call with no session and no key. It stores nothing, and the cap holds (25 anonymous hits → `422 ×23`,
+then `429 ×2`). Whether it stays public is **`ISSUE_LOG` #49 — a decision for the user**: keep public
+(the sample-jacket/first-photo funnel works logged out) or require a session (blocks that funnel).
+
+**Operational fact worth knowing:** the free chat tier is **10 messages/month**. Account id 78 is
+exhausted (`402 chat_messages_quota_reached used:10 cap:10 resets 2026-11-01`), so §16.8's smoke will
+no longer reproduce on it — use a fresh account.
+
+
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
