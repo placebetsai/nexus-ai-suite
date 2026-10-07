@@ -6,7 +6,7 @@ Risk register lives in `nexus-ai-suite/HANDOFF-2026-10-06.md` §8.
 
 ---
 
-## FIXED (2026-10-06)
+## FIXED (2026-10-06 → 2026-10-07)
 
 | # | Site | Issue | Root cause | Fix / evidence |
 |---|---|---|---|---|
@@ -24,13 +24,16 @@ Risk register lives in `nexus-ai-suite/HANDOFF-2026-10-06.md` §8.
 | 12 | createstuff.ai | **No AdSense, `ads.txt` 404** — domain served `createstuff-marketing` from 2026-09-30 | loader 0, mounts 0, `ads.txt` 404 | `493ccc4` → live **`ads.txt` 200 text/plain 59 B**, `site-adsense.js` 200 application/javascript 8,596 B, home 110,849 B with loader **×1 byte-identical to `loaderTagHTML()`** + mounts **×4** |
 | 13a | marketpicks.ai | `/api/health` fabricated `last_success = now` and never read `cron_runs`/`cron_health`; `grading` had no count query | `app/api/health/route.ts:70` | `c91ae99` → live `f4d5bb08`: `quotes.last_success=2026-10-06T23:16:20Z` ("897 rows in quotes; last ran 7m ago"), **0 of 6** sources have `last_success == last_check`, `data_tables.grading=2`; `node --test` **54/54** |
 | 16 | marketpicks-ai repo | dirty `tsconfig.tsbuildinfo` | `git status` | committed + pushed `3d6bfe0..c91ae99` on `live-source` |
-| 29 | spanishtvshows.com | no token for account `555c6765…` | — | **token received 2026-10-06**, stored as `STV_API_TOKEN` (53 ch) in `.secrets/cf.env` → `/accounts/555c6765…/tokens/verify` `success:true` (`/user/tokens/verify` 401 = account-scoped, expected). Fixes **access** only — the `TMDB_API_KEY` value is still unrecoverable (see #18 / #28) |
+| 29 | spanishtvshows.com | no token for account `555c6765…` | — | **token received 2026-10-06**, stored as `STV_API_TOKEN` (53 ch) in `.secrets/cf.env` → `/accounts/555c6765…/tokens/verify` `success:true` (`/user/tokens/verify` 401 = account-scoped, expected). Fixes **access** only — the `TMDB_API_KEY` value was still unrecoverable then (see #18 / #28, both **resolved 2026-10-07** by #42) |
 | 30 | scooter.exchange | no local repo | — | cloned → `scooters-exchange` (master `ed4c794`); fixes committed **`2e77e3a`** (see #37) |
 | 36 | ihatecollege.com | loader fix stranded on `ihatecollege-com.pages.dev` | project in account `90904956…` needed a token | **token received 2026-10-06** (`IHC_API_TOKEN`) → deployed project `ihatecollege` → live `https://ihatecollege.com/` **loader ×1, ad slots ×3, 76,386 B** (was slots ×3 / loader ×0) |
 | 37 | scooter.exchange | **23 dead images** (`loremflickr.com` 401 for every URL), **listings mislabelled**, **`/api/rentals/nearby` count:0 in every city**, **seller photos NXDOMAIN** | see evidence below | shipped `2e77e3a` + worker `6c4b1f15` + Pages `56dd2a9d` — evidence below |
 | 38 | diamonds.forsale | site stuck on the **2026-07-30** build, **0 AdSense on every page** | two stacked causes: `app/about/page.tsx` passed an `onError` handler from a **server component** → `next build` looped `Static page generation for /about is still timing out after 3 attempts`, so *no* new build could ever ship; and `ADSENSE_CLIENT` was never supplied, which the source gates the loader on (`{ADSENSE && …}`) | removed the handler, repointed the avatar at a file that exists (`/israel-joffe/avatar.jpg` → **404** live before), built with `ADSENSE_CLIENT=ca-pub-7215975042937417` → Pages `37253dda` (`env=production`, was `41c5454f` from 2026-07-30) → **8/8 pages `loader=2, ca-pub=2`**, `/about` avatar file `http=200 image/jpeg`, **all images 200**, `loremflickr=0`; repo `5692dae..775e029`, workflows `disabled_manually` ×2 |
 | 39 | the handoff itself | **4 days stale**: `handoff.md` header said `Last updated: 2026-09-29`, §1–15 stopped at 2026-10-02, and it still asserted **`main is 5ffba1e`**, **try-on isn't wired**, **docs leak open** — all three already false | nobody rewrote the doc when the work moved; and `ISSUE_LOG.md` / `PRIMETIME_CHECKLIST.md` / `NEEDS_ISRAEL.txt` lived **only at the project root, which is not a git repo**, so every update was laptop-only and GitHub kept the old story | `handoff.md` → header **2026-10-06** + new **§16** (each correction with command + output, all nine repo shas, what was *not* re-verified); `HANDOFF-2026-10-06.md` → **§10 addendum** + fixed the `scooter.exchange has no local repo` row and its risk; the three live docs **now tracked in the repo** (root paths = symlinks) → pushed `931cd0b..e5c1a6b..f50b87e`; raw GitHub check: §16 present, `LATE ADDENDUM` present, `no local repo` rows = **0**; `Placebetsai-src` had **2 unpushed commits** → `5a03c2a..2dd74a9` (diff scan `hits: 0`) so *every* repo now matches its claimed sha |
 | 40 | placebets.ai + createstuff.ai | handoff §5.4 still said both domains served **stale builds** (placebets 229,132 B from `fe137b41`; createstuff 109,988 B, 0 ads, `ads.txt 404`) | both had been redeployed earlier tonight, nobody updated the doc | §5.4 rewritten as **BOTH FIXED** with proof: `placebetsai` → **`0cf4db31` 2026-10-06T22:57:39Z production**, live **277,412 B**, chatbot **on the real domain** `ENDPOINT=https://placebets.ai/api/chatbot` → **170 assertions PASS / 0 fail / 19 cases**; `createstuff-marketing` → **`f63b8a56` 2026-10-06T23:04:53Z**, live **110,849 B = source byte-for-byte**, `loader=1 slots=4 ads.txt 200`; §5.5 table replaced with the 21:35 UTC sweep (and diamonds' missing units flagged as #41) |
+| 18 | spanishtvshows.com | `/show/<id>/` → **500 for every id** (1399, 679, 1408, 46648) — 100 of 193 sitemap URLs | `.github/workflows/deploy-pages.yml:42` wrote `TMDB_API_KEY` to project **`spanishtvshows`** while `:51` deployed to **`spanishtvshows-site`** (step `continue-on-error: true`, so every run was "green"); the dynamic edge route reads the **request-context** env only (`lib/cloudflare.js` → `getSecret`) → `lib/tmdb.js:23` `throw` → the `catch` calls `tmdb()` again → identical `__next_error__` 500 (digest `2025926783`) | **FIXED 2026-10-07 (#42)** — key on `spanishtvshows-site` (prod+preview) + rebuild/redeploy: `/show/1399` **500 → 200**, `/show/679` **500 → 200**, `/show/46648` **500 → 200**, **10/10** homepage-linked ids 200, 15-URL sitemap diff vs the previous prod deployment = **7 × `old=500 → live=200`, 0 regressions** |
+| 28 | spanishtvshows.com | **`TMDB_API_KEY` locally** — `next build` stopped at `Missing TMDB_API_KEY` | key existed only as a GitHub Actions secret (created 2025-12-23): `gh api …/actions/secrets` returns metadata only, no file/gist/artifact/history copy anywhere (**332** hex-32 literals pulled from every repo's full git history and probed against `/3/configuration` → **0 valid**), and Cloudflare's copy on the wrong project reads back `value:""` | **RESOLVED 2026-10-07** — the user supplied it from the TMDB account `spanishtvshows` → `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN` (244 ch) in `.secrets/cf.env` (`-rw-------`, git-ignored, **0 tracked copies**); local build now succeeds (`npx @cloudflare/next-on-pages@latest` **exit 0**, artifact **23 M**) |
+| 42 | spanishtvshows.com | **the TMDB key + `/show/*` 500 fix round** (closes #18 and #28) | two stacked causes: key on the wrong project (see #18), **and** Cloudflare only applies a project's env to a **new** deployment — after setting the secret on the right project, `/show/1399` *still* returned 500 because production was running the 2026-10-06 build | see **#42 evidence** below: key stored → secret on `spanishtvshows-site` (prod **and** preview) → local `next-on-pages` build → **preview branch validated first** (`tmdb-check…pages.dev` `/show/1399` 200) → production `--branch=main` → **13/13 `/show/` ids 200** |
 
 ---
 
@@ -91,6 +94,75 @@ Error: Event handlers cannot be passed to Client Component props.
 
 ---
 
+### #42 evidence — spanishtvshows TMDB key + `/show/*` 500 → 200 (2026-10-07 ~02:10 UTC)
+
+**1. The key, delivered by the user** from the TMDB account `spanishtvshows` → *Settings → API*.
+
+```
+$ grep -E "^STV_TMDB" .secrets/cf.env | sed 's/=.\{4\}.*/=<redacted>/'
+STV_TMDB_API_KEY=<redacted>            # 32 ch, 90ca…4e5e
+STV_TMDB_READ_TOKEN=<redacted>         # 244 ch, v4 read token
+$ stat -c %a .secrets/cf.env   → 600        $ git ls-files .secrets/ | wc -l  → 0
+$ git grep -l "$KEY" -- . | wc -l           → 0   (raw value in no repo, no doc)
+```
+
+**2. The key is valid** (this is what makes the GitHub-secret hunt conclusive — a real key answers 200):
+
+```
+GET https://api.themoviedb.org/3/configuration?api_key=… → 200
+GET https://api.themoviedb.org/3/tv/1399?api_key=…       → 200  (Game of Thrones, 73 eps S1)
+GET https://api.themoviedb.org/3/tv/1399  -H 'Authorization: Bearer <v4 token>' → 200
+```
+
+**3. Why it stayed broken after the secret was uploaded.** Secret set on the *right* project:
+
+```
+$ wrangler pages secret put TMDB_API_KEY --project-name spanishtvshows-site
+  🌀 Creating the secret for the Pages project "spanishtvshows-site" (production)
+  ✨ Success! Uploaded secret TMDB_API_KEY
+$ GET /pages/projects/spanishtvshows-site → production.env_vars = ['TMDB_API_KEY']  (preview too, via PATCH)
+$ curl https://spanishtvshows.com/show/1399 -L → 500   ← still
+```
+Cloudflare applies `deployment_configs` to a **new** deployment; production was still the
+`2026-10-06T19:36:19Z` build (`609631cf`). Next.js hides the message in prod — the body was only
+`<html id="__next_error__">` + `digest\":\"2025926783`, so the error text was unreadable.
+
+**4. The fix** — built here exactly as CI does, validated on a preview branch first:
+
+```
+$ TMDB_API_KEY=… SITE_URL=https://spanishtvshows.com npm_config_legacy_peer_deps=true \
+    npx --yes @cloudflare/next-on-pages@latest        # exit 0, 35 s (1.49 s core build)
+  (without npm_config_legacy_peer_deps → ERESOLVE: @cloudflare/workers-types@4 vs wrangler@4.148)
+$ du -sh .vercel/output/static  → 23M
+$ wrangler pages deploy .vercel/output/static --project-name=spanishtvshows-site --branch=tmdb-check
+  🌎 … https://tmdb-check.spanishtvshows-site.pages.dev
+$ curl https://tmdb-check.spanishtvshows-site.pages.dev/show/1399 → 200 79,323 B  ← first green
+$ wrangler pages deploy .vercel/output/static --project-name=spanishtvshows-site --branch=main
+  (production_branch = main, so this is the real domain)
+```
+
+**5. Before / after on the live domain.**
+
+| URL | before | after |
+|---|---|---|
+| `/show/1399` | **500** 19,766 B `__next_error__` | **200** 79,323 B · *Game of Thrones Review…* · **40** `image.tmdb.org` |
+| `/show/679` | **500** | **200** 80,090 B · *Xiaolin Showdown* · 36 |
+| `/show/46648` | **500** | **200** 78,149 B · *True Detective* · 40 |
+| 10 homepage-linked ids (`12637 1446 19505 203667 212907 284792 30826 44953 63764 67335`) | — | **10/10 → 200**, not-200 = **0** |
+| `/`, `/blog`, `/best-on-netflix`, `/spanish-show-finder`, `/sitemap.xml`, `/ads.txt` | 200 | **200** ×6 |
+
+**6. Regression proof** (the deploy also regenerated a build artifact, so nothing could be dropped
+silently): sitemap URL set **old `609631cf` = 202 vs live = 202 → 0 diff**; a 15-URL sample hit
+against both deployments gave **7 differences, every one `old=500 → live=200`**, **0** going the
+other way. `content/generated/spanish-pages.json` (108 → 51 entries) is a **build artifact**
+regenerated on every build — read only by `app/sitemap.js` — so it was reverted with
+`git checkout --`; `git status --porcelain` in `Spanishtvshows.com` → **0 dirty**.
+
+**Still open on this site:** homepage link `/Netflix-spanish-shows` → **404**; the 3 retired cron jobs
+(*Generate Spanish Pages* now has its key locally) still need Cloudflare Cron Triggers.
+
+---
+
 ## OPEN (fix next, in this order)
 
 | # | Site | Issue | Evidence | Next action |
@@ -99,7 +171,6 @@ Error: Event handlers cannot be passed to Client Component props.
 | 14 | createstuff-ai repo | `index.html` dirty (23 added lines) after a successful deploy | `git status` → `M index.html` | commit |
 | 15 | Ihatecollege repo | 4 dirty sitemap files, deployed but uncommitted | `git status` → 4 files | commit |
 | 17 | federation | 3 scheduled jobs homeless after Actions shutdown: STV *Generate Spanish Pages* (`0 13 * * *`), *IndexNow ping* (`30 11 * * *`), *Federation Sentinel* (`0 */3 * * *`) | all `disabled_manually` today | move to **Cloudflare Cron Triggers** |
-| 18 | spanishtvshows.com | `/show/<id>/` → **500 for every id** (1399, 679, 1408, 46648) | **RCA (code-level, deploy-side unconfirmed):** `.github/workflows/deploy-pages.yml` writes the secret to project **`spanishtvshows`** (line 42 `pages/projects/spanishtvshows`) but deploys to **`--project-name=spanishtvshows-site`** (line 51) — two different projects, and the secret step is `continue-on-error: true`. Build-time is fine (the Build step exports `TMDB_API_KEY`, so prerendered TMDB pages render: home 79 `image.tmdb.org` refs, `/best-on-netflix/` 58). The dynamic edge route reads the **request-context** env only (`lib/cloudflare.js` → `getSecret`), where the key was never set → `lib/tmdb.js:23` `throw new Error("Missing TMDB_API_KEY")` → the `catch` calls `tmdb()` again and throws again. Local `next dev` + a dummy key reproduces the **identical** `__next_error__` 500 page | set the secret + deploy against `spanishtvshows-site`: **needs account `555c6765…` token (BLOCKED #29)** — Actions are retired, so the workflow will not do it |
 | 19 | israeljoffe.com/.org | No AdSense at all (loader 0, slots 0) | live sweep 2026-10-06 | decide: monetize or keep clean |
 | 20 | Placebetsai-src | `lib/web-search.js` has a committed `sk-or-v1-…` key | grep | rotate + move to secret |
 | 21 | Spanishtvshows.com | `app/api/chatbot/route.js` committed `gsk_…` key | grep | rotate + move to secret |
@@ -117,7 +188,6 @@ Error: Event handlers cannot be passed to Client Component props.
 | 25 | fashionistas.ai | **8 env vars** (eBay / Etsy / Google / Stripe) | → OAuth, billing, and the first real marketplace post are all dead. **Zero real posts ever** |
 | 26 | fashionistas.ai | **Try-on credits: 9 left** | Modal free credit burning down; `MAX_MONTHLY_TRYON_SPEND` set but no replacement tier |
 | 27 | fashionistas.ai | `OPENCODE_API_KEY` absent | opencode leg of the provider chain inert |
-| 28 | spanishtvshows.com | **`TMDB_API_KEY` locally** | build stops at `Missing TMDB_API_KEY`; key exists only as a GitHub secret (API-unreadable) |
 | 29 | spanishtvshows.com | **token for account `555c6765…`** | project `spanishtvshows-site` is not in `7eb89b01…` |
 | 30 | scooter.exchange | **no local repo** | cannot be rebuilt from this laptop |
 | 31 | all | **wrangler OAuth refresh** (`zone:read`) | current token expires `2026-10-06T20:58:54Z`, missing `zone` scope — one click, allowed ask #3 |

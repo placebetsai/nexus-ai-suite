@@ -1802,10 +1802,10 @@ Live source of createstuff.ai is `nexus-ai-suite/apps/createstuff-marketing/` (s
 and deploying that worker would ship another session's uncommitted 77-line change.
 
 **GOAL 5 — 3 PASS / 6 BLOCKED on `live deploy hash == HEAD?`.** All nine are 200 with a valid
-sitemap and exactly one `<h1>`; 8/9 have clean internal links. **spanishtvshows.com is the
-exception and is genuinely broken**: 100 of 193 sitemap URLs are `/show/…` and every one
-tested returns `500` (7/7), plus a homepage 404 at `/Netflix-spanish-shows`.
-`religiousjews.com` has no AI-bot rules in robots.txt.
+sitemap and exactly one `<h1>`; 8/9 have clean internal links. **spanishtvshows.com was the
+exception**: 100 of 193 sitemap URLs are `/show/…` and every one tested returned `500` (7/7) —
+**fixed 2026-10-07, `/show/*` → 200 (§16.5, `ISSUE_LOG` #42)** — plus a homepage 404 at
+`/Netflix-spanish-shows`, **still open**. `religiousjews.com` has no AI-bot rules in robots.txt.
 
 **Gotcha worth remembering:** wrangler's `pages deployment list` resolved to the wrong account
 even under `env -i`; the Cloudflare REST API with `Authorization: Bearer` is the reliable way to
@@ -1853,8 +1853,13 @@ that leaked *inside the code* is not, and it needs Israel (allowed ask).
   tonight**: every data route on `fashionistas-api…workers.dev` returns `401 {"error":"Unauthorized"}`
   (`/api/marketplaces`, `/api/listings`, `/api/marketplace/posts`, `/api/marketplace/accounts`) and
   there is no login to mint a session with. Do not write "0 posts" or "posts exist" without output.
-- `TMDB_API_KEY` value unrecoverable → spanishtvshows `/show/*` still 500; the `STV_*` **token**
-  exists (access fixed), the **key** does not.
+- ~~`TMDB_API_KEY` value unrecoverable → spanishtvshows `/show/*` still 500~~ → **RESOLVED
+  2026-10-07 (§16.5).** The user delivered the key from the TMDB account `spanishtvshows`
+  (*Settings → API*). It is stored as `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN`
+  (244 ch) in `.secrets/cf.env` (`-rw-------`, git-ignored, **0 tracked copies**), set on Cloudflare as
+  the Pages secret `TMDB_API_KEY` on project **`spanishtvshows-site`** (production *and* preview), and
+  `/show/*` now returns **200**. **The raw value is never written into this handoff** — the repo is
+  PUBLIC (`placebetsai/nexus-ai-suite`); name + path + length + `90ca…4e5e` only.
 - fashionistas: 8 env vars + Stripe **test** key + `OPENCODE_API_KEY`; try-on credits = 9 left.
 - wrangler OAuth refresh (`zone:read`) — stored token expired `2026-10-06T20:58:54Z`.
 - Key rotations (4 + 2) · RunPod signup · APK (no build exists) · admin-UI approval.
@@ -1876,6 +1881,52 @@ that leaked *inside the code* is not, and it needs Israel (allowed ask).
 and wrangler v4 refuses to bundle the next-on-pages artifact
 (`Could not resolve import "./__next-on-pages-dist__/assets/**/*.bin"`), so use
 `node_modules/.bin/wrangler` (3.114.17) with `--no-bundle`. Full evidence: `ISSUE_LOG.md` #37 / #38.
+
+### 16.5 2026-10-07 (after midnight) — the TMDB key arrived; `/show/*` 500 → 200
+
+**What was wrong (two stacked causes).**
+1. `.github/workflows/deploy-pages.yml` wrote `TMDB_API_KEY` to project **`spanishtvshows`**
+   (line 42) but deployed to **`spanishtvshows-site`** (line 51) — so the key was on a project that
+   does not serve the domain. The step was `continue-on-error: true`, so every run reported success.
+2. **Uploading the secret to the right project was still not enough.** After the key was set on
+   `spanishtvshows-site` (production), `/show/1399` kept returning **500** — Cloudflare applies a
+   project's env to a **new** deployment, and production was still running the 2026-10-06 build.
+
+**Proof the key itself was never the problem.** `GET /3/configuration?api_key=…` → **200**;
+`/3/tv/1399?api_key=…` → **200** (`Game of Thrones`, 73 episodes in S1); v4 Bearer token → **200**.
+
+**Fix.** (a) key stored locally → `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) in `.secrets/cf.env`;
+(b) Pages secret `TMDB_API_KEY` set on `spanishtvshows-site` for **production *and* preview**;
+(c) rebuilt from this laptop exactly as CI does — `npx @cloudflare/next-on-pages@latest` with
+`TMDB_API_KEY` + `SITE_URL` (needed `npm_config_legacy_peer_deps=true`, else `ERESOLVE` on
+`@cloudflare/workers-types` vs `wrangler@4.148`); (d) staged on a **preview** branch first, then
+`wrangler pages deploy .vercel/output/static --project-name=spanishtvshows-site --branch=main`
+(`production_branch = main`).
+
+**Evidence (2026-10-07 ~02:10 UTC).**
+
+| check | before | after |
+|---|---|---|
+| `/show/1399` | **500** (19,766 B, `__next_error__`, digest `2025926783`) | **200** 79,323 B — title *Game of Thrones Review…*, **40 `image.tmdb.org` refs** |
+| `/show/679` | **500** | **200** 80,090 B — *Xiaolin Showdown*, 36 refs |
+| `/show/46648` | **500** | **200** 78,149 B — *True Detective*, 40 refs |
+| 10 homepage-linked ids (`12637 1446 19505 203667 212907 284792 30826 44953 63764 67335`) | — | **10/10 → 200**, 0 not-200 |
+| sitemap sample, old prod deployment `609631cf` vs live | 15 URLs, **7 differences, all `old=500 → live=200`** | **0 regressions** |
+| `/`, `/blog`, `/best-on-netflix`, `/spanish-show-finder`, `/sitemap.xml`, `/ads.txt` | 200 | **200** (all six) |
+| sitemap URL set old vs live | **202 vs 202, identical, 0 diff** | no page was dropped |
+
+**Gotchas worth remembering.**
+- A Pages secret change does **not** reach an already-deployed release — a redeploy is mandatory.
+  Symptom: secret present in `deployment_configs.production.env_vars`, page still 500.
+- `next build` regenerates `content/generated/spanish-pages.json` (108 → 51 entries here). It is a
+  **build artifact**, regenerated on every build (CI does the same), and the sitemap is built from
+  `app/sitemap.js`, not from that file — reverted with `git checkout --`, repo left clean at `0 dirty`.
+- The error message is invisible in prod (Next serves `__next_error__` + a numeric `digest` only);
+  compare a *previous deployment URL* (`https://<hash>.spanishtvshows-site.pages.dev`) against live
+  to see what actually changed.
+
+**Still open on spanishtvshows:** homepage link `/Netflix-spanish-shows` → **404**; the 3 retired cron
+jobs (incl. *Generate Spanish Pages*, which now has its key locally) still need Cloudflare Cron Triggers.
 
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.

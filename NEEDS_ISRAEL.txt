@@ -4,12 +4,14 @@ Updated 2026-10-06. Secrets are never written in this file, only names and paths
 1. wrangler OAuth refresh (allowed ask #3) — the stored token expired 2026-10-06T20:58:54Z
    and is missing the `zone` scope. One click: `wrangler login`. Nothing on the
    federation can read DNS without it.
-2. Cloudflare token (or one `wrangler login`) for account 555c6765… — spanishtvshows.
-   Without it: every /show/<id>/ page stays 500 (RCA: the workflow writes TMDB_API_KEY
-   to project `spanishtvshows` but deploys to `spanishtvshows-site`), the 3 retired
-   cron jobs cannot become Cloudflare Cron Triggers, and no STV deploy is possible.
-3. TMDB_API_KEY value — exists only as a GitHub secret (API-unreadable), so the STV
-   site cannot be built from this laptop either.
+2. RESOLVED 2026-10-06/07 — STV Cloudflare token received → `STV_API_TOKEN` (53 ch) in
+   `.secrets/cf.env`; STV deploys work from this laptop (proof: `spanishtvshows-site`
+   production deploy 2026-10-07). Work left, **not** an ask: move the 3 retired cron jobs
+   onto Cloudflare Cron Triggers.
+3. RESOLVED 2026-10-07 — TMDB_API_KEY handed over by the user (TMDB account `spanishtvshows`
+   → Settings → API) → stored as `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN`
+   (244 ch) in `.secrets/cf.env`; the local build works again and `/show/*` return 200
+   (`ISSUE_LOG.md` #42). Raw value stays out of every repo and doc.
 4. fashionistas: Stripe test key (sk_test_…) + the 8 env vars (eBay / Etsy / Google /
    Stripe) — OAuth, billing and the first real marketplace post are all dead.
 5. fashionistas marketplace logins — zero real posts have ever been made.

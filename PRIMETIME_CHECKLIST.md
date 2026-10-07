@@ -92,8 +92,8 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
 - `ISSUE_LOG.md` created (36 issues: 10 fixed, 13 open, 9 blocked, 4 wontfix)
 - `nexus-ai-suite/HANDOFF-2026-10-06.md` = the blueprint: mission, accounts, key map (names/paths only), dated log, risks
 
-**🔴 NEW BLOCKERS found**
-- spanishtvshows `/show/<id>/` → **500 for every id tested**
+**🔴 NEW BLOCKERS found** *(2026-10-07: the spanishtvshows one is **fixed** — `/show/*` → 200, see `ISSUE_LOG` #42)*
+- ~~spanishtvshows `/show/<id>/` → **500 for every id tested**~~ → **FIXED 2026-10-07**
 
 **Round 2 (late 2026-10-06) — the two "not on the real domain" gaps closed**
 - **handoff pushed to GitHub**: `f091eea..4bac909 master` (Actions are off repo-wide — nothing triggered)
@@ -131,12 +131,12 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
 | fashionistas.ai | **267 / 267** (`~/fashionistas-ai` @ `8886e25`, clean) | 200 · loader 1 · 3 slots · `ads.txt 200` |
 | marketpicks.ai | **54 / 54** | 200 · loader 1 · 1 slot · `/api/health?verbose=1` → real `last_success` from `cron_runs`/`cron_health` (M4 #1) |
 | Ihatecollege | **7 / 7** | 200 · 76,386 B · loader 1 · 3 slots · `ads.txt 200` |
-| Spanishtvshows.com | **5 / 5** | 200 · loader 2 · **7 slots** · `ads.txt 200` — but **`/show/1399`, `/show/679`, `/show/46648` → 500** (21:35 UTC) |
+| Spanishtvshows.com | **5 / 5** | 200 · loader 2 · **7 slots** · `ads.txt 200` · **`/show/1399`, `/show/679`, `/show/46648` → 200** (21:35 UTC they were 500; re-checked 02:10 UTC → 200, 10/10 homepage ids too) |
 | createstuff.ai | — | 200 · **110,849 B = source byte-for-byte** · loader 1 · **4 slots** · `ads.txt 200` · **`f63b8a56`** |
 | scooter.exchange | — | 200 · `loremflickr=0` · 9/9 images load · `?category=ebike` 50 rows · rentals NYC **25** |
 | diamonds.forsale | — | 200 · loader 2 · `ads.txt 200` · **⚠️ 0 ad units** → `ISSUE_LOG` #41 |
 | israeljoffe.com/.org | — | 200 · no ads (user's standing instruction) |
 
 **🔴 BLOCKERS still open**
-- **spanishtvshows `/show/<id>/` → 500 for every id** — RCA in `ISSUE_LOG` #18: the workflow sets `TMDB_API_KEY` on project `spanishtvshows` but deploys to `spanishtvshows-site`. Fix needs the `555c6765…` account token; Actions are retired, so the workflow will not do it.
+- ~~**spanishtvshows `/show/<id>/` → 500 for every id**~~ → **FIXED 2026-10-07** (`ISSUE_LOG` #18/#28/#42): key delivered by the user, stored as `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) in `.secrets/cf.env` (600, gitignored), set as the Pages secret `TMDB_API_KEY` on **`spanishtvshows-site`** (prod + preview — the workflow had written it to project `spanishtvshows`, which does not serve the domain), rebuilt locally with `next-on-pages` and deployed `--branch=main`; live `/show/1399`, `/show/679`, `/show/46648` → **200**.
 - marketpicks M4 ×3 (`/api/cron/quotes` 524 s, `bot2`/`ensemble_noground` off-topic, `confidence` null) · fashionistas prime time (9 try-on credits, 0 real posts, 8 env vars) · key rotations ×4 + SMTP ×2 · wrangler OAuth refresh

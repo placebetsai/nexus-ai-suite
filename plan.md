@@ -9,6 +9,10 @@
 > - All other Nexus apps → account `7eb89b01e9c3bec41ee24db8ecbe77f8`, `CF_API_TOKEN` (yellow-math-1874)
 > - Both VERIFIED live 2026-09-23. See handoff.md → Credentials & Config.
 > - **SpanishTVShows account `555c6765a482638bb35788790f03e763` → `STV_API_TOKEN`** (53 ch, account-scoped) + R2 `STV_R2_ACCESS_KEY_ID` (32) / `STV_R2_SECRET_ACCESS_KEY` (64) / `STV_R2_ENDPOINT`. Handed over by the user 2026-10-06. Verifies 200 on `accounts/{id}/tokens/verify` (`/user/tokens/verify` 401 — no user scope, normal). Owns Pages `spanishtvshows-site` (spanishtvshows.com) and the stale `spanishtvshows` that still holds `TMDB_API_KEY`.
+> - **🔑 TMDB_API_KEY (The Movie Database) — handed over by the user 2026-10-06, DO NOT LOSE.** Source: the TMDB account **`spanishtvshows`** → *Settings → API → API Key (v3 auth)* (same page also shows the *API Read Access Token*). **Stored raw in `.secrets/cf.env` (gitignored, chmod 600) as two entries:** **`STV_TMDB_API_KEY`** (32 ch, `90ca…4e5e`) and **`STV_TMDB_READ_TOKEN`** (v4 read token, 244 ch, `eyJh…GNdw`). Load: `set -a; source .secrets/cf.env; set +a`.
+>   - **Verified 2026-10-06:** `GET https://api.themoviedb.org/3/configuration?api_key=$STV_TMDB_API_KEY` → **200**; `/3/tv/1399?api_key=…` → **200** (`Game of Thrones`); the v4 token → **200** with `Authorization: Bearer`.
+>   - **Where it is set on Cloudflare:** Pages project **`spanishtvshows-site`** (acct `555c6765…`) as secret `TMDB_API_KEY` on **production *and* preview** — that is the project the domain actually deploys to. Project `spanishtvshows` also holds one (written by the retired workflow), but that project does not serve the domain.
+>   - A copy also exists as a GitHub Actions secret `TMDB_API_KEY` in `placebetsai/Spanishtvshows.com` (created 2025-12-23) — **GitHub never returns secret values via API or UI**, so the laptop copy above is the one to use. **Never paste the raw value into this repo, the handoff, or any doc** (the handoff is the PUBLIC repo `placebetsai/nexus-ai-suite`): name + path + length + `90ca…4e5e` only.
 > - **IHateCollege account `90904956101bde8c4ca51cdaa5bee1ab` (ihatecollege79@gmail.com) → `IHC_API_TOKEN`** (53 ch) + R2 `IHC_R2_ACCESS_KEY_ID` (32) / `IHC_R2_SECRET_ACCESS_KEY` (64) / `IHC_R2_ENDPOINT` / `IHC_EMAIL`. Handed over by the user 2026-10-06, verified 200. Owns Pages `ihatecollege` (ihatecollege.com), `scooters-exchange` (scooter.exchange), `diamonds-forsale` (diamonds.forsale), `religiousjews-com`.
 > - Load any of them: `set -a; source .secrets/cf.env; set +a; curl -H "Authorization: Bearer $STV_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$STV_ACCOUNT_ID/pages/projects`
 >
@@ -1139,8 +1143,15 @@ Internal links: **8/9 all sampled links OK**.
 | israeljoffe.com | `01555e5` | no CI | NO |
 | israeljoffe.org | `62e3d50` | no CI | NO |
 
-- **spanishtvshows.com ships 100 broken URLs**: sitemap has 193 entries, **100 are `/show/…`**,
-  and **every `/show/` URL tested returned `500` (7/7**, homepage-linked and sitemap-linked);
-  homepage also links `/Netflix-spanish-shows` → `404`. `/`, `/blog`, `/sitemap.xml` are 200.
+- ✅ **FIXED 2026-10-07 — spanishtvshows `/show/<id>/` no longer 500s.** Was: 100 of 193 sitemap
+  URLs are `/show/…` and every one tested returned `500` (7/7, homepage-linked and sitemap-linked).
+  Two stacked causes: the retired workflow wrote `TMDB_API_KEY` to project **`spanishtvshows`** while
+  deploying to **`spanishtvshows-site`** (RCA `ISSUE_LOG` #18), and Cloudflare only applies a
+  project's env to a **new** deployment — uploading the secret alone was not enough. Now: key on
+  `spanishtvshows-site` (prod **and** preview) + a local `next-on-pages` build/deploy →
+  **`/show/1399`, `/show/679`, `/show/46648` → 200** and **10/10** homepage-linked ids → 200; a
+  15-URL sitemap sample diffed against the previous production deployment shows **7 differences,
+  all `old=500 → live=200`, 0 regressions**. Evidence: `ISSUE_LOG` #42. Still open on that site:
+  homepage links `/Netflix-spanish-shows` → `404`. `/`, `/blog`, `/sitemap.xml` were and stay 200.
 - `religiousjews.com` / `wuwonline.com` are additionally routed through the `app-host` Worker
   (wildcard routes, content in KV+D1), so Pages CI is not their only serving path.
