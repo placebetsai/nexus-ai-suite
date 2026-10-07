@@ -1,0 +1,22 @@
+NEEDS ISRAEL — what is blocked, one line each (every item has failed 3+ times)
+Updated 2026-10-06. Secrets are never written in this file, only names and paths.
+
+1. wrangler OAuth refresh (allowed ask #3) — the stored token expired 2026-10-06T20:58:54Z
+   and is missing the `zone` scope. One click: `wrangler login`. Nothing on the
+   federation can read DNS without it.
+2. Cloudflare token (or one `wrangler login`) for account 555c6765… — spanishtvshows.
+   Without it: every /show/<id>/ page stays 500 (RCA: the workflow writes TMDB_API_KEY
+   to project `spanishtvshows` but deploys to `spanishtvshows-site`), the 3 retired
+   cron jobs cannot become Cloudflare Cron Triggers, and no STV deploy is possible.
+3. TMDB_API_KEY value — exists only as a GitHub secret (API-unreadable), so the STV
+   site cannot be built from this laptop either.
+4. fashionistas: Stripe test key (sk_test_…) + the 8 env vars (eBay / Etsy / Google /
+   Stripe) — OAuth, billing and the first real marketplace post are all dead.
+5. fashionistas marketplace logins — zero real posts have ever been made.
+6. RunPod signup — no account, so nothing can be billed there.
+7. Install the APK — the Android build is still Expo WIP, no artifact exists yet.
+8. Key rotations: 4 leaked keys in committed files + 2 Gmail SMTP app passwords
+   (Placebetsai-src web-search, Spanishtvshows chatbot, Ihatecollege expand-articles).
+
+Not blocking (FYI): the admin UI choice (a) admin panel vs (b) checklist/handoff was
+never answered; joffe sites stay ad-free unless you say otherwise.
