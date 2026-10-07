@@ -2201,9 +2201,44 @@ account this machine has no credential for**. Measured:
 One API token (Pages Edit + Zone DNS Edit) unblocks it: deploy the built `out/` to whichever project
 actually owns the domain, then fix `www`.
 
-**Still running:** marketpicks.ai (63 thin pages, and `/rooms/*` renders **0 `<p>` tags** server-side —
-Google and AdSense reviewers literally see an empty shell there).
 
+**Still running:** marketpicks.ai — the last **7** thin pages (`/privacy` 309, `/terms` 325, `/tools` 334,
+`/history/stock-market` 341, `/history/crypto` 356, `/about` 362, `/heatmap` 393) are in flight with another
+agent; nothing is committed or deployed from it. hiddencameras.tv production is still **BLOCKED**
+(ISSUE_LOG #52 / NEEDS_ISRAEL #9).
+
+**Round 2 — 2026-10-07 — diamonds.forsale: every sitemap URL is now ≥400 words.**
+- Round 1 (commit `4de39c9`) left 8 pages under 400 words: /diamond-size-visualizer 289, /clarity-chart 296, /blog 309, /price-calculator 336, /color-scale 338, /diamond-shapes 346, /sell-engagement-ring-after-divorce 367, /sell-inherited-jewelry 391.
+- Round 2 rewrote those 8 with real sections and 4 visible Q&A each. It also fixed a real schema/visibility mismatch: /price-calculator shipped `FAQPage` JSON-LD with 4 questions and NO visible FAQ text; the same 4 Q/A are now rendered in the page body verbatim.
+- commit `2516180` → `node_modules/.bin/next-on-pages` exit 0, `npx tsc --noEmit` exit 0 → `wrangler pages deploy .vercel/output/static --project-name=diamonds-forsale --branch=main` using the IHC token → independent re-crawl of all 61 sitemap URLs on production: **<400w = 0** (was 8), min **410**, median **517**.
+- Gotcha (cost a wasted deploy): deploying WITHOUT `--branch=main` publishes a preview; the apex kept serving the old build even though `cache-control: max-age=0, must-revalidate` and `cf-cache-status: DYNAMIC` proved it was not a cache. Always pass `--branch=main` for diamonds.forsale, then confirm marker text on `https://diamonds.forsale/` before reporting.
+- diamonds.forsale still has **0 ad units** (no `<ins data-ad-slot` anywhere) — ISSUE_LOG #41, deliberately left alone until the AdSense review clears.
+- hiddencameras.tv is unchanged this round — production still BLOCKED (ISSUE_LOG #52 / NEEDS_ISRAEL #9). marketpicks.ai round 1 shipped the same day (commit `4cb7ecf`) — see its block below.
+
+**Round 2 — 2026-10-07 — marketpicks.ai: 63 → 7 thin pages live.**
+- All 8 targets got real server-rendered prose: `/rooms` 175→858, `/rooms/nvda-ai-infrastructure` 175→763,
+  `/watchlist` 208→877, `/methodology` 275→1427, `/screener` 297→918, `/contact` 263→815,
+  `/why-is/TSLA-moving` 351→1005, `/why-is/HD-moving` 301→941.
+- The 48 `/why-is/<T>-moving` pages were **kept and deepened, not deleted** (ensemble vote counts,
+  driven-by / counter-argument panels, risk notes, earnings context, related symbols, 4-question FAQ) —
+  pulling indexed pages out mid-review would have removed the deepest content on the site. The 6
+  byte-identical duplicates `/why-is-{aapl,amd,nvda,pltr,spy,tsla}-moving` now **308** →
+  `/why-is/<TICKER>-moving` (`next.config.mjs`).
+- Three defects found by reading the rendered HTML and fixed: duplicated bull-case bullets
+  (`quoteToSignal` pushed `leadReason` *and* `topReasons[0]`), a "Related symbols" section that could
+  never render (the quote/D1 path always set `relatedTickers: []`), and a hardcoded "Sixteen decision
+  trees" where the real tree total belongs.
+- Ship: commit **`4cb7ecf`** → `npm run ship` = `pages:build` → `wrangler pages deploy
+  .vercel/output/static --project-name=marketpicks-ai --branch=main` → live crawl of all 133 sitemap
+  URLs: **`<400w` 63 → 7**, min **175 → 309**, median **574 → 977**, 0 fetch errors, **0 pages without ad
+  slots**.
+- Verified here rather than taken on trust: `npm test` **54 pass / 0 fail**; `npm run build` exit 0;
+  `npx tsc --noEmit` **134 errors before and after** — diffed against a clean `git worktree` at HEAD,
+  normalised error sets identical (only union-member ordering differs).
+- Gotcha: `npm run ship` exits **1** because `indexnow:ping` fails with `INDEXNOW_KEY not set`, even when
+  the deployment itself succeeded. Read `Deployment complete!` before believing the exit code.
+  `INDEXNOW_KEY` is a genuinely missing key, but it only affects the search ping — it is not in
+  `NEEDS_ISRAEL.txt` because it blocks no content and no money.
 
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
