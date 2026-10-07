@@ -1,7 +1,9 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
-> **Newer:** `HANDOFF-2026-09-26.md` — MarketPicks + PlaceBets data/tools session (deploy rules, what's live, open problems).
-**Last updated: 2026-09-29** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+> **Newer:** `HANDOFF-2026-10-06.md` — current daily handoff (accounts, tokens, deploy recipe, open blockers).
+**Last updated: 2026-10-06** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Sections 1–15 are history (2026-09-24 → 2026-10-02). Current truth = §16 + `HANDOFF-2026-10-06.md` +
+`ISSUE_LOG.md` + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
 **Local path:** `/home/billionaremaker/Documents/Default Project/nexus-ai-suite`
 **Local GitHub backup (mirror):** `/home/billionaremaker/Documents/GitHub-Backup/`
 
@@ -1809,3 +1811,71 @@ tested returns `500` (7/7), plus a homepage 404 at `/Netflix-spanish-shows`.
 even under `env -i`; the Cloudflare REST API with `Authorization: Bearer` is the reliable way to
 read deployment provenance. Pass `CLOUDFLARE_ACCOUNT_ID` explicitly — the CS token's
 `GET /accounts` returns an empty list, so account discovery cannot be used to identify it.
+
+---
+
+## 16. 2026-10-06 (late) — THE HANDOFF ITSELF WAS STALE; what is actually true now
+
+**Why this section exists.** Sections 1–15 stop at 2026-10-02 and the header still said
+`Last updated: 2026-09-29`. Three claims a reader would take from the older handoff were
+already false: *`main is 5ffba1e`*, *try-on isn't wired up*, *the docs leak is open*. Every
+correction below carries its command and its output.
+
+### 16.1 Corrections
+
+| Old claim | Truth as of 2026-10-06 | Proof |
+|---|---|---|
+| `main is 5ffba1e` | every repo HEAD, **all pushed** (§16.2) — `5ffba1e` now appears in **no** handoff, only as a historical note in `ISSUE_LOG.md` #10 | `git log --oneline -1` per repo; `git status -sb` shows no `ahead`; `Placebetsai-src` had 2 unpushed commits → `5a03c2a..2dd74a9` pushed tonight after a diff secret scan `hits: 0` |
+| **try-on isn't wired up** | live `POST /api/tryon/hd` → **200, 48.2 s, 576×823 WebP 19,072 B, `cost_usd 0`** (2026-10-06); API worker answers `/api/health` → `{"ok":true,…,"version":"3.1.0"}` | `ISSUE_LOG.md` #10 · `curl https://fashionistas-api.fashionistas1979.workers.dev/api/health` → `http=200` |
+| **docs leak is open** | **the docs are clean.** At `931cd0b`, `git grep -E` over tracked `*.md`/`*.txt`: `sk_test_` **0 files**, `sk_live_` **0**, `AIza…` **0**, `ghp_` **0**; `cfat_` matches 3 files **only in redacted form** (`cfat_qL7N…84da4`, never a value). Credential *values* live in `.secrets/cf.env` (`-rw-------`, git-ignored) | scan run 2026-10-06, output pasted in session |
+| …but **key rotation is still open** | the *source-code* leaks are untouched: **4 leaked keys in committed files + 2 Gmail SMTP app passwords** (Placebetsai-src web-search, Spanishtvshows chatbot, Ihatecollege expand-articles) | `NEEDS_ISRAEL.txt` #8 · `ISSUE_LOG` BLOCKED |
+
+**How to read that split:** exposure through the handoff/public repo is closed; rotation of the keys
+that leaked *inside the code* is not, and it needs Israel (allowed ask).
+
+### 16.2 Repo state (2026-10-06 — every one pushed)
+
+| repo | HEAD | branch | note |
+|---|---|---|---|
+| `nexus-ai-suite` | `931cd0b` | master | docs: STV + IHC tokens as names/paths/lengths only |
+| `fashionistas-ai` | `e239702` | main | OG/canonical/focus-visible |
+| `Placebetsai-src` | `2dd74a9` | main | was +2 unpushed → pushed tonight |
+| `marketpicks-ai` | `c91ae99` | live-source | M4 #1 |
+| `Ihatecollege` | `860034b` | main | sitemaps |
+| `Spanishtvshows.com` | `186247c` | main | ads: render the AdUnit 11 pages already imported |
+| `createstuff-ai` | `39e695e` | main | 1 dirty file (`index.html` +23) still to commit |
+| `scooters-exchange` | `2e77e3a` | master | shipped tonight (was `ed4c794`) |
+| `diamonds-forsale` | `775e029` | master | shipped tonight (was `5692dae`) |
+
+### 16.3 Still open — unchanged, and explicit about what was **not** re-verified
+
+- **No marketplace post has ever gone out.** Last known = 0 real posts. **NOT RE-VERIFIED
+  tonight**: every data route on `fashionistas-api…workers.dev` returns `401 {"error":"Unauthorized"}`
+  (`/api/marketplaces`, `/api/listings`, `/api/marketplace/posts`, `/api/marketplace/accounts`) and
+  there is no login to mint a session with. Do not write "0 posts" or "posts exist" without output.
+- `TMDB_API_KEY` value unrecoverable → spanishtvshows `/show/*` still 500; the `STV_*` **token**
+  exists (access fixed), the **key** does not.
+- fashionistas: 8 env vars + Stripe **test** key + `OPENCODE_API_KEY`; try-on credits = 9 left.
+- wrangler OAuth refresh (`zone:read`) — stored token expired `2026-10-06T20:58:54Z`.
+- Key rotations (4 + 2) · RunPod signup · APK (no build exists) · admin-UI approval.
+- Informational, **not** defects: `api.fashionistas.ai` never had DNS (the live page calls the
+  absolute origin `https://fashionistas-api.fashionistas1979.workers.dev`), and `fashionistas.ai/api/*`
+  returns the Pages 404 page because the API is a Worker, not Pages Functions.
+
+### 16.4 Round-3 ships (2026-10-06, after §15)
+
+| site | what changed | deploy / commit |
+|---|---|---|
+| scooter.exchange | 23 dead `loremflickr` refs → Wikimedia (live `loremflickr=0`, homepage `9/9` images load); **4,439 category corrections** over 7,004 rows parsed from titles (`ebike` 1,105, `other` 1,000) + 292 parts deactivated; rentals `count:0 → 25/25/52`; seller photos `NXDOMAIN → GET /api/photos/<key>` | worker `6c4b1f15` · Pages `56dd2a9d` · `ed4c794..2e77e3a` |
+| ihatecollege.com | loader **×1, slots ×3 on the real domain** (was loader ×0 there) | Pages `498b4603`, acct `90904956…` |
+| diamonds.forsale | build **broken since 2026-09-27** by `onError` on an `<img>` in a server component (`Static page generation for /about … timing out after 3 attempts`) → **0 ads on every page** since July; fixed, built with `ADSENSE_CLIENT`, avatar `404 → 200` | Pages `37253dda` · `5692dae..775e029` |
+| docs | STV (`555c6765…`) + IHC (`90904956…`) tokens registered as names/paths/lengths | `493ccc4..931cd0b` |
+
+**Deploy recipe that works on this machine:** the Pages project's `production_branch` is **`main`** —
+`--branch=master` uploads as `env=preview` and *the domain keeps serving the old build, silently*;
+and wrangler v4 refuses to bundle the next-on-pages artifact
+(`Could not resolve import "./__next-on-pages-dist__/assets/**/*.bin"`), so use
+`node_modules/.bin/wrangler` (3.114.17) with `--no-bundle`. Full evidence: `ISSUE_LOG.md` #37 / #38.
+
+**Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
+`ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
