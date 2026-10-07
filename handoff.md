@@ -1849,10 +1849,14 @@ that leaked *inside the code* is not, and it needs Israel (allowed ask).
 
 ### 16.3 Still open — unchanged, and explicit about what was **not** re-verified
 
-- **No marketplace post has ever gone out.** Last known = 0 real posts. **NOT RE-VERIFIED
-  tonight**: every data route on `fashionistas-api…workers.dev` returns `401 {"error":"Unauthorized"}`
-  (`/api/marketplaces`, `/api/listings`, `/api/marketplace/posts`, `/api/marketplace/accounts`) and
-  there is no login to mint a session with. Do not write "0 posts" or "posts exist" without output.
+- **No marketplace post has ever gone out — and the reason is now pinned down (§16.6, re-verified
+  2026-10-07).** The earlier note here claimed *"there is no login to mint a session with"* — **that
+  was wrong.** Site auth works: `POST /api/auth/register` → **201** (D1 `users` id 78), `login` →
+  **200** + `fash_session`, `/api/auth/me` → **200**, `/api/marketplaces` → **200 (11 marketplaces)**.
+  What actually stops a post is **`402 subscription_required`** ($14.99/mo gate) and, behind it,
+  `POST /api/billing/checkout` → **503 `STRIPE_SECRET_KEY not configured`**. The worker's data routes
+  still answer `401` **because no credentials were sent**, not because login is missing. The real
+  external blocker remains the marketplace OAuth logins (eBay/Etsy) — see `ISSUE_LOG` #25 / #43.
 - ~~`TMDB_API_KEY` value unrecoverable → spanishtvshows `/show/*` still 500~~ → **RESOLVED
   2026-10-07 (§16.5).** The user delivered the key from the TMDB account `spanishtvshows`
   (*Settings → API*). It is stored as `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN`
@@ -1927,6 +1931,46 @@ and wrangler v4 refuses to bundle the next-on-pages artifact
 
 **Still open on spanishtvshows:** homepage link `/Netflix-spanish-shows` → **404**; the 3 retired cron
 jobs (incl. *Generate Spanish Pages*, which now has its key locally) still need Cloudflare Cron Triggers.
+
+### 16.6 2026-10-07 — fashionistas: **can we post?** the full chain, measured
+
+Asked directly: *"can we post something on it or not? where do i test?"* Answer, every step with
+its real status code (base `https://fashionistas.ai`, which serves the **Pages Functions**, not the
+worker — the worker has a different, older auth that wants `username`+`password`):
+
+| # | step | endpoint | result |
+|---|---|---|---|
+| 1 | create an account | `POST /api/auth/register` `{email,password}` | **201** `{"ok":true,"id":78,…}` |
+| 2 | sign in | `POST /api/auth/login` | **200** + `Set-Cookie: fash_session=…; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000` |
+| 3 | prove the session | `GET /api/auth/me` | **200** `{"id":78,"authenticated":true}` |
+| 4 | see the marketplaces | `GET /api/marketplaces` | **200** `count:11` (its own `caveat` says *"no real marketplace post has ever been executed"*) |
+| 5 | **publish a listing** | `POST /api/list/all` `{title,description,price,photoUrl}` | **402 `subscription_required` `status:"inactive"`** — *"An active $14.99/mo subscription is required to list"* (same on `/api/list/ebay` and `/api/list/etsy`) |
+| 6 | pay for the subscription | `POST /api/billing/checkout` | **503 `STRIPE_SECRET_KEY not configured`** — *"Set the STRIPE_SECRET_KEY Pages environment variable…"* |
+
+**So: NO, not today — and it is not a mystery.** The gate is `requireActiveSubscriber()`
+(`functions/api/_lib/auth.js:189`) → Stripe. Behind Stripe sit `EBAY_SANDBOX_{CLIENT_ID,CLIENT_SECRET,
+REDIRECT_URI}` + `ETSY_{API_KEY,SHARED_SECRET}` (the "8 env vars", `ISSUE_LOG` #25) and then the
+marketplace OAuth logins themselves. Unblocking order: **Stripe test key → env vars → eBay/Etsy login → post.**
+
+**Where you test it** (once a subscription can be bought): `https://fashionistas.ai/` → sign-in form
+`#login-u` / `#login-p` (the page calls `auth/login` and `auth/register`), then the post UI `#pu-post`;
+or straight API `POST /api/list/all` with the `fash_session` cookie. A QA account already exists for
+this — **`qa-post-test@fashionistas.ai`, D1 `users` id 78**, password in `.secrets/cf.env`
+(`FASH_QA_EMAIL` / `FASH_QA_PASSWORD`, 600, git-ignored, 0 tracked copies).
+
+**Correcting my own earlier claim:** "there is no login to mint a session with" (§16.3, older
+handoffs) is **false** — steps 1–4 above are the proof. The `401`s on
+`fashionistas-api…workers.dev/{marketplaces,listings,marketplace/posts,marketplace/accounts}` mean
+*no credentials were sent*, not *no auth exists*.
+
+**Ads, re-measured on the live homepage (was stale in the checklist):** `fashionistas.ai/` →
+**200, 420,008 B**, loader **2** `adsbygoogle` refs, **4** `data-ad-slot` units, `ca-pub` **2**,
+`ads.txt` **200 (548 B)**.
+
+**Not a fix, recorded for the record:** the IMDb API the user researched is **not** a tonight
+substitute for TMDB — it is sold through **AWS Data Exchange** and needs an AWS account, an access
+key, a subscription request that *"IMDb staff process within five business days"*, then a paid
+product. Fine as a second source later; it cannot unblock anything now.
 
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.

@@ -128,7 +128,7 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
 | site | suite (this run) | live homepage |
 |---|---|---|
 | placebets.ai | **170 assertions PASS / 0 fail / 19 cases** vs `https://placebets.ai/api/chatbot` (87 s) | 200 · 277,412 B · loader 1 · 1 slot · `ads.txt 200` · domain now on **`0cf4db31`** (was `fe137b41`, 2026-10-02) |
-| fashionistas.ai | **267 / 267** (`~/fashionistas-ai` @ `8886e25`, clean) | 200 · loader 1 · 3 slots · `ads.txt 200` |
+| fashionistas.ai | **267 / 267** (`~/fashionistas-ai` @ `8886e25`, clean) | 200 · **420,008 B** · loader **2** · **4 slots** · `ca-pub` 2 · `ads.txt 200` (548 B) — **posting blocked** `402 subscription_required` → `503 STRIPE_SECRET_KEY not configured` (`ISSUE_LOG` #43) |
 | marketpicks.ai | **54 / 54** | 200 · loader 1 · 1 slot · `/api/health?verbose=1` → real `last_success` from `cron_runs`/`cron_health` (M4 #1) |
 | Ihatecollege | **7 / 7** | 200 · 76,386 B · loader 1 · 3 slots · `ads.txt 200` |
 | Spanishtvshows.com | **5 / 5** | 200 · loader 2 · **7 slots** · `ads.txt 200` · **`/show/1399`, `/show/679`, `/show/46648` → 200** (21:35 UTC they were 500; re-checked 02:10 UTC → 200, 10/10 homepage ids too) |

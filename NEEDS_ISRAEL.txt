@@ -13,7 +13,9 @@ Updated 2026-10-06. Secrets are never written in this file, only names and paths
    (244 ch) in `.secrets/cf.env`; the local build works again and `/show/*` return 200
    (`ISSUE_LOG.md` #42). Raw value stays out of every repo and doc.
 4. fashionistas: Stripe test key (sk_test_…) + the 8 env vars (eBay / Etsy / Google /
-   Stripe) — OAuth, billing and the first real marketplace post are all dead.
+   Stripe). Proven 2026-10-07: posting is hard-stopped at **402 subscription_required** and
+   checkout at **503 STRIPE_SECRET_KEY not configured**, so Stripe is the FIRST domino —
+   site login itself already works (ISSUE_LOG #43).
 5. fashionistas marketplace logins — zero real posts have ever been made.
 6. RunPod signup — no account, so nothing can be billed there.
 7. Install the APK — the Android build is still Expo WIP, no artifact exists yet.
