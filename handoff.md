@@ -2142,6 +2142,67 @@ then `429 ×2`). Whether it stays public is **`ISSUE_LOG` #49 — a decision for
 **Operational fact worth knowing:** the free chat tier is **10 messages/month**. Account id 78 is
 exhausted (`402 chat_messages_quota_reached used:10 cap:10 resets 2026-11-01`), so §16.8's smoke will
 no longer reproduce on it — use a fresh account.
+### 16.10 2026-10-07 — Google AdSense **"low value content"** on hiddencameras.tv, diamonds.forsale, marketpicks.ai
+
+Google sent a low-value-content notice for three sites. The cause is measurable, so the round started
+with a **full crawl of every sitemap URL** (not a sample), counting rendered text, ad slots and trust
+pages (`/tmp/opencode/full.py`, 342 URLs, 16 workers):
+
+| site | sitemap | median words | **pages < 400w** | worst offenders |
+|---|---|---|---|---|
+| hiddencameras.tv | 148 | 1112 | **6** | `/shop/` **5 words + 3 ad slots** (a client-side redirect), then 4 category pages at **327–379w carrying 5 ad slots each** |
+| diamonds.forsale | 61 | 483 | **21** | 10 `/diamond-shapes/*` pages at **195–243w**, `/sell` 272, `/contact` 151 |
+| marketpicks.ai | 133 | 574 | **63** | `/rooms*` **175w with 0 `<p>` tags in the HTML**, `/watchlist` 208, `/why-is/*` ~300 each |
+
+Two defects were worse than "thin":
+
+* **`/hidden-camera-laws/` shipped an `FAQPage` JSON-LD with no visible FAQ** — schema promising what
+  the page does not show, which Google treats as a structured-data mismatch — while its `<title>`
+  promised "all 50 states" and `const PICKS = []` rendered none of them.
+* **`/shop/` was a doorway**: 2.4 KB of "Redirecting to camera reviews…", still in the sitemap at
+  `priority 0.9`, still linked from three nav slots, still carrying 3 ad slots.
+
+**Shipped — diamonds.forsale (commit `4de39c9`, live):** content rebuilt from one source of truth
+(`lib/shapes.ts` `SHAPE_FACTS` feeds both the shape template and the comparison table, so they cannot
+drift); every price figure is the repo's own `lib/calculator.ts` multiplier or its existing resale
+bands — no invented statistics. Deploy = `node_modules/.bin/next-on-pages` + `wrangler pages deploy
+.vercel/output/static --project-name=diamonds-forsale` with `IHC_API_TOKEN` (that project lives on
+account `90904956…`, **not** the wrangler OAuth account). Measured **live** afterwards:
+**thin `<400w` 21 → 8**, median **483 → 508**, min **195 → 289**; `asscher` **195 → 1218w**, `heart`
+205 → 1231, `pear` 210 → 1239, `/sell` 272 → 1405, `/contact` 151 → 945, each with `FAQPage` and all
+4 questions **visible in `<main>`**. `npx tsc --noEmit` exit 0, build exit 0. Remaining 8 `<400w`
+pages are tools/hubs/listings (visualizer 289, clarity chart 296, blog 309, price calculator 336).
+
+**Shipped — hiddencameras.tv content (commit `6e57ac4`, built):** `/shop` **5 → 1234w** (turned into a
+real buying-guide hub instead of a redirect), `/hidden-camera-detectors` **327 → 1479w**,
+`/wifi-hidden-cameras` **336 → 1331w**, `/hidden-cameras` **379 → 1272w**,
+`/hidden-camera-laws` **352 → 1458w** (real one-party/all-party consent content, FAQ now rendered 4/4
+beside its schema), `/contact` **303 → 427w**. `npm run build` exit 0.
+
+**BLOCKED — hiddencameras.tv production (`ISSUE_LOG` #52, `NEEDS_ISRAEL` #9).** The content fix is
+only visible on `hiddencameras-tv.pages.dev`, because **production is served from a Cloudflare
+account this machine has no credential for**. Measured:
+
+* our project `hiddencameras-tv` (acct `7eb89b01…`) **does** list `hiddencameras.tv` and
+  `www.hiddencameras.tv` as custom domains — `created_on 2026-05-06`, **`status: deactivated`**
+  (`validation_data.method http`), so Pages will not serve them;
+* apex returns the **old** build (CSS `de7ebbae…`, `/shop/` = the 5-word stub) while the new build
+  (CSS `8f3eddc2…`, `/shop/` = "Shop by Guide") answers on `hiddencameras-tv.pages.dev` — so the
+  origin is a *different* project;
+* `www.hiddencameras.tv` → CNAME `hiddencameras.pages.dev` → **522**;
+* all **7 tokens on disk** (`CF_*`, `CS_*`, `STV_*`, `IHC_*`, `CLOUDFLARE_API_TOKEN`) →
+  `403 code 9109 Unauthorized` on zone `5cd13106…`; a full enumeration of **4 accounts / 23 Pages
+  projects** contains no project named `hiddencameras`;
+* `hiddencameras-tv/wrangler.toml` names the owner — account `426614a2…` (`hiddencameras79@gmail.com`)
+  — and `PLAN.md` points at `HIDDEN79_TOKEN` in `~/.cf-tokens`, **which does not exist on this
+  computer** (the GitHub secret `CF_API_TOKEN` on `placebetsai/hiddencameras-tv` is API-unreadable;
+  running a workflow to read it is banned).
+
+One API token (Pages Edit + Zone DNS Edit) unblocks it: deploy the built `out/` to whichever project
+actually owns the domain, then fix `www`.
+
+**Still running:** marketpicks.ai (63 thin pages, and `/rooms/*` renders **0 `<p>` tags** server-side —
+Google and AdSense reviewers literally see an empty shell there).
 
 
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then

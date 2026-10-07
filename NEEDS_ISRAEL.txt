@@ -1,5 +1,5 @@
 NEEDS ISRAEL — what is blocked, one line each (every item has failed 3+ times)
-Updated 2026-10-06. Secrets are never written in this file, only names and paths.
+Updated 2026-10-07. Secrets are never written in this file, only names and paths.
 
 1. wrangler OAuth refresh (allowed ask #3) — the stored token expired 2026-10-06T20:58:54Z
    and is missing the `zone` scope. One click: `wrangler login`. Nothing on the
@@ -21,6 +21,15 @@ Updated 2026-10-06. Secrets are never written in this file, only names and paths
 7. Install the APK — the Android build is still Expo WIP, no artifact exists yet.
 8. Key rotations: 4 leaked keys in committed files + 2 Gmail SMTP app passwords
    (Placebetsai-src web-search, Spanishtvshows chatbot, Ihatecollege expand-articles).
+9. hiddencameras.tv — **one API token for the account that actually serves the domain**
+   (`hiddencameras79@gmail.com`, account `426614a2…`, zone `5cd13106…`), scope **Pages Edit +
+   Zone DNS Edit**, saved as `HIDDEN79_API_TOKEN` in `nexus-ai-suite/.secrets/cf.env`.
+   Proof it is not on this machine already (ISSUE_LOG #52): all 7 tokens on disk return
+   `403 code 9109` on that zone; 4 accounts / 23 Pages projects hold no project named
+   `hiddencameras`; `~/.cf-tokens` (the `HIDDEN79_TOKEN` path in `hiddencameras-tv/PLAN.md`)
+   does not exist here. Consequence right now: `hiddencameras.tv` serves a stale build and
+   `www.hiddencameras.tv` is **522**, so the "low value content" fix is only visible on
+   `hiddencameras-tv.pages.dev`.
 
 Not blocking (FYI): the admin UI choice (a) admin panel vs (b) checklist/handoff was
 never answered; joffe sites stay ad-free unless you say otherwise.
