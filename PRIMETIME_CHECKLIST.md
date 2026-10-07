@@ -123,6 +123,20 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
   raw-GitHub check: §16 ✔, `LATE ADDENDUM` ✔, stale `no local repo` rows **0** · evidence `ISSUE_LOG` **#39**.
 - **diamonds.forsale — shipped `37253dda` (was frozen on `2026-07-30`).** Build was broken by `onError` on an `<img>` in a **server** component (`Static page generation for /about is still timing out after 3 attempts`), and `ADSENSE_CLIENT` was never supplied so the gated loader never rendered. Now: **8/8 pages `loader=2, ca-pub=2`**, `/about` avatar `200` (was `404`), **all images 200**, `loremflickr=0`, repo `5692dae..775e029`, workflows `disabled_manually` ×2 — evidence `ISSUE_LOG` **#38**.
 
+**Round 3b (21:35 UTC) — suites re-run + live sweep, every number below measured just now**
+
+| site | suite (this run) | live homepage |
+|---|---|---|
+| placebets.ai | **170 assertions PASS / 0 fail / 19 cases** vs `https://placebets.ai/api/chatbot` (87 s) | 200 · 277,412 B · loader 1 · 1 slot · `ads.txt 200` · domain now on **`0cf4db31`** (was `fe137b41`, 2026-10-02) |
+| fashionistas.ai | **267 / 267** (`~/fashionistas-ai` @ `8886e25`, clean) | 200 · loader 1 · 3 slots · `ads.txt 200` |
+| marketpicks.ai | **54 / 54** | 200 · loader 1 · 1 slot · `/api/health?verbose=1` → real `last_success` from `cron_runs`/`cron_health` (M4 #1) |
+| Ihatecollege | **7 / 7** | 200 · 76,386 B · loader 1 · 3 slots · `ads.txt 200` |
+| Spanishtvshows.com | **5 / 5** | 200 · loader 2 · **7 slots** · `ads.txt 200` — but **`/show/1399`, `/show/679`, `/show/46648` → 500** (21:35 UTC) |
+| createstuff.ai | — | 200 · **110,849 B = source byte-for-byte** · loader 1 · **4 slots** · `ads.txt 200` · **`f63b8a56`** |
+| scooter.exchange | — | 200 · `loremflickr=0` · 9/9 images load · `?category=ebike` 50 rows · rentals NYC **25** |
+| diamonds.forsale | — | 200 · loader 2 · `ads.txt 200` · **⚠️ 0 ad units** → `ISSUE_LOG` #41 |
+| israeljoffe.com/.org | — | 200 · no ads (user's standing instruction) |
+
 **🔴 BLOCKERS still open**
 - **spanishtvshows `/show/<id>/` → 500 for every id** — RCA in `ISSUE_LOG` #18: the workflow sets `TMDB_API_KEY` on project `spanishtvshows` but deploys to `spanishtvshows-site`. Fix needs the `555c6765…` account token; Actions are retired, so the workflow will not do it.
 - marketpicks M4 ×3 (`/api/cron/quotes` 524 s, `bot2`/`ensemble_noground` off-topic, `confidence` null) · fashionistas prime time (9 try-on credits, 0 real posts, 8 env vars) · key rotations ×4 + SMTP ×2 · wrangler OAuth refresh
