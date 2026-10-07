@@ -341,8 +341,8 @@ would no longer reproduce on that account; a fresh account reproduces all three 
 | # | Site | Issue | Evidence | Next action |
 |---|---|---|---|---|
 | 13 | marketpicks.ai | M4 leftovers **(1 of 4 done)**: `POST /api/cron/quotes` 76 s → 524 s; `bot2`/`ensemble_noground` off-topic; top-level `confidence` null — `/api/health` fabrication is **fixed** (see 13a) | curator agent timed out 3×300 s | fix the three remaining; `npm test` baseline **54** must hold |
-| 14 | createstuff-ai repo | `index.html` dirty (23 added lines) after a successful deploy | `git status` → `M index.html` | commit |
-| 15 | Ihatecollege repo | 4 dirty sitemap files, deployed but uncommitted | `git status` → 4 files | commit |
+| 14 | createstuff-ai repo | `index.html` dirty (23 added lines) after a successful deploy | `git status` → `M index.html` | **done 2026-10-07** — commit `19a721d`; the file is the deployed state (matches `2517b122.createstuff-ai.pages.dev` byte-for-byte: 48,508 B, slots `5079047997`/`2843751862`/`3357291048`, `initAds` ×3), `git status` clean. Note the apex `createstuff.ai` serves a **different** build — `createstuff-marketing` in nexus-ai-suite — so this repo is the app, not the domain |
+| 15 | Ihatecollege repo | 4 dirty sitemap files, deployed but uncommitted | `git status` → 4 files | **done 2026-10-07** — committed `860034b` ("regenerate the four sitemaps"), `git status` clean; live: `/sitemap.xml` **200** referencing `sitemap-blog.xml` **204 URLs** / `sitemap-colleges.xml` **6,211** / `sitemap-static.xml` **44** (6,459 total) and `robots.txt` carries `Sitemap: https://ihatecollege.com/sitemap.xml` |
 | 17 | federation | 3 scheduled jobs homeless after Actions shutdown: STV *Generate Spanish Pages* (`0 13 * * *`), *IndexNow ping* (`30 11 * * *`), *Federation Sentinel* (`0 */3 * * *`) | all `disabled_manually` today | move to **Cloudflare Cron Triggers** |
 | 19 | israeljoffe.com/.org | No AdSense at all (loader 0, slots 0) | live sweep 2026-10-06 | decide: monetize or keep clean |
 | 20 | Placebetsai-src | `lib/web-search.js` has a committed `sk-or-v1-…` key | grep | rotate + move to secret |

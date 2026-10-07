@@ -79,7 +79,7 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
 - Ihatecollege AdSense → **`07e1e474`**, live 200 + `ca-pub-7215975042937417`, tests 7/7
 - israeljoffe.com / .org copy + alts → **`fc66c516` / `e12c81ee`**, live 0 conceited openers, 26/26 alt; `.com` 2941/2941, `.org` 88 imgs / 0 missing
 - fashionistas AdSense → **`8886e25`**, `npm test` **267/267**, `VERIFIED — live == 8886e25`, pushed to origin
-- createstuff app ad slots → **`2517b122.createstuff-ai.pages.dev`** (repo still dirty, +23)
+- createstuff app ad slots → **`2517b122.createstuff-ai.pages.dev`** (repo committed `19a721d`, 2026-10-07 — file matches that deployment byte-for-byte; apex `createstuff.ai` runs the separate `createstuff-marketing` build)
 - spanishtvshows `186247c` + `c790513` pushed, run **`37519900879`** success 2m36s, live home **7 slots** + 3 interior pages; tests 5/5
 
 **fashionistas — PROVEN live today**
