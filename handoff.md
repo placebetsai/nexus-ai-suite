@@ -1,7 +1,7 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
 > **Newer:** `HANDOFF-2026-10-06.md` — current daily handoff (accounts, tokens, deploy recipe, open blockers).
-**Last updated: 2026-10-06** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Last updated: 2026-10-07** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
 **Sections 1–15 are history (2026-09-24 → 2026-10-02). Current truth = §16 + `HANDOFF-2026-10-06.md` +
 `ISSUE_LOG.md` + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
 **Local path:** `/home/billionaremaker/Documents/Default Project/nexus-ai-suite`
@@ -2023,6 +2023,76 @@ expired", and you stay signed in. Full write-up: `ISSUE_LOG.md` **#44 evidence**
 **Still blocked behind it** (unchanged): posting needs the Stripe test key (`#24`) → the 8 env vars
 (`#25`) → the eBay/Etsy OAuth logins. Login now works and *stays* working; the paywall is what is
 left, and it says so out loud instead of failing silently.
+
+### 16.8 2026-10-07 (night ET) — fashionistas functionality ship: try-on path, multilist extension, chatbot scope
+
+Three live ships after the login fix (`3cfe08b`). Tip is now **`593418e`** (`version.txt` == live).
+Prior tonight: `e768c8f` multilist extension one-click; `c8776cd` try-on pipeline fix; `3cfe08b` auth session fix.
+
+#### A. Try-on pipeline 404 → 200 (`c8776cd`)
+
+The `/try-on/` page imported `/try-on/tryon_pipeline.js`, but the file lived under `/core/` → **404**.
+Fix: serve the pipeline from `/try-on/`, restore **Photoreal** (`POST /api/tryon/hd`) and keep
+**Instant** as the experimental on-device overlay.
+
+```
+$ curl -sS -o /dev/null -w '%{http_code} %{size_download}\n' https://fashionistas.ai/try-on/tryon_pipeline.js
+200 20019
+$ curl -sS -o /dev/null -w '%{http_code}\n' https://fashionistas.ai/core/tryon_pipeline.js
+404
+$ curl -sS https://fashionistas.ai/version.txt
+593418e978144a43b79f4a31c316afcd8de58083
+```
+
+UI modes on live `/try-on/`: **Photoreal · Pro** and **Instant · experimental overlay** (import =
+`/try-on/tryon_pipeline.js`). Commit then tip advanced past `c8776cd`.
+
+#### B. Multilist one-click via Chrome extension — no Stripe (`e768c8f`)
+
+Server `/api/list/*` still hits the $14.99 paywall (`ISSUE_LOG` **#43** / **#24**). The extension path
+posts from the user's logged-in shop tabs instead — **no Stripe required** for that path.
+
+```
+$ curl -sS -o /dev/null -w '%{http_code} %{size_download}\n' \
+    https://fashionistas.ai/chrome-store/fashionistas-extension-v1.0.1.zip
+200 109648
+```
+
+- Zip on live Pages (**200**, 109,648 B). Doc in repo: `docs/MULTILIST-ONE-CLICK.md` (Pages `/docs/*`
+  may **404** — that is fine; the zip + in-app UX are what ship).
+- `apps/extension/queue.js` `ADAPTERS` includes **ebay** + **etsy** (plus poshmark, mercari, depop,
+  vinted, grailed, facebook, kidizen, vestiaire, whatnot).
+- Unit proof: `node --test tests/multilist-one-click.test.mjs` → **7 pass / 0 fail**.
+- **Still needs a human:** Load unpacked in Chrome + shop logins before the first real marketplace
+  post. No real post has been executed in Chrome yet.
+
+#### C. Chatbot conversational expand (`593418e` — live tip)
+
+Stylist scope beyond fees / own listings. Allowed topics include: `connect_shops`,
+`chrome_extension`, `try_on`, `listing_from_photo`, `pricing_plan`, `how_to_list` (+ fees/listings).
+
+Smoke (QA session cookie `fash_session` len **64**, account id **78**; no secrets printed):
+
+| prompt | http | refused | topics | note |
+|---|---|---|---|---|
+| How do I list on Depop? | **200** | **false** | `how_to_list` | step-by-step Connect → extension |
+| How does try-on work? | **200** | **false** | `try_on` | Photoreal + Instant modes named |
+| What are the fees and pricing plan? | **200** | **false** | `marketplace_fees` | fees still answered |
+
+Unit: `node --test functions/api/chat/__tests__/grounding.test.mjs` → **19 pass / 0 fail**.
+
+#### Still blocked (unchanged)
+
+| blocker | issue |
+|---|---|
+| Stripe **test** key | `#24` |
+| 8 env vars (eBay/Etsy/…) | `#25` |
+| Real marketplace post in Chrome | never executed (extension Load unpacked + shop logins still human) |
+| Server `/api/list/*` | `#43` still true until Stripe → then env vars → OAuth |
+| Own marketplace | deferred |
+
+**Where to test:** `https://fashionistas.ai/try-on/` (Photoreal / Instant) · extension zip URL above ·
+chat after sign-in. Write-up: `ISSUE_LOG.md` **#45–#47**, `HANDOFF-2026-10-06.md` **§14**.
 
 
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then

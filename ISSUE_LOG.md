@@ -36,6 +36,10 @@ Risk register lives in `nexus-ai-suite/HANDOFF-2026-10-06.md` §8.
 | 42 | spanishtvshows.com | **the TMDB key + `/show/*` 500 fix round** (closes #18 and #28) | two stacked causes: key on the wrong project (see #18), **and** Cloudflare only applies a project's env to a **new** deployment — after setting the secret on the right project, `/show/1399` *still* returned 500 because production was running the 2026-10-06 build | see **#42 evidence** below: key stored → secret on `spanishtvshows-site` (prod **and** preview) → local `next-on-pages` build → **preview branch validated first** (`tmdb-check…pages.dev` `/show/1399` 200) → production `--branch=main` → **13/13 `/show/` ids 200** |
 | 44 | fashionistas.ai | **the app signed users out itself** — every 401 in the shared `api()` helper ran `logout()` after 600 ms, so a wrong password came back as "Session expired"; `auth/me` was referenced **0×** so the stored session was never checked; a response with no `token` was saved as the string `undefined`; and nothing told the user what to do next | old `index.html:1459` `if (r.status === 401) { toast("Session expired — please log in"); setTimeout(()=>logout(), 600); throw new Error("unauthorized"); }` — the login POST went through the same helper | commit `3cfe08b` deployed to Pages project `fashionistas-ai` (`version.txt` == `3cfe08b`, live == `3cfe08b`), **4 live browser tests** below, `npm test` **267 pass / 0 fail**, ads untouched — see **#44 evidence** below |
 
+| 45 | fashionistas.ai | **Try-on page 404'd its own pipeline** — `/try-on/` imported `/try-on/tryon_pipeline.js` but the file was only under `/core/` | path mismatch after earlier move | commit `c8776cd` → live `/try-on/tryon_pipeline.js` **200** 20,019 B; `/core/tryon_pipeline.js` **404**; Photoreal + Instant modes restored; tip advanced to `593418e` — see **#45 evidence** |
+| 46 | fashionistas.ai | **Multilist one-click without Stripe** — server `/api/list/*` still 402, but the Chrome extension can post from logged-in shop tabs | paywall on server path; extension path was incomplete | commit `e768c8f` → live zip `…/fashionistas-extension-v1.0.1.zip` **200** 109,648 B; `ADAPTERS` includes **ebay+etsy**; `docs/MULTILIST-ONE-CLICK.md`; `tests/multilist-one-click.test.mjs` **7/7**; still needs human Load unpacked + shop logins — see **#46 evidence** |
+| 47 | fashionistas.ai | **Chatbot refused non-fee / non-listing questions** (Depop how-to, try-on, connect shops) | grounding allow-list too narrow | commit `593418e` (live `version.txt`) → topics `connect_shops`, `chrome_extension`, `try_on`, `listing_from_photo`, `pricing_plan`, `how_to_list` + fees/listings; smoke Depop/try-on/fees **200 refused=false**; grounding tests **19/19** — see **#47 evidence** |
+
 ---
 
 ### #37 evidence — scooter.exchange (shipped 2026-10-06)
@@ -206,6 +210,67 @@ generated inside the page and never written down):
 
 ---
 
+
+### #45 evidence — try-on pipeline path fix (2026-10-07 night ET)
+
+Commit `c8776cd` (`fix(try-on): serve pipeline from /try-on/, restore Photoreal path`): added
+`try-on/tryon_pipeline.js` (510 lines), updated `try-on/index.html` import to
+`/try-on/tryon_pipeline.js`, kept Photoreal → `POST /api/tryon/hd` and Instant as experimental
+on-device overlay.
+
+```
+$ curl -sS -o /dev/null -w '%{http_code} %{size_download}\n' https://fashionistas.ai/try-on/tryon_pipeline.js
+200 20019
+$ curl -sS -o /dev/null -w '%{http_code}\n' https://fashionistas.ai/core/tryon_pipeline.js
+404
+$ curl -sS https://fashionistas.ai/version.txt
+593418e978144a43b79f4a31c316afcd8de58083
+```
+
+Live `/try-on/` shows **Photoreal · Pro** and **Instant · experimental overlay**.
+
+### #46 evidence — multilist extension one-click (2026-10-07 night ET)
+
+Commit `e768c8f` (`feat(multilist): one-click via extension without Stripe`). Server `/api/list/all`
+remains **402** until Stripe (`#24` / `#43`); the extension path does not need Stripe.
+
+```
+$ curl -sS -o /dev/null -w '%{http_code} %{size_download}\n' \
+    https://fashionistas.ai/chrome-store/fashionistas-extension-v1.0.1.zip
+200 109648
+$ node --test tests/multilist-one-click.test.mjs
+# tests 7 / pass 7 / fail 0
+```
+
+`apps/extension/queue.js` `ADAPTERS` keys include `ebay`, `etsy` (plus poshmark, mercari, depop,
+vinted, grailed, facebook, kidizen, vestiaire, whatnot). Repo doc: `docs/MULTILIST-ONE-CLICK.md`
+(Pages `/docs/*` may 404 — expected). **Gap:** human must Load unpacked + log into shops before any
+real marketplace post; that post has **never** been executed in Chrome.
+
+### #47 evidence — chatbot scope expand (2026-10-07 night ET)
+
+Commit `593418e` (`feat(chat): expand stylist scope beyond fees and own listings`). Live tip =
+`version.txt` **593418e**. Allowed topics include `connect_shops`, `chrome_extension`, `try_on`,
+`listing_from_photo`, `pricing_plan`, `how_to_list` (plus fees/listings).
+
+Smoke with QA `fash_session` cookie (len **64**, user id **78**; password not printed):
+
+| prompt | http | `refused` | `topics` |
+|---|---|---|---|
+| How do I list on Depop? | **200** | **false** | `how_to_list` |
+| How does try-on work? | **200** | **false** | `try_on` |
+| What are the fees and pricing plan? | **200** | **false** | `marketplace_fees` |
+
+```
+$ node --test functions/api/chat/__tests__/grounding.test.mjs
+# tests 19 / pass 19 / fail 0
+```
+
+**#43 still true** for the server `/api/list/*` path until `#24` Stripe test key lands (then `#25`
+env vars → marketplace OAuth). Extension path (#46) is the Stripe-free alternative pending human
+Load unpacked + shop logins.
+
+
 ## OPEN (fix next, in this order)
 
 | # | Site | Issue | Evidence | Next action |
@@ -233,7 +298,7 @@ generated inside the page and never written down):
 | 27 | fashionistas.ai | `OPENCODE_API_KEY` absent | opencode leg of the provider chain inert |
 | 31 | all | **wrangler OAuth refresh** (`zone:read`) | current token expires `2026-10-06T20:58:54Z`, missing `zone` scope — one click, allowed ask #3 |
 | 32 | admin UI | **approval** | proposed Worker + D1 + R2 + Cloudflare Access on `/admin`; user must pick (a) admin panel or (b) finish checklist/handoff first |
-| 43 | fashionistas.ai | **"can we post?" — NO, and here is the exact chain** (2026-10-07, re-verified; corrects the old "no login exists" claim) | register **201** (`users` id 78) → login **200** + `fash_session` → `/api/auth/me` **200** → `/api/marketplaces` **200 `count:11`** → **`POST /api/list/all` → 402 `subscription_required` `status:"inactive"`** ("An active $14.99/mo subscription is required to list"; identical on `/api/list/ebay`, `/api/list/etsy`) → `POST /api/billing/checkout` → **503 `STRIPE_SECRET_KEY not configured`** | blocked by **#24 Stripe test key** first, then **#25 the 8 env vars** (`EBAY_SANDBOX_{CLIENT_ID,CLIENT_SECRET,REDIRECT_URI}`, `ETSY_{API_KEY,SHARED_SECRET}`), then the **marketplace OAuth logins**. Order: Stripe → env vars → eBay/Etsy login → post. Gate: `requireActiveSubscriber()` at `functions/api/_lib/auth.js:189`. Where to test after unblocking: `https://fashionistas.ai/` sign-in `#login-u`/`#login-p` → post UI `#pu-post`, or `POST /api/list/all` with the cookie; QA account `qa-post-test@fashionistas.ai` (id 78) is stored in `.secrets/cf.env` |
+| 43 | fashionistas.ai | **"can we post?" — NO, and here is the exact chain** (2026-10-07, re-verified; corrects the old "no login exists" claim) | register **201** (`users` id 78) → login **200** + `fash_session` → `/api/auth/me` **200** → `/api/marketplaces` **200 `count:11`** → **`POST /api/list/all` → 402 `subscription_required` `status:"inactive"`** ("An active $14.99/mo subscription is required to list"; identical on `/api/list/ebay`, `/api/list/etsy`) → `POST /api/billing/checkout` → **503 `STRIPE_SECRET_KEY not configured`** | blocked by **#24 Stripe test key** first, then **#25 the 8 env vars** (`EBAY_SANDBOX_{CLIENT_ID,CLIENT_SECRET,REDIRECT_URI}`, `ETSY_{API_KEY,SHARED_SECRET}`), then the **marketplace OAuth logins**. Order: Stripe → env vars → eBay/Etsy login → post. **Still true 2026-10-07 night** for server `/api/list/*` even after extension one-click (#46) — no real Chrome marketplace post executed yet. Gate: `requireActiveSubscriber()` at `functions/api/_lib/auth.js:189`. Where to test after unblocking: `https://fashionistas.ai/` sign-in `#login-u`/`#login-p` → post UI `#pu-post`, or `POST /api/list/all` with the cookie; QA account `qa-post-test@fashionistas.ai` (id 78) is stored in `.secrets/cf.env` |
 
 > Removed this round: **#29** (STV token received), **#30** (repo cloned), **#36** (IHC token received → real domain fixed) — all moved to FIXED.
 
