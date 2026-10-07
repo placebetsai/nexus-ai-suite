@@ -2240,5 +2240,14 @@ agent; nothing is committed or deployed from it. hiddencameras.tv production is 
   `INDEXNOW_KEY` is a genuinely missing key, but it only affects the search ping — it is not in
   `NEEDS_ISRAEL.txt` because it blocks no content and no money.
 
+### 16.11 2026-10-07 — israeljoffe.org got a life-story page (`/story/`)
+
+- **Shipped:** `/story/` — 644 words, 10 `<h2>`, third person, **0 sentences starting with "Israel Joffe"**, 24 photos from the live gallery (every `alt` = "Israel Joffe", **24/24 → 200** on the custom domain). `Story` is now in the nav of **39 pages** and linked from the home page and `/about/`.
+- **Every fact came from files already in `israeljoffe-org/`** — `about/index.html`, `index.html`, `archive/index.html`, `press/index.html`, `feed.xml`. Nothing was invented: no dates, numbers, employers or results beyond what those files say.
+- **Also fixed:** `/sitemap.xml` returned the homepage (catch-all serves 200 + home HTML for *any* unknown path — `curl .../nope-xyz/` proves it) even though `robots.txt` advertises it. A real `sitemap.xml` with 7 URLs now returns 880 B of XML.
+- **Deploy:** `./deploy.sh pages israeljoffe-org israeljoffe-org` → wrangler exit 0, `VERIFY pass` (sha256 of `index.html` matches live), `DEPLOY OK`. **Do not deploy this project with `node_modules/.bin/wrangler`** — the bundled wrangler 3.114.17 queried account `2765cb27…` and failed with `Authentication error [code: 10000]` even though `CLOUDFLARE_ACCOUNT_ID` was `7eb89b01…`; `deploy.sh` (global wrangler 4.138.0) worked first try.
+- **Open:** `israeljoffe-org` is an **uninitialised git submodule** (gitlink `62e3d50`, no `.git` inside the directory), so the new page and the nav/sitemap edits exist on disk and in production but in **no git history** — GitHub cannot show live == HEAD for this site until it is initialised or vendored.
+- **Not changed:** no ads (standing instruction — ISSUE_LOG #19 still open), copy tone and alts conventions unchanged.
+
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.

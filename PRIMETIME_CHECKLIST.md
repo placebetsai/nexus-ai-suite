@@ -102,7 +102,7 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
 - **createstuff.ai now has ads**: `493ccc4` (nexus-ai-suite, pushed). Live: `ads.txt` **200 text/plain 59 B**, `site-adsense.js` **200 application/javascript 8,596 B**, home **110,849 B** with **1 loader byte-identical to `loaderTagHTML()`** + **4 mount points** (`hero`, `inContent`, `bottom`, `default`).
 - **marketpicks.ai `/api/health` tells the truth**: `c91ae99` → deploy **`f4d5bb08`**; `quotes.last_success=2026-10-06T23:16:20Z` ("897 rows in quotes; last ran 7m ago"), **0 of 6** sources equal `last_check`, `data_tables.grading=2` (was reported as "no data yet"); tests **54/54**.
 - **chatbot sweep, live**: placebets.ai ×3 (200), marketpicks (live quote + `[Live Data]`), ihatecollege (honest data-limit answer), spanishtvshows (sourced pick), fashionistas (Bearer, proven earlier).
-- **israeljoffe.com/.org** live files are **md5-identical** to the deployed repo files; 26/26 + 26/26 alts contain "Israel Joffe"; **0** banned sentence openers (the single `.org/about` hit is an image caption).
+- **israeljoffe.com/.org** live files are **md5-identical** to the deployed repo files; 26/26 + 26/26 alts contain "Israel Joffe"; **0** banned sentence openers (`.org` grew `/story/` — 644w life story, 24 gallery photos, nav on 39 pages — plus a real `sitemap.xml` that used to return the homepage; deployed `cbc755bc` and sha256-verified) (the single `.org/about` hit is an image caption).
 
 **Round 3 (late 2026-10-06) — two new accounts opened, scooter.exchange repaired**
 
