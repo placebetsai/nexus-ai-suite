@@ -115,6 +115,12 @@ Why: `placebets.ai` is **not attached to any Pages project in this account**, so
   - seller photos: `photos.scooter.exchange` **NXDOMAIN** → `GET /api/photos/<key>` (`404` for missing + traversal)
   - shipped: worker **`6c4b1f15`**, Pages **`56dd2a9d`**, repo **`ed4c794..2e77e3a`**; workflows still `disabled_manually`
   - gotchas recorded: project `production_branch` = **`main`** (`--branch=master` silently deploys as *preview* and the domain keeps the old build) · wrangler **v4** cannot bundle this next-on-pages artifact → use `node_modules/.bin/wrangler` (3.114.17) `--no-bundle`
+- **the handoff itself was 4 days stale — fixed.** `handoff.md` header `Last updated: 2026-09-29`,
+  §1–15 ended 2026-10-02, and it still claimed **`main is 5ffba1e`** / **try-on not wired** / **docs leak open**
+  (all three false). Now: header **2026-10-06** + **§16** with each correction carrying its command and output,
+  `HANDOFF-2026-10-06.md` **§10** addendum, and `ISSUE_LOG.md` / `PRIMETIME_CHECKLIST.md` / `NEEDS_ISRAEL.txt`
+  **moved into the repo** (root paths are symlinks) so they stop being laptop-only → pushed `931cd0b..f50b87e`,
+  raw-GitHub check: §16 ✔, `LATE ADDENDUM` ✔, stale `no local repo` rows **0** · evidence `ISSUE_LOG` **#39**.
 - **diamonds.forsale — shipped `37253dda` (was frozen on `2026-07-30`).** Build was broken by `onError` on an `<img>` in a **server** component (`Static page generation for /about is still timing out after 3 attempts`), and `ADSENSE_CLIENT` was never supplied so the gated loader never rendered. Now: **8/8 pages `loader=2, ca-pub=2`**, `/about` avatar `200` (was `404`), **all images 200**, `loremflickr=0`, repo `5692dae..775e029`, workflows `disabled_manually` ×2 — evidence `ISSUE_LOG` **#38**.
 
 **🔴 BLOCKERS still open**
