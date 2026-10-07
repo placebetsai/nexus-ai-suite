@@ -34,6 +34,7 @@ Risk register lives in `nexus-ai-suite/HANDOFF-2026-10-06.md` §8.
 | 18 | spanishtvshows.com | `/show/<id>/` → **500 for every id** (1399, 679, 1408, 46648) — 100 of 193 sitemap URLs | `.github/workflows/deploy-pages.yml:42` wrote `TMDB_API_KEY` to project **`spanishtvshows`** while `:51` deployed to **`spanishtvshows-site`** (step `continue-on-error: true`, so every run was "green"); the dynamic edge route reads the **request-context** env only (`lib/cloudflare.js` → `getSecret`) → `lib/tmdb.js:23` `throw` → the `catch` calls `tmdb()` again → identical `__next_error__` 500 (digest `2025926783`) | **FIXED 2026-10-07 (#42)** — key on `spanishtvshows-site` (prod+preview) + rebuild/redeploy: `/show/1399` **500 → 200**, `/show/679` **500 → 200**, `/show/46648` **500 → 200**, **10/10** homepage-linked ids 200, 15-URL sitemap diff vs the previous prod deployment = **7 × `old=500 → live=200`, 0 regressions** |
 | 28 | spanishtvshows.com | **`TMDB_API_KEY` locally** — `next build` stopped at `Missing TMDB_API_KEY` | key existed only as a GitHub Actions secret (created 2025-12-23): `gh api …/actions/secrets` returns metadata only, no file/gist/artifact/history copy anywhere (**332** hex-32 literals pulled from every repo's full git history and probed against `/3/configuration` → **0 valid**), and Cloudflare's copy on the wrong project reads back `value:""` | **RESOLVED 2026-10-07** — the user supplied it from the TMDB account `spanishtvshows` → `STV_TMDB_API_KEY` (32 ch, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN` (244 ch) in `.secrets/cf.env` (`-rw-------`, git-ignored, **0 tracked copies**); local build now succeeds (`npx @cloudflare/next-on-pages@latest` **exit 0**, artifact **23 M**) |
 | 42 | spanishtvshows.com | **the TMDB key + `/show/*` 500 fix round** (closes #18 and #28) | two stacked causes: key on the wrong project (see #18), **and** Cloudflare only applies a project's env to a **new** deployment — after setting the secret on the right project, `/show/1399` *still* returned 500 because production was running the 2026-10-06 build | see **#42 evidence** below: key stored → secret on `spanishtvshows-site` (prod **and** preview) → local `next-on-pages` build → **preview branch validated first** (`tmdb-check…pages.dev` `/show/1399` 200) → production `--branch=main` → **13/13 `/show/` ids 200** |
+| 44 | fashionistas.ai | **the app signed users out itself** — every 401 in the shared `api()` helper ran `logout()` after 600 ms, so a wrong password came back as "Session expired"; `auth/me` was referenced **0×** so the stored session was never checked; a response with no `token` was saved as the string `undefined`; and nothing told the user what to do next | old `index.html:1459` `if (r.status === 401) { toast("Session expired — please log in"); setTimeout(()=>logout(), 600); throw new Error("unauthorized"); }` — the login POST went through the same helper | commit `3cfe08b` deployed to Pages project `fashionistas-ai` (`version.txt` == `3cfe08b`, live == `3cfe08b`), **4 live browser tests** below, `npm test` **267 pass / 0 fail**, ads untouched — see **#44 evidence** below |
 
 ---
 
@@ -160,6 +161,48 @@ regenerated on every build — read only by `app/sitemap.js` — so it was rever
 
 **Still open on this site:** homepage link `/Netflix-spanish-shows` → **404**; the 3 retired cron jobs
 (*Generate Spanish Pages* now has its key locally) still need Cloudflare Cron Triggers.
+
+
+### #44 evidence — fashionistas login/session RCA (2026-10-07)
+
+**What the user hit** (their words, paraphrased here): they did the whole login flow *yesterday* and
+still had to repeat it every single time, with no guidance at all. Three stacked defects, all client
+side — the server was never the problem:
+
+| # | defect | proof |
+|---|---|---|
+| 1 | **any 401 killed the session** — `api()` is the single fetch helper, so one 401 from *any* endpoint signed you out of the whole app | old `index.html:1459`, `git show 8886e25:index.html` |
+| 2 | **a wrong password looked like an expired session** — `doLogin()` posts through `api()`, so bad credentials ran `logout()` and toasted "Session expired" | same line |
+| 3 | **the stored session was never validated** — `grep -c "auth/me" index.html` → **0**; boot only read `localStorage.fash_token` | old `:1402` |
+| 4 | **the string "undefined" in localStorage** — `afterAuth(d)` did `TOKEN = d.token` while the auth answer can be `{ok,id,email}` (no `token`), so the next request sent `Authorization: Bearer undefined` → 401 → back to defect 1 | old `afterAuth` |
+| 5 | **no guidance** — after sign-in you got nothing; 402 and 503 were bare toasts with no action | old `:4536-4537` |
+
+**Server-side contract used by the fix** (`https://fashionistas-api...workers.dev`, auth gate runs
+*before* routing, so this is a valid session probe): `GET /api/auth/me` → valid token **404**,
+dead token **401**, no token **401**.
+
+**Fix** — `fashionistas-ai` commit `3cfe08b`, deployed by `scripts/deploy-local.sh`
+(`wrangler pages deploy . --project-name=fashionistas-ai --branch=main`), live == `3cfe08b`:
+401 on `/api/auth/*` is now the credential error with the session untouched; any other 401 is
+*confirmed* against `/api/auth/me` before signing anyone out; anonymous 401 says "Sign in first to
+do that." with no toast; `restoreSession()` runs once at `DOMContentLoaded`; `afterAuth()` never
+stores `undefined` and toasts the next step; 402 opens `guideSubscribe()` → the live `/pricing/`
+(**200**); 503 names the missing keys in plain language.
+
+**Proof — 4 tests in a real browser against the live site** (deployment `15ef54f1`, QA credentials
+generated inside the page and never written down):
+
+| test | action | result |
+|---|---|---|
+| A | sign up through `doSignup()` | token stored (**107 chars**), sign-in view hidden, app + tabbar visible, toast *"Signed in as qa... — next: Connect your shop, then Sell to post an item."* |
+| B | **failed login while already signed in** | threw **"Invalid credentials"**, token still 107, sign-in view still hidden → `sessionSurvived: true` (before: signed out) |
+| C | reload the page | still signed in; network shows `GET /api/auth/me` → **404** (session alive) |
+| D | signed out, call an auth-only endpoint | threw **"Sign in first to do that."**, toast **empty** (no "Session expired"), stayed on sign-in |
+
+`npm test` → **267 pass / 0 fail** (baseline held). Live page grep: `restoreSession` **1**,
+`guideSubscribe` **1**, old `setTimeout(()=>logout(), 600)` **0**. Ads unchanged: loader **1**,
+`data-ad-slot` **4**, `ca-pub` **1**, `GET /` **200** / 422,320 B.
+
 
 ---
 

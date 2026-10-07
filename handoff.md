@@ -1972,5 +1972,58 @@ substitute for TMDB — it is sold through **AWS Data Exchange** and needs an AW
 key, a subscription request that *"IMDb staff process within five business days"*, then a paid
 product. Fine as a second source later; it cannot unblock anything now.
 
+
+### 16.7 2026-10-07 — fashionistas login: **the app was signing users out itself**
+
+The complaint (their words, paraphrased): they did the whole login flow *yesterday* and still had to
+repeat it every time, with no guidance. Root cause — three stacked defects, **all client side** in
+`fashionistas-ai/index.html`, the server was fine:
+
+| # | defect | where |
+|---|---|---|
+| 1 | **any 401 destroyed the session.** `api()` is the single fetch helper, so `if (r.status === 401) { toast("Session expired — please log in"); setTimeout(()=>logout(), 600) ... }` meant one bad response from *any* endpoint signed you out of the whole app | old `index.html:1459` |
+| 2 | **a wrong password looked like an expired session** — `doLogin()`/`doSignup()` post through that same `api()`, so bad credentials ran `logout()` and toasted "Session expired" | same line |
+| 3 | **the stored session was never validated** — `grep -c "auth/me" index.html` → **0**; boot only trusted `localStorage.fash_token` | old `:1402` |
+| 4 | **`"undefined"` in localStorage** — `afterAuth(d)` did `TOKEN = d.token` while an auth answer can be `{ok,id,email}` with no `token`, so the next request sent `Authorization: Bearer undefined` → 401 → defect 1 | old `afterAuth` |
+| 5 | **no guidance** — nothing after sign-in, and 402/503 were bare toasts with no action | old `:4536-4537` |
+
+**Shipped** as `fashionistas-ai` commit `3cfe08b` (pushed), deployed by `scripts/deploy-local.sh` →
+`wrangler pages deploy . --project-name=fashionistas-ai --branch=main`; `version.txt` == `3cfe08b`
+and live == `3cfe08b`.
+
+- `api()`: 401 from `/api/auth/*` → thrown as the **real** credential error, session untouched; any
+  other 401 → **confirmed first** against `GET /api/auth/me` (auth gate runs before routing: valid
+  token → **404**, dead or absent token → **401**) — only a genuinely dead token signs you out;
+  anonymous 401 → "Sign in first to do that." with **no toast and no logout**.
+- `restoreSession()` once at `DOMContentLoaded`: keeps a live session, and *explains* an expired one
+  instead of failing on the first click.
+- `afterAuth()` never stores `undefined`, and toasts the next step: *"Signed in as … — next: Connect
+  your shop, then Sell to post an item."*
+- 402 → `guideSubscribe()` names the $14.99/mo plan and offers the live `/pricing/` (**200**); 503 →
+  names the missing keys in plain language instead of `key missing: EBAY_…`.
+
+**Proof — 4 tests in a real browser on the live site** (deployment `15ef54f1`; QA credentials
+generated inside the page, never written down):
+
+| test | action | result |
+|---|---|---|
+| A | sign up through `doSignup()` | token stored (**107 chars**), sign-in view hidden, app + tabbar visible, guidance toast shown |
+| B | **failed login while signed in** | threw **"Invalid credentials"**, token still 107, sign-in view still hidden → `sessionSurvived: true` (before: signed out) |
+| C | reload the page | **still signed in**; network shows `GET /api/auth/me` → **404** (session alive) |
+| D | signed out, call an auth-only endpoint | threw **"Sign in first to do that."**, toast **empty** (no "Session expired"), stayed on sign-in |
+
+`npm test` → **267 pass / 0 fail** (baseline held). Live grep: `restoreSession` **1**,
+`guideSubscribe` **1**, the old `setTimeout(()=>logout(), 600)` **0**. Ads untouched: loader **1**,
+`data-ad-slot` **4**, `ca-pub` **1**, `GET /` **200** / 422,320 B.
+
+**Where to test it yourself:** `https://fashionistas.ai/` → sign in → **reload the page**: you stay
+signed in. Then type a wrong password on purpose: you get *"Invalid credentials"*, not "Session
+expired", and you stay signed in. Full write-up: `ISSUE_LOG.md` **#44 evidence**.
+
+**Still blocked behind it** (unchanged): posting needs the Stripe test key (`#24`) → the 8 env vars
+(`#25`) → the eBay/Etsy OAuth logins. Login now works and *stays* working; the paywall is what is
+left, and it says so out loud instead of failing silently.
+
+
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
