@@ -337,6 +337,106 @@ would no longer reproduce on that account; a fresh account reproduces all three 
 
 ---
 
+### #55 — placebets: knowledge-intent questions read a WWE *Recruit/concept* article as the answer — **FIXED 2026-10-08**
+
+`POST /api/chatbot {"query":"Next WWE champion?"}` used to lift a WWE recruit/pipeline article into
+the answer. The fix is `championRelevanceGate` in `lib/llm/chatbot-placebets.js` (commit `aeb1146`):
+a retrieved passage only reaches a champion answer if it passes the gate, otherwise it is skipped
+with a logged reason → `null` → the honest path; scripted sports (WWE/AEW/WCW/…) go through
+`buildScriptedSportAnswer` and never quote a "winner". Same deploy shipped the conditional
+affiliate-commission note deletion (`components/v26/AffiliateSlots.js`, `89abc2c`).
+
+**Local (next dev) before deploy — 4 probes:**
+
+| query | `source` | verdict |
+|---|---|---|
+| Next WWE champion? | `scripted_entertainment` | honest refusal, **no recruit-article text** |
+| Who is the current boxing heavyweight champion? | Wikipedia table | real champions, gated passage cited |
+| Chiefs odds today | board/edges | regression intact (full pick + injuries) |
+| best pasta recipe | `honest_miss` | refused correctly |
+
+**Live after deploy `2f47e900` (custom domain 200):** WWE → `scripted_entertainment`, boxing →
+`Wikipedia` with the same gated champions, disclosure phrase `commission at no cost` **absent** on
+`/` and `/predict` (both 200). Stale test `lib/__tests__/tools-discovery.test.mjs` (hrefs moved to
+`components/ia/nav-config.js` at `d0e47d6`) fixed in `58ac85d` → suite **36 pass / 0 fail**.
+Deps: `~/.secrets/cloudflare.env` (`CF_TOKEN_PLACEBETS`/`CF_ACCT_PLACEBETS`) + `rm node_modules/.cache/wrangler/{wrangler-account,pages}.json` — the stale cache points wrangler at the fashionistas account and the deploy dies with `Project not found [code 8000007]`. **No GitHub push.**
+
+
+---
+
+### #56 — fashionistas: chatbot scope gate refused in-scope asks / answered off-board — **FIXED 2026-10-08 (verified on prod `5db9db4`)**
+
+The gate was inverted: it now refuses **only** on the `OFF_TOPIC_RE` denylist — everything else
+(onboarding, how-to, pricing, multi-turn follow-ups) is answered. Harness `fash_bot_retest.py`
+(fresh account per run, 8 probes: onboarding ×2, multi-turn `what about ebay?` with history,
+smalltalk, plan price, multi-shop how-to, try-on, off-topic control = must refuse):
+
+* run on prod `cc7ef6a`: **8/8 PASS**; re-run on `274fbc6`: **7/8** — the one FAIL was
+  `multi-shop-howto` **http 502 @54 s non-JSON** (upstream model stall, not a refusal), and the
+  same query answered **3/3 × 200** on immediate re-probe.
+* fresh account on prod `5db9db4`: onboarding **200** (4.4 s), multi-shop-howto **200** (4.0 s),
+  `who won the super bowl?` → **`refused:true`** — the control stays refused. Chat cap = 10
+  msgs/month/account (the earlier QA account returns **402** — correct, not a bug).
+
+**Why the 502 existed (fixed, see #57):** `completeJSON` gave **each** provider its own 45 s —
+groq 429-fails fast → queued Workers AI leg ran unbounded → the pair crossed the platform cut
+(~54 s measured) and Cloudflare answered with its opaque HTML 502 instead of the route's JSON.
+
+
+---
+
+### #57 — fashionistas: "fix it all" round — favicon 404, 3× AdSense `availableWidth=0`, stale-cache class, model budget — **FIXED, prod `5db9db4`**
+
+Ladder (each preview-verified first, `deploy-local.sh` VERIFIED at every step): `bb02ddb`
+(favicon.ico + `<link>`; width-gated AdSense `pushAd` → `ResizeObserver` arms hidden slots and only
+pushes at width > 0 — all 3 mounts live in `#view-auth`, which is `.hidden` for signed-in sessions;
+`contain:layout paint` on `.card.fx`) → Worker `GET /api/auth/me` deployed `5e0fb6ba` (DB-free token
+probe; **never** point the SPA at same-origin — Pages D1 rejects Worker HMAC tokens and would sign
+everyone out) → `274fbc6` (**`?v=2` on the `site-adsense.js` import in all 4 pages + `SITE_ADSENSE_VERSION`
+guard test** — `max-age=14400` had let a browser run the *pre-gate* copy for 4 h while the edge
+already served new bytes; this is what made the first "fixed" prod measurement show `pushed:true`) →
+`5db9db4` (one `MODEL_TIMEOUT_MS` budget for the whole provider chain + `Promise.race` timer for
+`env.AI.run`, which takes no AbortSignal: a stalled first provider can no longer run the chain past
+the platform cut into an opaque 502; `ref'd` timer — `AbortSignal.timeout()` does not hold Node's
+test loop and cancelled the suite).
+
+**Measured on prod `5db9db4` (fresh tab):** `npm test` **324 pass / 0 fail** (321 + 3 budget tests);
+console **0 errors** (was 5: favicon 404 + 3 TagErrors + `auth/me` 404); `/favicon.ico` 200;
+signed-in → all 3 mounts `armed:true, pushed:false` (no ad request at all); signed-out →
+`pushed:true, w:989`, iframes created (revenue path intact); FX intact (6 cards, glyphs, 58 kinetic
+letters); `version.txt` = `5db9db4…`, tree 0 dirty, secrets `/.env* /.git/config /.dev.vars` → 404.
+
+**NOT PROVEN / NOT FIXABLE here:** (a) the old unreferenced bundle `assets/app.959c6582.js` still
+answers 200 at the edge — `POST /zones/…/purge_cache` → `Authentication error [code 10000]`, the
+deploy token lacks Cache Purge permission (zero user impact: no HTML references it); (b) signed-out
+loads log ~10 × 400 from `googleads.g.doubleclick.net` — Google's ad server rejecting this automated
+/data-centre browser; the visible-slot push path is byte-equivalent to the pre-fix code, so
+pre-existing, and fills for real users can only be confirmed from the AdSense report.
+
+
+---
+
+### #58 — placebets: health monitor lied — `federation-health` 500 every 15 min on a healthy site — **FIXED 2026-10-08 (deploy `54828cfc`)**
+
+Both cron checks asserted `["Bet Smarter", "Odds Desk", "Ask the Bookie"]` on `/` — but since the IA
+redesign **"Bet Smarter" only renders in the empty/feed-down branch** (healthy home = `Who wins
+tonight?` hero + `<title>`), so `GET /api/cron/federation-health` returned **500**
+`failures: [{"label":"home","detail":"missing: Bet Smarter, Odds Desk, Ask the Bookie"}]` on every
+run the cron worker makes (every 15 min) and recorded `ok:false` into D1. Fixed in `eba73a5` to
+`["Who wins", "Live Odds", "Parlay"]` (all verified present in the served home; `deploy.sh`
+`SENTINEL` updated from the same stale string).
+
+| probe | before | after deploy `54828cfc` |
+|---|---|---|
+| `GET /api/cron/federation-health` | **500** `ok:false` (home missing ×3) | **200** `ok:true` `failures: []` — 6/6 PASS (home, sports hub, trending board, odds, news, ipo) |
+| `GET /api/cron/housekeeping` (full) | home check failed | **200** `ok:true` — 10/10 PASS |
+| `placebets.ai/` + `SENTINEL="Who wins"` | deploy gate would fail a healthy site | 200, sentinel present |
+
+Suite held **36/36** through the round. No GitHub push.
+
+
+---
+
 ## OPEN (fix next, in this order)
 
 | # | Site | Issue | Evidence | Next action |

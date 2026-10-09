@@ -2249,5 +2249,53 @@ agent; nothing is committed or deployed from it. hiddencameras.tv production is 
 - **Open:** `israeljoffe-org` is an **uninitialised git submodule** (gitlink `62e3d50`, no `.git` inside the directory), so the new page and the nav/sitemap edits exist on disk and in production but in **no git history** — GitHub cannot show live == HEAD for this site until it is initialised or vendored.
 - **Not changed:** no ads (standing instruction — ISSUE_LOG #19 still open), copy tone and alts conventions unchanged.
 
+### 16.12 2026-10-08 — fashionistas console/model round + placebets gate & monitor round (all shipped)
+
+Full evidence: **ISSUE_LOG #55–#58**. Everything below was re-measured on the live site; no GitHub
+push anywhere.
+
+**fashionistas** (depos ladder, each `deploy-local.sh` VERIFIED, preview checked first):
+- `bb02ddb` → favicon.ico (was 404) + width-gated AdSense push (`ResizeObserver` arms slots that
+  mount hidden — the 3 mounts live in `#view-auth`, `.hidden` for signed-in sessions, which is where
+  the 3× `availableWidth=0` TagErrors came from) + `contain:layout paint` on `.card.fx`.
+- Worker `fashionistas-api` `GET /api/auth/me` → deploy `5e0fb6ba` (DB-free token probe; same-origin
+  would 401 every Worker token and sign everyone out — never do it).
+- `274fbc6` → `?v=2` on the `site-adsense.js` import in index/about/guide/pricing +
+  `SITE_ADSENSE_VERSION` guard test. **The lesson:** `max-age=14400` + unversioned import meant my
+  own first "fixed" prod measurement still executed the *pre-gate* copy for 4 h. Version every
+  root-level module the way `/assets/app.<hash>.js` is versioned.
+- `5db9db4` → one `MODEL_TIMEOUT_MS` budget for the whole provider chain in
+  `functions/api/listing/_lib/model.js` + `Promise.race` timer around `env.AI.run` (it takes no
+  AbortSignal): groq-429 → queued-Workers-AI used to stack past the platform cut (~54 s measured)
+  and the user got Cloudflare's opaque HTML 502 instead of JSON. Unit tests hang providers with
+  **ref'd** timers — `AbortSignal.timeout()` does not hold Node's test event loop (it cancelled the
+  suite as `cancelledByParent`).
+- **Proven on prod `5db9db4`:** `npm test` **324/0**; fresh tab console **0 errors** (was 5);
+  signed-in → 3/3 mounts `armed` never pushed; signed-out → pushed, iframes created; chat fresh
+  account 200/200 + off-topic `refused:true`; FX intact. **Not fixable:** edge purge of dead
+  `app.959c6582.js` → API `code 10000` (token lacks Cache Purge — harmless, unreferenced) and
+  signed-out ×10 `400` from `googleads.g.doubleclick.net` (Google rejecting the automated browser;
+  push path byte-identical to pre-fix → pre-existing; real fills only verifiable in the AdSense
+  report).
+
+**placebets** (recipe = `~/.secrets/cloudflare.env` `CF_TOKEN_PLACEBETS`/`CF_ACCT_PLACEBETS` +
+**clear `node_modules/.cache/wrangler/{wrangler-account,pages}.json`** first — stale cache points
+wrangler at the fashionistas account → `Project not found [8000007]`):
+- `58ac85d` stale test → hrefs from `ia/nav-config.js` → suite **36/36** (was 35/36 since `d0e47d6`).
+- `aeb1146` knowledge gate + `89abc2c` disclosure deletion → deploy `2f47e900`: WWE query honest
+  (`scripted_entertainment`, no recruit article), boxing gated-real, `commission at no cost` gone
+  from `/` and `/predict`. Local 4-probe green **before** the deploy.
+- `eba73a5` health sentinels → deploy `54828cfc`: `federation-health` **500 → 200** (6/6), housekeeping
+  full **200** (10/10) — `Bet Smarter` only renders in the empty branch, so the monitor was failing
+  the cron worker's 15-minute check on a healthy site. `deploy.sh` `SENTINEL` fixed to `Who wins`.
+
+**Still not started (user's remaining backlog):** placebets **casino games section** (`app/games/`),
+**Daily edge every-other-day 7am digest**. hiddencameras production and fashionistas money/posting
+remain blocked exactly as `NEEDS_ISRAEL` #9/#8 describe (no code fixes them).
+
 **Next agent:** sections 1–15 are history. Start from `HANDOFF-2026-10-06.md`, then
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
+
+
+## 2026-10-07 — PlaceBets.ai
+See `HANDOFF-2026-10-07.md` (deploy commands, creds by name, rollback IDs, live features, open items). Live deployment ecf69ab8-85aa-4461-a799-073c53922e96 (bot off-board picks, sports-only ticker news, Web Push); rollback b7c1e812-836a-4750-a088-d1bcff5c1995.

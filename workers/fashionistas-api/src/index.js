@@ -936,6 +936,19 @@ async function dispatch(request, env) {
           demo: true,
         });
       }
+      // GET /api/auth/me — a pure token probe: verify the HMAC signature and
+      // expiry, answer 200/401, no database round-trip (the session question is
+      // "is this token valid", not "what is new about this user"). The SPA calls
+      // it at boot (restoreSession) and whenever a route answers 401, to tell a
+      // dead session from a permission wall. Before this route existed the
+      // Worker answered 404, so a dead token was never detected and every page
+      // load logged a console 404. Body carries only what was already signed
+      // into the token; the app reads the status code.
+      if (path === "/api/auth/me" && method === "GET") {
+        const payload = await requireUser(request);
+        if (!payload || !payload.sub) return err("Not signed in", 401);
+        return json({ id: payload.sub, username: payload.u || null, authenticated: true });
+      }
       if (path === "/api/blog" && method === "GET") {
         const posts = await env.DB.prepare("SELECT id, title, slug, excerpt, category, read_time, created_at FROM blog_posts ORDER BY created_at DESC LIMIT 12").all();
         return json({ posts: posts.results });
