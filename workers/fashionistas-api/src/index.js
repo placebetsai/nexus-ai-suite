@@ -2,11 +2,23 @@
 // Stack: Cloudflare Workers + D1 + R2 (IMAGES) + KV (CACHE) + Workers AI (llama-3.2 + llava)
 // Auth: HMAC-signed bearer token (id:username:expiry) via Web Crypto
 
+import {
+  CHANNELS, CHANNEL_IDS, channelConfigured, ensureChannelTables,
+  startAuth, finishAuth, freshToken, postListing, listConnections, getConnection,
+  disconnectChannel, CALLBACK_PATH,
+} from "./channels.js";
+
 const SECRET = Uint8Array.from([102,97,115,104,105,111,110,105,115,116,97,115,45,118,50,45,104,109,97,99,45,107,101,121]);
 // The seeded demo account. Its password is never written to the client bundle —
 // it used to be, in demoLogin(), which published a working credential for a real
 // account in app.js.
 const DEMO_USERNAME = "demo";
+// Session lifetime. A signed-in user must never be asked to sign in again
+// ("one and done forever"): tokens are stateless HMACs, so the session slides
+// instead of dying — /api/auth/me re-issues the token on every app open with a
+// fresh one-year expiry, and login/registration start at the same year. Going
+// quiet for a whole year is what finally ends a session, not a 30-day wall.
+const SESSION_MS = 365 * 86400000;
 const enc = new TextEncoder();
 const b64u = (buf) => [...new Uint8Array(buf)].map((b) => String.fromCharCode(b)).join("");
 const toB64 = (s) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -246,6 +258,16 @@ async function dmBlocked(env, a, b) {
     "SELECT 1 AS x FROM dm_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1"
   ).bind(a, b, b, a).first();
   return !!r;
+}
+/* The messenger list hands over a user id; an item page only knows the handle
+   under the photo. Both used to be different endpoints in practice: a handle
+   never matched /(\d+)/, fell through the router and answered 404 "Not found",
+   so the buyer's first message to a seller silently did nothing. Resolve once
+   so either spelling reaches the same thread. */
+async function dmPeerId(env, raw) {
+  if (/^\d+$/.test(raw)) return +raw;
+  const u = await env.DB.prepare("SELECT id FROM users WHERE username=? LIMIT 1").bind(raw).first();
+  return u ? u.id : 0;
 }
 
 // Every id this user cannot message: people they blocked, plus people who
@@ -839,58 +861,199 @@ async function dispatch(request, env) {
           { headers: { ...CORS, "Content-Type": "application/xml; charset=utf-8" } }
         );
       }
-      // ── eBay ───────────────────────────────────────────────────────────
-      // These four calls were made against fashionistas.ai, a STATIC Pages
-      // project — so a live `GET /api/ebay/status` returned the site's
-      // branded 404 page, `POST /api/ebay/oauth/start` returned 404 and
-      // `POST /api/ebay/listing` (the one button that claims to create a
-      // listing) answered 404 too. The Connect panel, its 4-step progress
-      // widget and the Create button could therefore never succeed, and the
-      // button reported the 404 as a network fault. They are served here now
-      // and say in plain language what is true: we have not built eBay.
+      // ── Marketplace channels: eBay, Etsy, Whatnot ──────────────────────
+      // This used to be four routes that answered 501 and told the seller to
+      // copy the kit and paste it by hand. The API calls in ./channels.js are
+      // built now, so the whole "we have not built eBay" story is gone.
       //
-      // Public on purpose. `status` reports only whether THIS SERVER has eBay
-      // wired up — no seller, no token, no account, nothing to leak. Do not
-      // move `connected` behind auth until a real token store exists with it.
-      if (path === "/api/ebay/status" && method === "GET") {
+      // Public on purpose: the catalogue reports only whether THIS SERVER has
+      // a given shop's keys — never a seller, never a token, never an account.
+      if (path === "/api/channels" && method === "GET") {
         return json({
           ok: true,
-          available: false,
-          connected: false,
-          expired: false,
-          hasRefreshToken: false,
-          env: "sandbox",
-          message: "eBay posting is not switched on for this site yet.",
-          nextStep: "You do not need it — copy the kit and paste it on eBay yourself.",
+          channels: CHANNEL_IDS.map((id) => ({
+            id,
+            name: CHANNELS[id].name,
+            blurb: CHANNELS[id].blurb,
+            configured: channelConfigured(env, id),
+            // Only shown when unconfigured, so an operator knows what to paste.
+            setup: channelConfigured(env, id) ? undefined : CHANNELS[id].need,
+          })),
         });
       }
-      if (path === "/api/ebay/oauth/start" && method === "POST") {
+
+      // The OAuth landing. It runs BEFORE the auth gate on purpose — the
+      // marketplace redirects here from their own domain with no session
+      // header, and the signed state is what proves the request is ours.
+      if (path === CALLBACK_PATH && method === "GET") {
+        const u = new URL(request.url);
+        const channel = u.searchParams.get("channel");
+        const code = u.searchParams.get("code");
+        const state = u.searchParams.get("state");
+        const base = (env.SITE_ORIGIN || "https://fashionistas.ai").replace(/\/+$/, "");
+        const ok = (msg) =>
+          new Response(
+            `<!doctype html><meta charset="utf-8"><title>${CHANNELS[channel]?.name || "Shop"} - connected</title>
+             <meta name="viewport" content="width=device-width,initial-scale=1">
+             <body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;min-height:100vh;background:#faf9f7;color:#111">
+             <div style="text-align:center;padding:32px">
+               <div style="font-size:44px">&#9989;</div>
+               <h1 style="font-size:22px;margin:12px 0 6px">${msg}</h1>
+               <p style="color:#555;margin:0 0 20px">You can close this tab and go back to Fashionistas.</p>
+               <a href="${base}/sell/" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px">Back to selling</a>
+             </div>
+             <script>
+               // If we opened this as a popup, hand the result back to the page
+               // that opened it so the Connect button can flip itself to Done
+               // without the seller reloading anything.
+               try { if (window.opener) window.opener.postMessage({fashionistas:"${channel}",ok:true}, "${base}"); } catch (e) {}
+               try { if (window.opener) window.close(); } catch (e) {}
+             </script>`,
+            { headers: { ...CORS, "Content-Type": "text/html; charset=utf-8" } }
+          );
+        const no = (msg) =>
+          new Response(
+            `<!doctype html><meta charset="utf-8"><title>Sign-in did not finish</title>
+             <meta name="viewport" content="width=device-width,initial-scale=1">
+             <body style="font:16px/1.5 system-ui;margin:0;display:grid;place-items:center;min-height:100vh;background:#faf9f7;color:#111">
+             <div style="text-align:center;padding:32px">
+               <div style="font-size:44px">&#9888;&#65039;</div>
+               <h1 style="font-size:22px;margin:12px 0 6px">${msg}</h1>
+               <p style="color:#555;margin:0 0 20px">Nothing was connected. No listing was created.</p>
+               <a href="${base}/sell/" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px">Back to selling</a>
+             </div>`,
+            { status: 400, headers: { ...CORS, "Content-Type": "text/html; charset=utf-8" } }
+          );
+        if (!CHANNELS[channel]) return no("That shop is not one we support.");
+        if (!code) return no("The shop did not send a sign-in code - you may have cancelled.");
+        try {
+          await finishAuth(env, channel, code, state);
+          return ok(CHANNELS[channel].name + " is connected");
+        } catch (e) {
+          return no(e?.message || "We could not finish connecting that shop.");
+        }
+      }
+
+      // ── the seller's own channels ──────────────────────────────────────
+      // Scoped to /api/channels/ and nothing else. This block sits above the
+      // auth routes in the file, so an ungated `return` here would shadow
+      // every route defined below it and 401 the whole API — which is exactly
+      // what the first draft did, and why the prefix check is load-bearing.
+      if (path.startsWith("/api/channels/")) {
+        const me = await requireUser(request);
+        if (!me) return json({ error: "Sign in to connect a shop." }, 401);
+
+        // Which shops this seller has already connected. No tokens leave here.
+        if (path === "/api/channels/connected" && method === "GET") {
+          await ensureChannelTables(env);
+          const rows = await listConnections(env, me.sub);
+          const live = Object.fromEntries(rows.map((r) => [r.marketplace, r]));
+          return json({
+            ok: true,
+            channels: CHANNEL_IDS.map((id) => {
+              const c = live[id];
+              return {
+                id,
+                name: CHANNELS[id].name,
+                blurb: CHANNELS[id].blurb,
+                configured: channelConfigured(env, id),
+                setup: channelConfigured(env, id) ? undefined : CHANNELS[id].need,
+                connected: !!c,
+                shop: c?.shop_name || null,
+                connectedAt: c?.updated_at || null,
+              };
+            }),
+          });
+        }
+
+        // Open the marketplace's own consent screen. We never handle a password.
+        if (path === "/api/channels/connect" && method === "POST") {
+          const { marketplace } = await readJson(request);
+          if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
+          try {
+            const { url } = await startAuth(env, me.sub, marketplace);
+            return json({ ok: true, url, marketplace });
+          } catch (e) {
+            return json({ error: e?.message || "Could not start the sign-in.", need: e?.need },
+              e?.code === "channel_not_configured" ? 503 : 400);
+          }
+        }
+
+        if (path === "/api/channels/disconnect" && method === "POST") {
+          const { marketplace } = await readJson(request);
+          if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
+          await disconnectChannel(env, me.sub, marketplace);
+          return json({ ok: true, marketplace, connected: false });
+        }
+
+        // THE POINT OF ALL OF IT. One call, one listing, live on that shop.
+        if (path === "/api/channels/post" && method === "POST") {
+          const { marketplace, listingId, listing } = await readJson(request);
+          if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
+          if (!channelConfigured(env, marketplace)) {
+            return json({ error: CHANNELS[marketplace].name + " is not connected to this site yet.", need: CHANNELS[marketplace].need }, 503);
+          }
+          // The listing body is either given inline, or pulled from the
+          // seller's own closet — whichever the client sent.
+          let L = listing;
+          if (!L && listingId) {
+            const row = await env.DB.prepare(
+              "SELECT id, title, description, price, condition, size, brand, photo_url, quantity FROM listings WHERE id=? AND user_id=?"
+            ).bind(+listingId, me.sub).first();
+            if (!row) return json({ error: "That listing is not in your closet." }, 404);
+            L = { ...row, images: row.photo_url ? [row.photo_url] : [] };
+          }
+          if (!L) return json({ error: "Send a listing to post." }, 400);
+          if (!L.title) return json({ error: "That listing has no title yet." }, 400);
+          try {
+            const res = await postListing(env, me.sub, marketplace, L);
+            // Record it so the seller can see what went where.
+            try {
+              await env.DB.prepare(
+                "INSERT INTO channel_posts (user_id, listing_id, marketplace, remote_id, url, created_at) VALUES (?,?,?,?,?,datetime('now'))"
+              ).bind(me.sub, L.id || null, marketplace, String(res.listingId || ""), res.url || "").run();
+            } catch { /* the posting succeeded; the receipt is a nicety */ }
+            return json(res);
+          } catch (e) {
+            const status = e?.code === "not_connected" ? 401
+              : e?.code === "marketplace_rejected" ? 422
+              : 400;
+            return json({
+              error: e?.message || "Could not post that listing.",
+              code: e?.code || null,
+              detail: e?.detail || null,
+            }, status);
+          }
+        }
+      }
+
+      // Kept for the Connect panel's existing checks. It used to answer
+      // `available:false` unconditionally, which was the honest report of a
+      // feature that did not exist. It exists now, so it says so.
+      if (path === "/api/ebay/status" && method === "GET") {
+        const on = channelConfigured(env, "ebay");
+        const me = await requireUser(request);
+        let connected = false, shop = null;
+        if (me) {
+          await ensureChannelTables(env);
+          const c = await getConnection(env, me.sub, "ebay");
+          connected = !!c; shop = c?.shop_name || null;
+        }
         return json({
-          error: "ebay_not_configured",
-          message: "This site cannot start an eBay sign-in yet — that step is not built here.",
-          nextStep: "No sign-in is needed to sell: copy the kit and paste it on eBay.",
-        }, 501);
+          ok: true,
+          available: on,
+          connected,
+          env: (env.EBAY_ENV || "production") === "production" ? "production" : "sandbox",
+          shop,
+          message: on
+            ? (connected ? "Your eBay shop is connected." : "Connect your eBay shop to post listings there.")
+            : "eBay posting is not switched on for this site yet.",
+          nextStep: on
+            ? (connected ? "Pick a listing and press Post." : "Press Connect - you will sign in on eBay itself.")
+            : CHANNELS.ebay.need,
+        });
       }
-      if (path === "/api/ebay/listing" && method === "POST") {
-        return json({
-          error: "ebay_not_configured",
-          message: "This site cannot create an eBay listing for you yet — that step is not built here.",
-          nextStep: "Copy the kit and paste it on eBay. Nothing has been sent anywhere.",
-        }, 501);
-      }
-      // The OAuth redirect URI. No OAuth flow can start, so this can only be
-      // reached by hand — but it used to land on the 404 page because nothing
-      // under /api/ on fashionistas.ai is routed to this worker. _redirects
-      // now sends it here so it answers honestly instead of looking broken.
-      if (path === "/api/ebay/oauth/callback" && method === "GET") {
-        const to = "https://fashionistas.ai/";
-        return new Response(
-          "<!doctype html><meta charset=\"utf-8\"><title>eBay sign-in — not available</title>" +
-          "<p>eBay sign-in is not switched on for this site yet. Nothing was connected.</p>" +
-          `<p><a href="${to}">Back to Fashionistas</a></p>`,
-          { status: 501, headers: { ...CORS, "Content-Type": "text/html; charset=utf-8" } }
-        );
-      }
+
 
       if (path === "/api/auth/register" && method === "POST") {
         if (!(await rateLimit(env, request, "register", 10))) return err("Too many requests", 429);
@@ -907,7 +1070,7 @@ async function dispatch(request, env) {
           .bind(username, hash, username, email).run();
         const id = r.meta.last_row_id;
         const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE id=?").bind(id).first();
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + 30 * 86400000 });
+        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({ user, token }, 201);
       }
       if (path === "/api/auth/login" && method === "POST") {
@@ -917,7 +1080,7 @@ async function dispatch(request, env) {
         const user = await env.DB.prepare("SELECT * FROM users WHERE username=?").bind(username).first();
         if (!user) return err("Invalid credentials", 401);
         if (user.password_hash !== (await hashPassword(password))) return err("Invalid credentials", 401);
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + 30 * 86400000 });
+        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({ user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email }, token });
       }
       // Demo sign-in. The seeded account's password used to be written into the
@@ -929,25 +1092,28 @@ async function dispatch(request, env) {
         if (!(await rateLimit(env, request, "login", 20))) return err("Too many requests", 429);
         const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE username=?").bind(DEMO_USERNAME).first();
         if (!user) return err("The demo account is not available right now. Create a free account instead.", 503);
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + 30 * 86400000 });
+        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({
           user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email },
           token,
           demo: true,
         });
       }
-      // GET /api/auth/me — a pure token probe: verify the HMAC signature and
-      // expiry, answer 200/401, no database round-trip (the session question is
-      // "is this token valid", not "what is new about this user"). The SPA calls
-      // it at boot (restoreSession) and whenever a route answers 401, to tell a
-      // dead session from a permission wall. Before this route existed the
-      // Worker answered 404, so a dead token was never detected and every page
-      // load logged a console 404. Body carries only what was already signed
-      // into the token; the app reads the status code.
+      // GET /api/auth/me — verify the HMAC signature and expiry, answer 200/401,
+      // no database round-trip (the session question is "is this token valid",
+      // not "what is new about this user"). The SPA calls it at boot
+      // (restoreSession) and whenever a route answers 401, to tell a dead
+      // session from a permission wall. Before this route existed the Worker
+      // answered 404, so a dead token was never detected and every page load
+      // logged a console 404. It also SLIDES the session: a valid token comes
+      // back re-signed with a fresh one-year expiry, which the SPA stores, so
+      // an active seller is never asked to sign in again. The body carries only
+      // what was already signed into the token (plus that renewal).
       if (path === "/api/auth/me" && method === "GET") {
         const payload = await requireUser(request);
         if (!payload || !payload.sub) return err("Not signed in", 401);
-        return json({ id: payload.sub, username: payload.u || null, authenticated: true });
+        const token = await signToken({ sub: payload.sub, u: payload.u || null, exp: Date.now() + SESSION_MS });
+        return json({ id: payload.sub, username: payload.u || null, authenticated: true, token });
       }
       if (path === "/api/blog" && method === "GET") {
         const posts = await env.DB.prepare("SELECT id, title, slug, excerpt, category, read_time, created_at FROM blog_posts ORDER BY created_at DESC LIMIT 12").all();
@@ -1822,12 +1988,25 @@ async function dispatch(request, env) {
       if (path === "/api/dm" && method === "GET") {
         await ensureDmTables(env);
         const denied = await dmDeniedIds(env, user.sub);
-        const people = await env.DB.prepare(
+        /* Two lists, merged in this order: people you actually talk to, then a
+           sample of everyone else to start a thread with. The old query took the
+           first 100 accounts alphabetically and built the list from THAT — so past
+           100 users a real conversation silently vanished from Messages whenever
+           the other side sorted late. Conversations are never capped away. */
+        const threads = await env.DB.prepare(
+          "SELECT u.id, u.username, u.display_name FROM users u WHERE u.id<>? AND EXISTS (" +
+          "SELECT 1 FROM dm_messages m WHERE (m.from_id=u.id AND m.to_id=?) OR (m.to_id=u.id AND m.from_id=?)" +
+          ") ORDER BY COALESCE(u.display_name,u.username) ASC LIMIT 300"
+        ).bind(user.sub, user.sub, user.sub).all();
+        const directory = await env.DB.prepare(
           "SELECT id, username, display_name FROM users WHERE id<>? ORDER BY COALESCE(display_name,username) ASC LIMIT 100"
         ).bind(user.sub).all();
+        const seen = new Set();
+        const people = [...(threads.results || []), ...(directory.results || [])]
+          .filter((u) => { if (!u || seen.has(u.id)) return false; seen.add(u.id); return true; });
         // Blocked people vanish from the list entirely — showing them greyed
         // out would tell the other side that a block exists.
-        const visible = (people.results || []).filter((p) => !denied.has(p.id));
+        const visible = (people || []).filter((p) => !denied.has(p.id));
         // One pass for the newest line per person and one for unread counts.
         // Doing this per contact would be 3 queries x 100 people.
         const [lastR, unreadR] = await Promise.all([
@@ -1861,10 +2040,11 @@ async function dispatch(request, env) {
         return json({ contacts });
       }
 
-      const dmOne = path.match(/^\/api\/dm\/(\d+)$/);
+      const dmOne = path.match(/^\/api\/dm\/([0-9]{1,12}|[A-Za-z0-9_.@-]{1,64})$/);
       if (dmOne && method === "GET") {
         await ensureDmTables(env);
-        const other = +dmOne[1];
+        const other = await dmPeerId(env, dmOne[1]);
+        if (!other) return json({ messages: [], latest: 0 });
         if (other === user.sub) return err("That is you", 422);
         const after = parseInt(url.searchParams.get("after") || "0", 10) || 0;
         // Same neutral wording both ways: it must be impossible to tell
@@ -1888,7 +2068,8 @@ async function dispatch(request, env) {
 
       if (dmOne && method === "POST") {
         await ensureDmTables(env);
-        const other = +dmOne[1];
+        const other = await dmPeerId(env, dmOne[1]);
+        if (!other) return err("No such person", 404);
         if (other === user.sub) return err("That is you", 422);
         if (await dmBlocked(env, user.sub, other))
           return err("Messaging with this person is turned off.", 403);
