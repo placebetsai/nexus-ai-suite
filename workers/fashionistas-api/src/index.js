@@ -5,7 +5,7 @@
 import {
   CHANNELS, CHANNEL_IDS, channelConfigured, ensureChannelTables,
   startAuth, finishAuth, freshToken, postListing, listConnections, getConnection,
-  disconnectChannel, CALLBACK_PATH,
+  disconnectChannel, CALLBACK_PATH, channelReady, saveChannelKeys,
 } from "./channels.js";
 
 const SECRET = Uint8Array.from([102,97,115,104,105,111,110,105,115,116,97,115,45,118,50,45,104,109,97,99,45,107,101,121]);
@@ -948,22 +948,25 @@ async function dispatch(request, env) {
           await ensureChannelTables(env);
           const rows = await listConnections(env, me.sub);
           const live = Object.fromEntries(rows.map((r) => [r.marketplace, r]));
-          return json({
-            ok: true,
-            channels: CHANNEL_IDS.map((id) => {
-              const c = live[id];
-              return {
-                id,
-                name: CHANNELS[id].name,
-                blurb: CHANNELS[id].blurb,
-                configured: channelConfigured(env, id),
-                setup: channelConfigured(env, id) ? undefined : CHANNELS[id].need,
-                connected: !!c,
-                shop: c?.shop_name || null,
-                connectedAt: c?.updated_at || null,
-              };
-            }),
-          });
+          // A for loop, not .map(): the readiness check is async, and a map
+          // callback would have to be async too — which silently makes the
+          // whole array an array of Promises that stringify to `[{}]`.
+          const out = [];
+          for (const id of CHANNEL_IDS) {
+            const c = live[id];
+            const ready = await channelReady(env, me.sub, id);
+            out.push({
+              id,
+              name: CHANNELS[id].name,
+              blurb: CHANNELS[id].blurb,
+              configured: ready,
+              setup: ready ? undefined : CHANNELS[id].need,
+              connected: !!c,
+              shop: c?.shop_name || null,
+              connectedAt: c?.updated_at || null,
+            });
+          }
+          return json({ ok: true, channels: out });
         }
 
         // Open the marketplace's own consent screen. We never handle a password.
@@ -979,6 +982,34 @@ async function dispatch(request, env) {
           }
         }
 
+        // The seller's OWN marketplace app keys. They register the app at the
+        // marketplace — an eBay App ID belongs to an eBay account, so nobody
+        // else can honestly obtain one — and paste the values here once. After
+        // that nobody, including us, ever needs to ask them for anything.
+        //
+        // Nothing here is echoed back, at any point, to anyone.
+        if (path === "/api/channels/keys" && method === "POST") {
+          const b = await readJson(request);
+          const { marketplace } = b;
+          if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
+          const k = {
+            client_id: String(b.clientId || b.client_id || "").trim(),
+            client_secret: String(b.clientSecret || b.client_secret || "").trim(),
+            runame: String(b.runame || "").trim(),
+            keystring: String(b.keystring || "").trim(),
+            shared_secret: String(b.sharedSecret || b.shared_secret || "").trim(),
+          };
+          const ready = marketplace === "etsy"
+            ? (k.keystring && k.shared_secret)
+            : (k.client_id && k.client_secret);
+          if (!ready) return json({ error: CHANNELS[marketplace].need }, 400);
+          if (marketplace === "ebay" && !k.runame) {
+            return json({ error: "eBay also needs the RuName — the redirect name under your app's Auth settings." }, 400);
+          }
+          await saveChannelKeys(env, me.sub, marketplace, k);
+          return json({ ok: true, marketplace, configured: true });
+        }
+
         if (path === "/api/channels/disconnect" && method === "POST") {
           const { marketplace } = await readJson(request);
           if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
@@ -990,8 +1021,8 @@ async function dispatch(request, env) {
         if (path === "/api/channels/post" && method === "POST") {
           const { marketplace, listingId, listing } = await readJson(request);
           if (!marketplace || !CHANNELS[marketplace]) return json({ error: "Which shop?" }, 400);
-          if (!channelConfigured(env, marketplace)) {
-            return json({ error: CHANNELS[marketplace].name + " is not connected to this site yet.", need: CHANNELS[marketplace].need }, 503);
+          if (!(await channelReady(env, me.sub, marketplace))) {
+            return json({ error: CHANNELS[marketplace].name + " has no keys yet.", need: CHANNELS[marketplace].need }, 503);
           }
           // The listing body is either given inline, or pulled from the
           // seller's own closet — whichever the client sent.
@@ -1052,6 +1083,35 @@ async function dispatch(request, env) {
             ? (connected ? "Pick a listing and press Post." : "Press Connect - you will sign in on eBay itself.")
             : CHANNELS.ebay.need,
         });
+      }
+
+      // Back-compat for the sell panel's existing "Create on eBay" button,
+      // which posted here and used to read 501. Two things changed with it.
+      // It used to send the seller's App ID and Cert ID from localStorage —
+      // secrets sitting in a browser — and this route answered that it was not
+      // built. The keys are the server's now, so the payload ignores any the
+      // client sends, and the route does real work.
+      if (path === "/api/ebay/listing" && method === "POST") {
+        const me = await requireUser(request);
+        if (!me) return json({ error: "Connect your eBay shop first.", code: "not_connected" }, 401);
+        if (!channelConfigured(env, "ebay")) {
+          return json({ error: "eBay is not connected to this site yet.", need: CHANNELS.ebay.need }, 503);
+        }
+        const body = await readJson(request);
+        const L = {
+          id: body.id, title: body.title, description: body.description,
+          brand: body.brand, size: body.size, condition: body.condition,
+          price: body.price, quantity: body.quantity,
+          images: Array.isArray(body.images) && body.images.length ? body.images : (body.photo_url ? [body.photo_url] : []),
+        };
+        if (!L.title) return json({ error: "That listing has no title yet." }, 400);
+        try {
+          const res = await postListing(env, me.id, "ebay", L);
+          return json({ ok: true, sku: res.listingId, offerId: res.listingId, published: true, url: res.url, message: res.note });
+        } catch (e) {
+          const status = e?.code === "marketplace_rejected" ? 422 : e?.code === "not_connected" ? 401 : 400;
+          return json({ ok: false, error: e?.message || "eBay refused the listing.", detail: e?.detail || null, code: e?.code || null }, status);
+        }
       }
 
 

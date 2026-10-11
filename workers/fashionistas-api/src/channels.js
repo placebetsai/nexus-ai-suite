@@ -88,6 +88,97 @@ export function channelConfigured(env, id) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   WHO OWNS THE KEYS — and why the answer is the seller, not us.
+
+   The first draft read every credential out of a Worker secret, which meant
+   the whole feature waited on ONE person handing me an App ID and a Cert ID.
+   That is also just wrong about what these credentials are: an eBay App ID
+   identifies a developer application, and an application belongs to an eBay
+   account. Only the person who owns the shop can register one — there is no
+   way for a third party to obtain it honestly, and the lane1 docs said so
+   before this file existed ("we do not create eBay seller or developer
+   accounts for you").
+
+   So the keys are the SELLER's, pasted once on /connect/, stored against
+   their own account. The server env vars still work and still take priority —
+   an operator wiring up one shop for the whole site is a legitimate thing to
+   do — but nothing blocks on it. Nobody has to wait for anybody.
+
+   The values never leave this server: no route returns them, and they are
+   read only when a token has to be exchanged.
+   ────────────────────────────────────────────────────────────────────────── */
+
+// Which stored column backs which env-style name, per marketplace.
+const KEY_FIELDS = {
+  ebay:    { client_id: "EBAY_CLIENT_ID", client_secret: "EBAY_CLIENT_SECRET", runame: "EBAY_RUNAME" },
+  etsy:    { keystring: "ETSY_KEYSTRING", shared_secret: "ETSY_SHARED_SECRET" },
+  whatnot: { client_id: "WHATNOT_CLIENT_ID", client_secret: "WHATNOT_CLIENT_SECRET" },
+};
+
+export async function ensureChannelKeys(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS channel_keys (
+       user_id       INTEGER NOT NULL,
+       marketplace   TEXT NOT NULL,
+       client_id     TEXT,
+       client_secret TEXT,
+       runame        TEXT,
+       keystring     TEXT,
+       shared_secret TEXT,
+       updated_at    TEXT DEFAULT (datetime('now')),
+       PRIMARY KEY (user_id, marketplace)
+     )`
+  ).run();
+}
+
+export async function saveChannelKeys(env, userId, marketplace, k) {
+  await ensureChannelKeys(env);
+  await env.DB.prepare(
+    `INSERT INTO channel_keys (user_id, marketplace, client_id, client_secret, runame, keystring, shared_secret, updated_at)
+     VALUES (?,?,?,?,?,?,?,datetime('now'))
+     ON CONFLICT(user_id, marketplace) DO UPDATE SET
+       client_id=excluded.client_id, client_secret=excluded.client_secret,
+       runame=excluded.runame, keystring=excluded.keystring,
+       shared_secret=excluded.shared_secret, updated_at=excluded.updated_at`
+  ).bind(
+    userId, marketplace,
+    k.client_id || null, k.client_secret || null, k.runame || null,
+    k.keystring || null, k.shared_secret || null
+  ).run();
+}
+
+export async function getChannelKeys(env, userId, marketplace) {
+  await ensureChannelKeys(env);
+  return env.DB.prepare("SELECT * FROM channel_keys WHERE user_id=? AND marketplace=?")
+    .bind(userId, marketplace).first();
+}
+
+// Does THIS SELLER have working keys — theirs or the site's?
+export async function channelReady(env, userId, marketplace) {
+  const c = CHANNELS[marketplace];
+  if (!c) return false;
+  if (c.env.every((k) => !!env[k])) return true;
+  const row = userId ? await getChannelKeys(env, userId, marketplace) : null;
+  if (!row) return false;
+  // Etsy is one string pair, the other two are id+secret (+ RuName for eBay).
+  return marketplace === "etsy" ? !!(row.keystring && row.shared_secret) : !!(row.client_id && row.client_secret);
+}
+
+// The env-shaped view of a marketplace's credentials for this seller. Server
+// env wins; the seller's own keys fill whatever is missing.
+export async function credsFor(env, userId, marketplace) {
+  const out = { ...env };
+  const fields = KEY_FIELDS[marketplace] || {};
+  const row = userId ? await getChannelKeys(env, userId, marketplace) : null;
+  if (row) {
+    for (const [col, name] of Object.entries(fields)) {
+      if (row[col] && !out[name]) out[name] = row[col];
+    }
+  }
+  return out;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    OAuth state. Stateless and signed, so the callback needs no session and no
    server-side stash: the marketplace sends it back untouched and we read the
    user id, the channel and (for Etsy) the PKCE verifier out of it again.
@@ -256,13 +347,15 @@ export function callbackUrl(env, marketplace) {
 export async function startAuth(env, userId, marketplace) {
   const c = CHANNELS[marketplace];
   if (!c) throw new Error("Unknown channel");
-  if (!channelConfigured(env, marketplace)) {
+  // Ready means the SELLER has keys, not that the operator does.
+  if (!(await channelReady(env, userId, marketplace))) {
     const e = new Error(c.name + " is not connected to this site yet.");
     e.code = "channel_not_configured";
     e.need = c.need;
     throw e;
   }
 
+  const C = await credsFor(env, userId, marketplace);
   const redirect = callbackUrl(env, marketplace);
   const stateObj = { u: userId, c: marketplace, n: randomHex(8), i: Date.now() };
   let pkce = null;
@@ -275,8 +368,8 @@ export async function startAuth(env, userId, marketplace) {
   const p = new URLSearchParams();
   if (marketplace === "ebay") {
     // eBay's redirect_uri is the registered RuName handle, not the URL itself.
-    p.set("client_id", env.EBAY_CLIENT_ID);
-    p.set("redirect_uri", env.EBAY_RUNAME);
+    p.set("client_id", C.EBAY_CLIENT_ID);
+    p.set("redirect_uri", C.EBAY_RUNAME);
     p.set("response_type", "code");
     p.set("state", state);
     p.set("scope", c.scopes);
@@ -286,14 +379,14 @@ export async function startAuth(env, userId, marketplace) {
     p.set("response_type", "code");
     p.set("redirect_uri", redirect);
     p.set("scope", c.scopes);
-    p.set("client_id", env.ETSY_KEYSTRING);
+    p.set("client_id", C.ETSY_KEYSTRING);
     p.set("state", state);
     p.set("code_challenge", pkce.challenge);
     p.set("code_challenge_method", "S256");
     return { url: `https://www.etsy.com/oauth/connect?` + p.toString(), redirect };
   }
   // Whatnot
-  p.set("client_id", env.WHATNOT_CLIENT_ID);
+  p.set("client_id", C.WHATNOT_CLIENT_ID);
   p.set("redirect_uri", redirect);
   p.set("response_type", "code");
   p.set("state", state);
@@ -322,18 +415,19 @@ export async function finishAuth(env, marketplace, code, state) {
     throw e;
   }
 
+  const C = await credsFor(env, payload.u, marketplace);
   const redirect = callbackUrl(env, marketplace);
   let tok;
 
   if (marketplace === "ebay") {
-    const basic = btoa(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`);
+    const basic = btoa(`${C.EBAY_CLIENT_ID}:${C.EBAY_CLIENT_SECRET}`);
     const r = await fetch(`${c.host(env, false)}/identity/v1/oauth2/token`, {
       method: "POST",
       headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: env.EBAY_RUNAME,
+        redirect_uri: C.EBAY_RUNAME,
       }).toString(),
     });
     tok = await readToken(r, c.name);
@@ -342,10 +436,10 @@ export async function finishAuth(env, marketplace, code, state) {
   } else if (marketplace === "etsy") {
     const r = await fetch(`${ETSY_API}/oauth/token`, {
       method: "POST",
-      headers: { "x-api-key": env.ETSY_KEYSTRING, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "x-api-key": C.ETSY_KEYSTRING, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        client_id: env.ETSY_KEYSTRING,
+        client_id: C.ETSY_KEYSTRING,
         redirect_uri: redirect,
         code,
         code_verifier: payload.v,
@@ -360,8 +454,8 @@ export async function finishAuth(env, marketplace, code, state) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        client_id: env.WHATNOT_CLIENT_ID,
-        client_secret: env.WHATNOT_CLIENT_SECRET,
+        client_id: C.WHATNOT_CLIENT_ID,
+        client_secret: C.WHATNOT_CLIENT_SECRET,
         redirect_uri: redirect,
         code,
       }).toString(),
@@ -372,7 +466,7 @@ export async function finishAuth(env, marketplace, code, state) {
 
   // Find the shop so the seller sees a name, not an id.
   let shop = null;
-  try { shop = await lookupShop(env, marketplace, tok.access_token); } catch { /* non-fatal */ }
+  try { shop = await lookupShop(env, payload.u, marketplace, tok.access_token); } catch { /* non-fatal */ }
 
   await saveConnection(env, payload.u, marketplace, tok, shop);
   return { userId: payload.u, marketplace, shop };
@@ -395,10 +489,11 @@ async function readToken(r, name) {
   return body;
 }
 
-async function lookupShop(env, marketplace, accessToken) {
+async function lookupShop(env, userId, marketplace, accessToken) {
+  const C = await credsFor(env, userId, marketplace);
   if (marketplace === "etsy") {
     const r = await fetch(`${ETSY_API}/users/current/shops`, {
-      headers: { Authorization: `Bearer ${accessToken}`, "x-api-key": `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}` },
+      headers: { Authorization: `Bearer ${accessToken}`, "x-api-key": `${C.ETSY_KEYSTRING}:${C.ETSY_SHARED_SECRET}` },
     });
     if (!r.ok) return null;
     const b = await r.json();
@@ -434,9 +529,10 @@ export async function freshToken(env, userId, marketplace) {
   if (!conn.refresh_token) return { token: conn.access_token, conn };
 
   const c = CHANNELS[marketplace];
+  const C = await credsFor(env, userId, marketplace);
   let tok;
   if (marketplace === "ebay") {
-    const basic = btoa(`${env.EBAY_CLIENT_ID}:${env.EBAY_CLIENT_SECRET}`);
+    const basic = btoa(`${C.EBAY_CLIENT_ID}:${C.EBAY_CLIENT_SECRET}`);
     const r = await fetch(`${c.host(env, false)}/identity/v1/oauth2/token`, {
       method: "POST",
       headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
@@ -449,10 +545,10 @@ export async function freshToken(env, userId, marketplace) {
   } else if (marketplace === "etsy") {
     const r = await fetch(`${ETSY_API}/oauth/token`, {
       method: "POST",
-      headers: { "x-api-key": env.ETSY_KEYSTRING, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "x-api-key": C.ETSY_KEYSTRING, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: env.ETSY_KEYSTRING,
+        client_id: C.ETSY_KEYSTRING,
         refresh_token: conn.refresh_token,
       }).toString(),
     });
@@ -463,8 +559,8 @@ export async function freshToken(env, userId, marketplace) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "refresh_token",
-        client_id: env.WHATNOT_CLIENT_ID,
-        client_secret: env.WHATNOT_CLIENT_SECRET,
+        client_id: C.WHATNOT_CLIENT_ID,
+        client_secret: C.WHATNOT_CLIENT_SECRET,
         refresh_token: conn.refresh_token,
       }).toString(),
     });
@@ -661,7 +757,8 @@ function ebayErr(what, status, body) {
 
 async function postEtsy(env, userId, L) {
   const { token } = await freshToken(env, userId, "etsy");
-  const key = `${env.ETSY_KEYSTRING}:${env.ETSY_SHARED_SECRET}`;
+  const C = await credsFor(env, userId, "etsy");
+  const key = `${C.ETSY_KEYSTRING}:${C.ETSY_SHARED_SECRET}`;
   const H = (extra = {}) => ({ Authorization: `Bearer ${token}`, "x-api-key": key, ...extra });
   const get = async (p) => {
     const r = await fetch(`${ETSY_API}${p}`, { headers: H() });
