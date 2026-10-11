@@ -152,7 +152,12 @@ const MARKET_SORTS = {
   price_asc: "l.price IS NULL, l.price ASC, l.id DESC",
   price_desc: "l.price IS NULL, l.price DESC, l.id DESC",
 };
-const MARKET_LIMIT = 100;
+// The default page of Shop. It was 100, which quietly hid the tail of the
+// catalogue from every buyer once the shop grew past it — and the client does
+// its own filtering on top of whatever this returns, so a listing beyond this
+// line was not merely low down the page, it was invisible to search as well.
+// 250 is comfortably above what the shop holds and still one small payload.
+const MARKET_LIMIT = 250;
 
 // Shared SELECT list for the two public market reads. `listed_at` prefers
 // listings.created_at (when the column really exists) and falls back to
@@ -317,52 +322,45 @@ function haversineKm(a1, o1, a2, o2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-// Canonical listing category. Rows written before the field was validated
-// turn up as "Tops", "tops" or " dresses ", so grouping on the raw column
-// produces duplicate chips. Trim, match the fixed known set ignoring case and
-// return the canonical spelling. Anything that is not one of those names
-// (including null, empty or a non-string) reads as null: the client files
-// those under "All" instead of inventing a free-text chip that could
-// duplicate a real one. Self-contained so it can run on read and on write.
-/* The catalogue is a two-level tree — "Dept" or "Dept/Sub" — exactly as the app
-   draws it (TAX in apps/fashionistas/index.html: keep these two in sync).
+/* Canonical listing category.
+   ONE table, one source: functions/_lib/categories.js on fashionistas.ai — the
+   same table the shop's picker draws from, the AI vision prompt is built from,
+   and the eBay/Etsy/depop posting routes read. See src/categories.js.
 
-   This used to allow ONLY the seven pre-tree flat words and return null for
-   everything else, which quietly broke the hierarchy in three places at once:
-   a seller who filed a bag under "Bags & Luggage/Handbags" had the category
-   nulled on INSERT (item lands in no department at all), the same null fired
-   on PUT (the edit never sticks), and because reads run rows through this same
-   function a stored tree path would be blanked on the way OUT too. Four of the
-   eight departments could therefore never hold a listing, while the UI happily
-   showed them as "0 items".
+   WHY THIS WAS REWRITTEN (2026-10-11)
+   The Worker used to carry its own hand-written second copy of the taxonomy,
+   with departments the shop no longer uses ("Women's Clothing" / "Tops &
+   Shirts" / "Bags & Luggage" / "Vintage & Designer"). The picker emits the
+   real table's paths — "Women/Tops", "Women/Bags & Handbags" — so
+   canonCategory() matched nothing and returned NULL for every department a
+   seller could pick.
 
-   Flat words still round-trip unchanged so old rows and the client's legacy
-   mapping keep working; anything that is neither a known flat word nor a real
-   place in the tree still becomes null, so junk never reaches D1. */
-const TAX_TREE = {
-  "Women's Clothing": ["Tops & Shirts", "Bottoms", "Dresses", "Outerwear", "Activewear", "Lingerie & Sleepwear", "Swimwear"],
-  "Men's Clothing": ["Tops & Shirts", "Bottoms", "Outerwear", "Suits & Formal", "Activewear", "Underwear & Sleepwear"],
-  "Kids & Baby": ["Girls' Clothing", "Boys' Clothing", "Baby & Toddler", "Kids' Shoes", "School Uniform"],
-  "Shoes": ["Women's Shoes", "Men's Shoes", "Kids' Shoes", "Athletic Shoes", "Boots", "Sandals & Flip Flops"],
-  "Bags & Luggage": ["Handbags", "Backpacks", "Totes & Shoppers", "Crossbody Bags", "Luggage & Suitcases"],
-  "Accessories": ["Jewellery", "Watches", "Hats & Caps", "Belts", "Scarves & Wraps", "Sunglasses", "Wallets & Cardholders"],
-  "Vintage & Designer": ["Vintage", "Designer", "Streetwear", "Band Merch"],
-  "Sports & Outdoor": ["Activewear", "Camping & Hiking", "Cycling", "Yoga & Pilates", "Water Sports"]
-};
-function canonCategory(v) {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  if (!s) return null;
-  const known = ["Tops", "Bottoms", "Dresses", "Outerwear", "Shoes", "Accessories", "Athletic"];
-  for (const k of known) if (s.toLowerCase() === k.toLowerCase()) return k;
-  const parts = s.split("/");
-  if (parts.length > 2) return null;
-  const dept = Object.keys(TAX_TREE).find(d => d.toLowerCase() === parts[0].toLowerCase());
-  if (!dept) return null;
-  if (parts.length === 1) return dept;
-  const sub = (TAX_TREE[dept] || []).find(x => x.toLowerCase() === parts[1].toLowerCase());
-  return sub ? dept + "/" + sub : null;
-}
+   The blast radius was silent and total:
+     • INSERT nulled the department → the item landed in NO department, so
+       department browsing could never reach it (this is "buyers can't find
+       anything I list").
+     • PUT nulled it again → an edit never sticks.
+     • reads run rows through the same function, so a stored path was blanked
+       on the way OUT too, and /api/market returned category:null.
+
+   The API answered 201 the whole time. Nothing failed loudly, which is why
+   this survived several rounds of "works on my machine" testing: the code was
+   correct against a table that no longer described the product.
+
+   Flat words and the old tree still resolve through LEGACY, so the rows
+   already in D1 ("Women's Clothing/Tops & Shirts", "Tops") map onto the real
+   table instead of being discarded. Only genuinely unresolvable junk becomes
+   null, which the client files under "All" rather than inventing a chip. */
+import { resolveCategory as canonCategory, prefixesFor, belongsUnder, PATHS as CATEGORY_PATHS, DEPARTMENTS as CATEGORY_DEPTS } from "./categories.js";
+export { CATEGORY_PATHS, CATEGORY_DEPTS };
+
+/* A flat list of the shop's own subcategory names, for the vision prompts.
+   Offered as a closed choice so the model returns a place that actually
+   exists in the table — the old prompt offered the retired flat words
+   ("Tops"/"Shoes"), which is how AI-filed items ended up outside every
+   department the buyer browses. */
+const CATEGORY_HINT = [...new Set([...CATEGORY_PATHS].map((p) => p.split("/")[1]))].join(",");
+
 
 // Listings grew columns after the table was first created. The deploy token
 // has no D1 scope (wrangler d1 execute -> 7403), so the schema change has to
@@ -802,6 +800,203 @@ const aiJson = (raw, fallback = null) => {
   }
   return fallback;
 };
+/* Sanitize a vision model's identify output before it can reach a listing.
+
+   Measured on prod (2026-10-11): POST /api/ai/analyze on the sample jacket
+   answered `condition:"Unknown"`, `sizeHint:"not visible"`, `brand:"Unknown"`
+   and a flat legacy `category`. Those values were stored verbatim, so a real
+   listing shipped with size literally reading "not visible" (listing 143) —
+   which is exactly what "the listings look like shit" describes. The model is
+   guessing; a guess has no place in a buyer-facing field.
+
+   Rules, each one a value that would otherwise land in D1:
+     • condition has to be one of the four grades the form offers. Anything
+       else reads as null, so the client falls back to "Good" rather than
+       printing "Unknown".
+     • a sizeHint that only says it cannot see a size is not a size.
+     • brand "Unknown"/"N/A" is no brand at all — better absent than wrong,
+       because Google Merchant rejects a fabricated brand.
+     • the category goes through the same table the picker uses, so AI-filed
+       items land in a department buyers actually browse. */
+const CONDITION_GRADES = ["Poor", "Fair", "Good", "Excellent"];
+const JUNK = /^(unknown|unbranded|n\/?a|none|null|not visible|not available|cannot (be )?(seen|determined)|unclear|no brand|generic)?$/i;
+function sanitizeIdent(p) {
+  if (!p || typeof p !== "object") return p;
+  const str = (v) => (typeof v === "string" ? v.trim() : "");
+  const clean = (v) => { const s = str(v); return !s || JUNK.test(s) ? "" : s.slice(0, 120); };
+
+  const cond = str(p.condition);
+  const grade = CONDITION_GRADES.find((g) => g.toLowerCase() === cond.toLowerCase());
+  if (grade) p.condition = grade; else delete p.condition;
+
+  if (!clean(p.sizeHint)) delete p.sizeHint; else p.sizeHint = clean(p.sizeHint);
+  if (!clean(p.brand)) delete p.brand; else p.brand = clean(p.brand);
+  if (!clean(p.color)) delete p.color; else p.color = clean(p.color);
+
+  const cat = canonCategory(str(p.category));
+  if (cat) p.category = cat; else delete p.category;
+
+  for (const k of ["priceMin", "priceMax"]) {
+    const n = Number(p[k]);
+    if (!Number.isFinite(n) || n <= 0 || n > 100000) delete p[k];
+  }
+  const conf = Number(p.confidence);
+  p.confidence = Number.isFinite(conf) ? Math.max(0, Math.min(100, Math.round(conf))) : null;
+
+  const t = str(p.type);
+  p.type = t ? t.slice(0, 80) : "Clothing item";
+  return p;
+}
+
+/* Enforce the listing-title rules on whatever the model actually returned.
+ *
+ * The prompt asks for one readable phrase, but a model is not a guarantee, and
+ * this value is written straight into a seller's title field. Live listing 148
+ * came back from the old prompt as "Blue Versace Polo Shirt - Good Condition,
+ * Tops, Mens Tops, Tops for Men" — the same noun three times over, which reads
+ * like a spam listing to a shopper and buys nothing from a search engine
+ * (every resale shop tokenises the whole title; none of them rewards a word
+ * said twice).
+ *
+ * The rules, each one a thing that shipped badly:
+ *   • a word repeated for emphasis CUTS the title there. The repeat is where
+ *     the stuffing begins, and everything after it in the live example was
+ *     the same noun restated ("Tops, Mens Tops, Tops for Men"). Dropping only
+ *     the later copies — which is what the first version did — left
+ *     "… Good Condition Tops Mens for" behind.
+ *   • a condition word ("Good", "Excellent", "Condition") ends the title. The
+ *     prompt forbids condition entirely except "New with tags", so if one is
+ *     present the output is non-compliant and its tail is padding. Cutting
+ *     before it turns the real live junk "Blue Versace Polo Shirt - Good
+ *     Condition, Tops, Mens Tops, Tops for Men" into "Blue Versace Polo
+ *     Shirt" — the sentence a shopper would have written themselves.
+ *   • filler words ("for", "the", "with", …) are never load-bearing in a
+ *     title and are dropped outright;
+ *   • separator runs ("- · |", doubled spaces) become single spaces;
+ *   • a title longer than 70 characters is cut at a word edge;
+ *   • two guards refuse a downgrade: one if the result lost words the seller
+ *     already had, one if it dropped the brand (the single most searchable
+ *     token in the whole title). A worse title is worse than none. */
+const TITLE_FILLER = new Set([
+  "for", "with", "the", "and", "of", "a", "an", "in", "on", "to", "at",
+  "from", "by", "is", "this", "that", "it", "its", "be", "as", "or", "your",
+]);
+// A condition grade. "new" and "nwt"/"nwot" are deliberately absent: "New
+// With Tags" is the one condition phrase the prompt allows, and "New" is a
+// brand half the time (New Balance), so cutting there would be wrong.
+const TITLE_CONDITION_STOP = new Set([
+  "condition", "good", "fair", "poor", "excellent", "used", "mint", "like",
+]);
+
+function cleanTitle(raw, original, brand) {
+  const fallback = typeof original === "string" ? original.trim() : "";
+  let s = String(raw == null ? "" : raw);
+  if (!s.trim()) return fallback;
+
+  s = s
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    // Collapse any run of separators into one space. A hyphen or pipe adds
+    // nothing a space does not, and models reach for them when padding.
+    .replace(/[-–—·|:,/\\]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const keyOf = (w) => w.toLowerCase().replace(/['’]s$/, "").replace(/[^a-z0-9]/g, "");
+
+  // Shield the one condition phrase the prompt allows before the filler pass.
+  // Without this, "with" is dropped as filler and "New With Tags" comes back
+  // as "New Tags" — which says the garment is merely tagged, not that it has
+  // never been worn, and that difference is worth money.
+  const NEW_TAGS = "NEWTAGSPROTECTED";
+  s = s
+    .replace(/\bnew\s+with\s+tags\b/gi, NEW_TAGS)
+    .replace(/\bnwt\b/gi, NEW_TAGS)
+    .replace(/\bnwot\b/gi, NEW_TAGS);
+
+  // Walk left to right and STOP at the first word that breaks the contract.
+  // Not "skip" — stopping is the whole point: both signals say everything
+  // after this position is padding.
+  const seen = new Set();
+  const kept = [];
+  for (const word of s.split(" ")) {
+    const key = keyOf(word);
+    if (!key || TITLE_FILLER.has(key)) continue;
+    if (TITLE_CONDITION_STOP.has(key)) break;
+    // Compare stem as well as the word so "Top"/"Tops" and "Levi's"/"Levis"
+    // count as one word, and a plural does not sneak a repeat past this.
+    const stem = key.length > 3 ? key.replace(/(ing|ed|s)$/, "") : key;
+    if (seen.has(key) || seen.has(stem)) break;
+    seen.add(key); seen.add(stem);
+    kept.push(word);
+  }
+  s = kept.join(" ").trim();
+
+  // Restore before the length cut, so the 70-character budget is measured on
+  // what the shopper will actually read rather than on the placeholder.
+  s = s.split(NEW_TAGS).join("New With Tags");
+
+  // Title Case, because a 3B model does not reliably do it and the live test
+  // came back "versace blue polo shirt m" — a lowercase brand reads as a typo
+  // on a page whose whole job is to look trustworthy, and it also strips the
+  // size letter down to "m". Only words that are entirely lowercase are
+  // touched: anything already carrying a capital (a brand's own spelling, a
+  // camelCased name like "iPhone", an acronym) is left exactly as written.
+  s = s.split(" ").map((w) => {
+    if (!/^[a-z]/.test(w)) return w;
+    if (/[A-Z]/.test(w.slice(1))) return w;
+    return w[0].toUpperCase() + w.slice(1);
+  }).join(" ");
+
+  if (s.length > 70) {
+    const cut = s.slice(0, 70);
+    s = (cut.includes(" ") ? cut.slice(0, cut.lastIndexOf(" ")) : cut).trim();
+  }
+  if (!s) return fallback;
+
+  const words = (t) => t.split(/\s+/).filter(Boolean).length;
+
+  // Guard 1: refuse a stub. The floor is 3 words, not "shorter than the
+  // original" — which is what this checked first, and it rejected every real
+  // improvement, because de-stuffing shortens a title by construction. Live
+  // proof: the optimizer answered with the seller's own junk title verbatim,
+  // because "Blue Versace Polo Shirt Good Condition Tops Mens for" being cut
+  // to "Blue Versace Polo Shirt" is *shorter*, exactly as intended.
+  // A model that has nothing to say returns one or two words; three is the
+  // floor below which there is no brand, item and detail left.
+  if (fallback && words(s) < 3 && words(fallback) >= 3) return fallback;
+
+  // Guard 2: never let a title lose the brand — it is the token every shop's
+  // search ranks on first. But FIX it rather than discard the result: the
+  // first version returned the seller's original on a brand miss, which on
+  // the live test meant the exact junk this was written to remove came back
+  // unchanged, because the model had rewritten the rest correctly and simply
+  // not repeated "Versace". Prepending costs one edit and keeps the rewrite.
+  // Only applied when the brand really is in the seller's original —
+  // otherwise there is nothing to have lost.
+  const b = typeof brand === "string" ? brand.trim() : "";
+  if (b && fallback.toLowerCase().includes(b.toLowerCase()) && !s.toLowerCase().includes(b.toLowerCase())) {
+    s = (b + " " + s).trim();
+    if (s.length > 70) {
+      const cut = s.slice(0, 70);
+      s = (cut.includes(" ") ? cut.slice(0, cut.lastIndexOf(" ")) : cut).trim();
+    }
+    // Prepending can itself fail to fit if the brand is long. Falling back is
+    // still right there: a title with the brand and without the new detail
+    // beats one with neither.
+    if (fallback.toLowerCase().includes(b.toLowerCase()) && !s.toLowerCase().includes(b.toLowerCase())) return fallback;
+  }
+
+  // Put the brand back in its own spelling. Title Case above is right for
+  // ordinary words but wrong for brands styled lowercase — "hummel" and
+  // "adidas" are written that way on purpose, and restyling a seller's brand
+  // is the sort of small wrongness that makes a listing look machine-made.
+  if (b) {
+    const at = s.toLowerCase().indexOf(b.toLowerCase());
+    if (at >= 0) s = s.slice(0, at) + b + s.slice(at + b.length);
+  }
+  return s;
+}
+
 const ALLOWED_ORIGINS = new Set([
   "https://fashionistas.ai",
   "https://fashionistas-ai.pages.dev",
@@ -1223,21 +1418,72 @@ async function dispatch(request, env) {
         // (sellers still see every listing in their own closet).
         const where = ["l.status = 'active'", "l.photo_url IS NOT NULL", "l.photo_url != ''"];
         const binds = [];
-        if (q) { where.push("(l.title LIKE ? OR l.description LIKE ?)"); binds.push("%" + q + "%", "%" + q + "%"); }
-        // Category arrives three ways: a full path ("Women's Clothing/Tops & Shirts"),
-        // a bare department ("Women's Clothing"), or a legacy flat word ("Tops") —
-        // rows written before the tree existed still hold the flat word. Match
-        // exact path, the leaf on its own, and anything stored under the path.
-        if (category) {
-          const leaf = category.split("/").pop().trim();
-          where.push("(LOWER(TRIM(l.category)) = LOWER(?) OR LOWER(TRIM(l.category)) = LOWER(?) OR LOWER(TRIM(l.category)) LIKE LOWER(?))");
-          binds.push(category, leaf, category + "/%");
+        if (q) {
+          // Searching only title + description meant a seller who put the brand
+          // in the dedicated Brand field was unfindable by it: typing "Versace"
+          // into Shop returned nothing while the Versace polo sat in the table
+          // with brand='Versace'. Shoppers search the way they think — brand,
+          // colour, material, size, department — so every field they fill in has
+          // to be a field they can be found by. `|| ''` keeps NULL columns from
+          // swallowing the OR, and a bare "Women" still matches the department.
+          const cols = ["l.title", "l.description", "l.brand", "l.color", "l.material", "l.size", "l.category"];
+          where.push("(" + cols.map((c) => `IFNULL(${c},'') LIKE ?`).join(" OR ") + ")");
+          binds.push(...cols.map(() => `%${q}%`));
         }
+        // Category arrives three ways: the shop's own path ("Women/Tops"), a
+        // bare department ("Women"), and every older spelling still sitting in
+        // D1 ("Tops", "Women's Clothing/Tops & Shirts", "Bags & Luggage/
+        // Handbags"). The column is matched literally, so the request is turned
+        // into a small set of LIKE prefixes (see prefixesFor) and SQL tests
+        // each one. Enumerating every spelling instead would put ~126 values
+        // in this clause and D1 caps a statement at 100 bound parameters — the
+        // busiest click in the shop would have 500'd.
+        //
+        // A prefix can over-match, so the canonicalized rows are filtered
+        // again with belongsUnder() before they are returned. SQL decides what
+        // to look at; that decides what is actually under the click.
+        // A department a shopper asked for that names no place in the table
+        // must come back EMPTY, not full. Returning everything would mean a
+        // mistyped or retired department silently showed the whole shop under
+        // the wrong heading — and nobody would notice, because it looks like
+        // it worked. (That is exactly what this route did before belongsUnder
+        // took the resolved path rather than re-resolving it: `?category=
+        // nonsense` answered all 7 listings.)
+        let requestedPath = null;
+        if (category) {
+          requestedPath = canonCategory(category);
+          const prefixes = requestedPath ? prefixesFor(requestedPath) : [];
+          if (prefixes.length) {
+            const marks = prefixes.map(() => "LOWER(TRIM(l.category)) LIKE LOWER(?)").join(" OR ");
+            where.push("(" + marks + ")");
+            // Trailing "%" is the point: without it LIKE "Women" matches only
+            // the literal string "Women", and a department click returns
+            // nothing while looking perfectly healthy.
+            binds.push(...prefixes.map((p) => p + "%"));
+          } else {
+            // Nothing in the table resolves here — match nothing, in SQL too,
+            // rather than fetching the lot and filtering it away.
+            where.push("1 = 0");
+          }
+        }
+        // `limit` was accepted and silently ignored, so a caller asking for 250
+        // got 100 with no indication anything was missing. Bounded here rather
+        // than trusted: a query string is not a place to set an unbounded LIMIT.
+        const wantLimit = Number(u.searchParams.get("limit"));
+        const limit = Number.isFinite(wantLimit) && wantLimit >= 1
+          ? Math.min(Math.floor(wantLimit), 500)
+          : MARKET_LIMIT;
         const sql =
           (await marketSelect(env)) + " WHERE " + where.join(" AND ") +
-          " ORDER BY " + orderBy + " LIMIT " + MARKET_LIMIT;
+          " ORDER BY " + orderBy + " LIMIT " + limit;
         const r = await env.DB.prepare(sql).bind(...binds).all();
-        const rows = (r.results || []).map(marketItem);
+        // SQL's prefix match is deliberately generous — "women's clothing%"
+        // also covers a sub-category that belongs elsewhere — so this is the
+        // test that decides what is actually under the click. Applied after
+        // marketItem() because that is what canonicalizes the stored value.
+        const rows = (r.results || [])
+          .map(marketItem)
+          .filter((row) => (requestedPath === null && !category) || belongsUnder(row.category, requestedPath));
         return json({ market: rows, count: rows.length, sort: sortKey, q, category });
       }
       const marketOne = path.match(/^\/api\/market\/(\d+)$/);
@@ -1271,7 +1517,7 @@ async function dispatch(request, env) {
         const PHOTO_PROMPT =
           "You are helping a shopper find an item they just photographed. Reply with ONLY one raw JSON object, double quotes, no markdown, no code fences, no prose. " +
           "Keys: type (e.g. 'denim jacket','white trainers','floral dress'), brand (string or 'Unknown'), color, " +
-          "category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), keywords (array of 5 short lowercase words someone would type into a search box), confidence (0-100). " +
+          "category (EXACTLY one of: " + CATEGORY_HINT + "), keywords (array of 5 short lowercase words someone would type into a search box), confidence (0-100). " +
           "Be specific and honest about what you can actually see.";
         try {
           const r4 = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
@@ -1442,7 +1688,12 @@ async function dispatch(request, env) {
         if (!/^[A-Za-z0-9+/=]+$/.test(image) || image.length < 100) return err("image must be base64-encoded image bytes");
         // Llama 4 Scout first: the 3.2-11b model called a denim jacket a "t-shirt,
         // $5-10" three times out of three (2026-09-27). 3.2-11b stays as fallback.
-        const VISION_PROMPT = "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (string or 'Unknown'), color, condition (Poor/Fair/Good/Excellent), category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint. Be specific and honest.";
+        // The category list is the shop's own table, not a hand-typed guess: the
+        // picker the seller uses and the department browse the buyer uses both
+        // read it, so a path the model returns here is a department that exists.
+        // Offering the old flat words ("Tops"/"Shoes") is what let AI-filed items
+        // land outside every department.
+        const VISION_PROMPT = "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (omit the key entirely if you cannot read a real brand name off the item), color, condition (one of Poor/Fair/Good/Excellent only), category (EXACTLY one of: " + CATEGORY_HINT + "), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint (omit the key if no size is visible). Be specific and honest; never invent a brand or a size.";
         try {
           const r4 = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
             messages: [{ role: "user", content: [
@@ -1453,7 +1704,7 @@ async function dispatch(request, env) {
           });
           const t4 = typeof r4?.response === "string" ? r4.response : JSON.stringify(r4?.response ?? r4);
           const p4 = aiJson(t4, null);
-          if (p4 && p4.type) return json({ source: "ai", ...p4, note: "" });
+          if (p4 && p4.type) return json({ source: "ai", ...sanitizeIdent(p4), note: "" });
           console.error("analyze scout: unparseable", String(t4).slice(0, 200));
         } catch (e) {
           console.error("analyze scout:", (e && e.message) || e);
@@ -1482,7 +1733,7 @@ async function dispatch(request, env) {
             const pg = aiJson(gj?.choices?.[0]?.message?.content || "", null);
             if (pg && pg.type) {
               if (pg.confidence != null && pg.confidence <= 1) pg.confidence = Math.round(pg.confidence * 100);
-              return json({ source: "ai", ...pg, note: "" });
+              return json({ source: "ai", ...sanitizeIdent(pg), note: "" });
             }
             console.error("analyze groq:", g.status, JSON.stringify(gj).slice(0, 200));
           } catch (e) {
@@ -1491,7 +1742,7 @@ async function dispatch(request, env) {
         }
         try {
           const r = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
-            prompt: "You are a fashion resale expert. Look at this clothing item photo and reply with ONLY one raw JSON object using double quotes. No markdown, no code fences, no prose before or after. Keys: type (e.g. 'jean jacket','sneakers','dress','t-shirt'), brand (string or 'Unknown'), color, condition (Poor/Fair/Good/Excellent), category (Tops/Bottoms/Dresses/Outerwear/Shoes/Accessories), priceMin, priceMax (reasonable resale USD), confidence (0-100), sizeHint. Be specific and honest.",
+            prompt: VISION_PROMPT,
             image,
             max_tokens: 256,
           });
@@ -1501,7 +1752,7 @@ async function dispatch(request, env) {
             if (r?.response) text = typeof r.response === "string" ? r.response : JSON.stringify(r.response);
           } catch { text = JSON.stringify(r); }
           const parsed = aiJson(text, null);
-          if (parsed) return json({ source: "ai", ...parsed, note: "" });
+          if (parsed) return json({ source: "ai", ...sanitizeIdent(parsed), note: "" });
           // Never dress a guess up as an AI read ("Clothing Item, $25–75, Good" used to come back here).
           return json({ source: "error", error: "could not read the photo", note: "vision model unavailable" }, 502);
         } catch (e) {
@@ -1515,13 +1766,43 @@ async function dispatch(request, env) {
         // Missing title used to reach the model as the string "undefined" and
         // come back 200 with `original: undefined` (JSON drops the key).
         if (typeof title !== "string" || !title.trim()) return err("title required");
-        const t = await aiText(env,
-          "You are an expert e-commerce listing title optimizer. Return JSON only with keys: optimized, keywords, tips.",
-          `Optimize this title for maximum resale visibility: "${title}" (category: ${category}, brand: ${brand || "unknown"}, size: ${size || "?"}, condition: ${condition || "good"}). Return JSON only.`,
+        // The prompt used to say "maximum resale visibility" and nothing else.
+        // That is an instruction to stuff, and the model did: live listing 148
+        // came back as "Blue Versace Polo Shirt - Good Condition, Tops, Mens
+        // Tops, Tops for Men" — the same noun repeated three times for two
+        // search engines that read the description too. It reads like a spam
+        // listing, and shoppers scroll past exactly that.
+        //
+        // What actually ranks on resale search is a readable phrase in a fixed
+        // order — brand, item, colour/material, size — because every one of
+        // those shops tokenises the whole title and no shop rewards a word
+        // said twice. The cap is the tightest limit any of them enforces, so a
+        // title that fits everywhere fits anywhere.
+        const TITLE_PROMPT =
+          "You write listing titles for second-hand clothing on Depop, Poshmark, eBay, Etsy and Vinted. " +
+          "Return JSON only, with keys: optimized, keywords, tips. " +
+          "Rules for `optimized`: " +
+          "(1) Order is always: Brand, Item, Colour or material, Size, then one honest detail. " +
+          "(2) At most 70 characters. " +
+          "(3) Title Case — capitalise the first letter of every word, including the brand and the size. " +
+          "(4) Natural words separated by single spaces. No hyphens, pipes, emoji, or ALL CAPS. " +
+          "(5) NEVER repeat a word or phrase, and never add the same idea in several forms — " +
+          "no 'Tops, Mens Tops, Tops for Men'. " +
+          "(6) Do not include the condition unless the seller gave it and it is a selling point " +
+          "like 'New with tags'. " +
+          "(7) Say only what is given. Never invent a brand, era, or material. " +
+          "`keywords` is 5 short lowercase words a shopper would actually type. " +
+          "`tips` is at most 2 short sentences of advice for this item.";
+        const t = await aiText(env, TITLE_PROMPT,
+          `Rewrite this listing title.\nTitle: "${title}"\nBrand: ${brand || "(none given)"}\nCategory: ${category || "(none given)"}\nSize: ${size || "(none given)"}\nCondition: ${condition || "(none given)"}`,
           300);
-        const m = t.match(/\{[\s\S]*\}/);
-        const parsed = aiJson(t, null) || { optimized: title, keywords: [], tips: [] };
-        return json({ original: title, ...parsed });
+        const parsed = aiJson(t, null) || { keywords: [], tips: [] };
+        // A model can still hand back junk, and this route feeds the seller's
+        // title field directly — so the same rules are enforced here rather
+        // than trusted to the prompt. Anything unusable keeps the original
+        // title, because a worse title is worse than none.
+        const cleaned = cleanTitle(parsed.optimized, title, brand);
+        return json({ original: title, optimized: cleaned, keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 8) : [], tips: parsed.tips || "" });
       }
 
       // fees & shipping estimate — real market data
