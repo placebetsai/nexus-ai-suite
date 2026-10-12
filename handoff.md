@@ -1,9 +1,9 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
 > **Newer:** `HANDOFF-2026-10-06.md` — current daily handoff (accounts, tokens, deploy recipe, open blockers).
-**Last updated: 2026-10-12** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
-**Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-06.md` +
-`ISSUE_LOG.md` (newest `#59`) + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
+**Last updated: 2026-10-12 (evening)** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §23 (four claim-vs-behaviour gaps closed, CSP report-only, two chatbots made real, two stalled sites re-deployed) + §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-06.md` +
+`ISSUE_LOG.md` (newest `#80`) + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
 **Try-on:** the on-device sticker is removed. Live proof is §18. Do not restore Instant / `TryOnPipeline`.
 **Public email:** no personal Gmail on a page, a footer, or a form action. Contact form only. See §20 and §19. The 2026-09-28 note that kept FormSubmit `action` attributes is overruled for personal Gmail addresses.
 **Countdown:** retired. Do not ship "Public launch". See §19.
@@ -2582,3 +2582,114 @@ Live proof of the one-click path, run in the real page:
 - **Committed keys:** Groq in `Spanishtvshows.com/app/api/chatbot/route.js:11` (project only has `TMDB_API_KEY`, so the leaked key is load-bearing), Gemini in `Ihatecollege/scripts/expand-articles.js:8`, OpenRouter in `Placebetsai-src/lib/web-search.js:4`. Already logged as ISSUE_LOG #20–22.
 - **marketpicks chatbot:** runs but degraded — project secrets are `CONGRESS_INGEST_TOKEN` + `GROQ_API_KEY` only, so `route.ts:1252` disables the 3-model ensemble; the 2500ms Groq clamp ships canned templates ~1/3 of the time; `SELECT value FROM settings` queries a **table that does not exist**, and `INSERT INTO llm_usage (day, count)` uses a column that does not exist.
 - **`FEDERATION.md` is wrong:** claims "2 accounts", there are **6**; its deploy block points at another machine (`/home/joffe/projects/…`).
+
+---
+
+## 23. 2026-10-12 (evening) — the "claim vs behaviour" round: four liars closed, federation un-stalled
+
+Everything below was measured, not inferred. Where a fix needed a human decision it is listed under
+**Owner decisions still open**, not silently made.
+
+### 23.1 fashionistas.ai — four places where the site said one thing and did another
+
+Live at `e2714e68` (branch `tryon-open`; deploys `74c086b` → `77e4feab` → `e2714e68`).
+Tests **425/425**. `ALLOW_BRANCH=tryon-open npm run deploy`.
+
+**(a) `/api/ai/analyze` failed OPEN.** `functions/api/ai/analyze.js:34-46` returned `true` when the KV
+binding was absent *and* when KV threw. Public, unauthenticated, CORS `*`, and every accepted request
+spends paid AI compute — so the only spend cap meant "unlimited" and reported itself as success.
+
+Measured before flipping it, because a blind flip could have broken a working route: 25 probes using a
+body the route never parses (so nothing is spent) returned **20× 415 then 5× 429**, matching
+`RATE_PER_MIN = 20`. **KV is bound and the cap is real**; only the failure branch was wrong. Now unbound
+or throwing KV returns **503 `error: "unavailable"`**, distinct from 429 so ops can tell a dead limiter
+from traffic shaping.
+
+**(b) `/legal/*` published documents that said not to publish them.** `legal/terms.html:197` "Do not
+publish this page as binding terms until counsel signs off", plus `[COUNSEL: GOVERNING LAW PLACEHOLDER]`
+and a `[PLACEHOLDER]` privacy decision marked "blocks launch". They answered **200** from stable URLs;
+the only control was `Disallow: /legal/` in robots.txt, which is a request and not a control. Added
+`functions/legal/[[path]].js` → **404 for all of them, verified live**. `/privacy/` (the real policy)
+stays up. Pages `_redirects` cannot express a 404, so a Function is what makes this real.
+
+**(c) Pricing told two stories at once.** `pricing/index.html` promised "list one item or five hundred"
+while `usage.js` enforces 10 listings / 3 AI photos / 10 stylist messages, and the 402 text advertised
+"Pro: unlimited. Upgrade from /pricing" for a plan that is not for sale. Both now say the same true
+thing: **free during launch, with a fair-use limit** that exists because each AI call costs real money
+(Workers AI blew its quota 103% Sept 29 and 86% Oct 2). Verified live in the served `/pricing/` copy.
+
+**(d) The Chrome extension was publicly downloadable with no backend.** Nothing serves `/api/jobs` or
+`/api/sessions`, and nothing enqueues a job — yet `/chrome-store/*.zip` answered 200 and
+`chrome-store/PRIVACY.md` described those calls to store reviewers as working infrastructure. The zips
+are removed and **gitignored** so they cannot come back.
+
+> **Trap worth remembering.** The first gate probed the Worker and accepted **401** as proof the route
+> existed. Wrong: this Worker 401s *every* unmatched `/api` path —
+> `/api/definitely-not-a-real-route-xyz` → 401 too. A check that passes for a URL that does not exist is
+> decoration, not a gate, and it shipped the zip on the very next deploy while looking like it withheld
+> it. Shipping is now the explicit `SHIP_EXTENSION=1`, with a regression test that fails if `200|401` is
+> ever reintroduced as a liveness test.
+>
+> Second trap: `git add -A` re-added the withdrawn zips (`Bin 0 -> 115183`) because the deploy
+> regenerated them on disk. Removing them by hand could never stick. Gitignored now — which also matters
+> because the old script deleted them *mid-deploy*, leaving a dirty tree that would have made the next
+> deploy abort on dirt its own predecessor created.
+
+### 23.2 Headers — HSTS + clickjacking closed, CSP shipped as REPORT-ONLY
+
+`_headers` now sets `Strict-Transport-Security: max-age=31536000; includeSubDomains` and
+`X-Frame-Options: DENY` — both verified live.
+
+The CSP is deliberately **`Content-Security-Policy-Report-Only`**, with `functions/api/csp-report.js` as
+its collector. Enforcing now would be a guess: `index.html` needs only three external origins
+(`fonts.googleapis.com`, `fonts.gstatic.com`, `pagead2.googlesyndication.com`) but AdSense loads ~15
+dynamically, and one wrong directive blanks the page and kills ad revenue. Report-only cannot break
+rendering, real traffic fills the log, and flipping it to enforced becomes a **one-word edit driven by
+evidence**. `/api/csp-report` → GET **405**, POST **204**, both verified live.
+
+`csp-report` is allowlisted public in `tests/api-auth-matrix.test.mjs` with its justification written
+out — a session gate there would guarantee a 401 and leave the violation log permanently empty.
+
+### 23.3 Federation — two chatbots were dead, two sites had silently stopped deploying
+
+| Property | Was | Now | Proof |
+| --- | --- | --- | --- |
+| hiddencameras.tv chatbot | GET 404 / POST 405 | **200, real LLM prose** | `POST {"query":"hello"}` → 200 in 0.88s, varied per request |
+| scooter.exchange chatbot | GET 404 / POST 405 | **200, real LLM prose** | endpoint added to the existing `scooters-exchange-api` Worker |
+| ihatecollege.com `/blog` | newest 2026-10-06 | **2026-10-11** | sitemap `lastmod` now `2026-10-12T18:34:49Z` |
+| spanishtvshows.com `/blog` | newest 2026-10-05 | **2026-10-11** | two previously-404 slugs now 200 |
+
+Root cause for both stalled sites was **ISSUE_LOG #9**: every GitHub Action in the federation had been
+`disabled_manually`, so pushes sat on GitHub and nothing could fire. Re-enabling alone was not enough —
+two latent build bugs would have kept them broken:
+
+- **ihatecollege**: LLM-written prose contained a bare `<` (`apprenticeship <$2k`); the JSX parser read
+  `<$` as a tag opener and killed the **entire** build, introduced `44c5d71` (2026-10-09) — which is why
+  nothing from Oct 7/9/11 ever shipped. Generator now escapes `<`/`>` wherever prose becomes a JSX text
+  node; all 205 pages parse-verified.
+- **spanishtvshows**: `TMDB_API_KEY` GitHub secret last updated **2025-12-23** → stale → 401 →
+  `npm run build` exits 1. Rotated (value never printed).
+
+Root cause for both chatbots was the same shape as the extension: `output: "export"` silently drops
+`pages/api/*` and `app/api/*/route.ts`, while the widget kept calling a path that could never exist.
+
+`scripts/site-blogs.sh` no longer fails silently — DNS/pull failures log loudly and exit non-zero
+(previously logged `Could not resolve host: github.com` and exited 0, so the generator never ran).
+
+### 23.4 marketpicks.ai — shipped at `2c8c2bf`, verified live
+
+The six data fixes that had been written but never committed are now committed **and deployed**:
+earnings lookup was future-bounded (`resolve` returned a date **72 days in the past**), the
+commodity-quotes job was never in the cron cadence, and its route was GET-only while the worker POSTs.
+Live: `resolve NVDA earnings` → **2026-11-18** (was `2026-07-22`); `POST /api/cron/commodity-quotes` →
+**200, 6 rows** (was 405); news stamped today.
+
+The 6 do-not-modify files were not committed. Note that any deploy publishes the *working tree*, so their
+changes rode along with the build — unavoidable for any deploy.
+
+### 23.5 Owner decisions still open (unchanged, still blocking)
+
+Legal pages now 404 rather than serving drafts — **counsel is still required** before real terms exist.
+Marketplace posting still needs `NEEDS_ISRAEL.txt`. Chrome store publication still needs a Google
+account. Pricing is now consistent but the owner may still want a paid tier designed.
+marketpicks chatbot still needs `OPENROUTER_API_KEY` (defects listed in ISSUE_LOG).
