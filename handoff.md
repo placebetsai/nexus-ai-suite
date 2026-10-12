@@ -1,9 +1,12 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
 > **Newer:** `HANDOFF-2026-10-06.md` — current daily handoff (accounts, tokens, deploy recipe, open blockers).
-**Last updated: 2026-10-07** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
-**Sections 1–15 are history (2026-09-24 → 2026-10-02). Current truth = §16 + `HANDOFF-2026-10-06.md` +
-`ISSUE_LOG.md` + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
+**Last updated: 2026-10-12** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-06.md` +
+`ISSUE_LOG.md` (newest `#59`) + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
+**Try-on:** the on-device sticker is removed. Live proof is §18. Do not restore Instant / `TryOnPipeline`.
+**Public email:** no personal Gmail on a page, a footer, or a form action. Contact form only. See §20 and §19. The 2026-09-28 note that kept FormSubmit `action` attributes is overruled for personal Gmail addresses.
+**Countdown:** retired. Do not ship "Public launch". See §19.
 **Local path:** `/home/billionaremaker/Documents/Default Project/nexus-ai-suite`
 **Local GitHub backup (mirror):** `/home/billionaremaker/Documents/GitHub-Backup/`
 
@@ -2297,5 +2300,285 @@ remain blocked exactly as `NEEDS_ISRAEL` #9/#8 describe (no code fixes them).
 `ISSUE_LOG.md` (FIXED + OPEN), `PRIMETIME_CHECKLIST.md`, `NEEDS_ISRAEL.txt`.
 
 
+## 17. 2026-10-11 — fashionistas.ai: the "looks like shit" complaint round
+
+**Owner's words:** *"u cant post your feeds and they look like shit, the listings arent clear, buyers
+cant find anything i list, and some items dont have prices or sizes."*
+
+Full evidence: **ISSUE_LOG `#59`**. **Two repos, both committed, both deployed.**
+`fashionistas-ai` `75b4162` → `c28e47b` · `nexus-ai-suite` `ecc868f` ·
+Worker `fashionistas-api` **`3fdde4fc-8768-4b39-8ebe-c154cb65b5cb`** · `version.txt` =
+`c28e47b90508dbc3a22d216b8c40839833c9407d`.
+
+### 17.1 One root cause, four complaints
+
+Four of the five complaints were **the same defect seen from four sides**, and all four answered
+`200`/`201` while doing the wrong thing — which is why they survived "works on my machine".
+
+| the complaint | what it really was | fix |
+|---|---|---|
+| *"buyers cant find anything i list"* | `canonCategory()` matched **nothing**. The Worker carried a hand-written **second copy** of the category table with department heads the shop no longer draws (`Women's Clothing` / `Tops & Shirts` / `Bags & Luggage`), so the picker's paths resolved to `NULL`. `INSERT` → item in **no** department; `PUT` → the edit re-nulled it; `GET` → `/api/market` answered `category:null` | `src/categories.js` is **generated** from `functions/_lib/categories.js` via `scripts/gen-worker-taxonomy.mjs` (`--check` proves it is not stale). One table, one source |
+| *"the listings arent clear"* | the AI wrote the junk: `/api/ai/analyze` returned `condition:"Unknown"` / `sizeHint:"not visible"` / `brand:"Unknown"` **stored verbatim** (listing 143 shipped with its size reading "not visible"), and the title prompt said only *"maximum resale visibility"* — an **instruction to stuff** | `sanitizeIdent()` enforces the four grades; `TITLE_PROMPT` states order + 70-char cap + no repetition, and `cleanTitle()` enforces it on **whatever the model returns** |
+| *"u cant post your feeds"* | `/feed/google.xml` and `/feed/tiktok.csv` were **404** — never built | `functions/feed/google.xml.js` + `functions/feed/tiktok.csv.js` over `functions/_lib/feed-market.js`. TikTok targets **Ads Catalog**, not Seller Center (US Seller Center prohibits secondhand) |
+| *"dont have prices or sizes"* | Product JSON-LD had no `brand`, `size`, `material`, `condition`, `color`, `item_group_id`, and `addressCountry` was literally `"UN"` | `functions/_lib/item-meta.js` now emits all of them + `google_product_category` + `offers.itemCondition: UsedCondition`. Real `countryCode()`; an unrecognised country **omits** `shippingDetails` rather than emitting a wrong code |
+
+Two more found while measuring, both live:
+- **A department click returned nothing** — the prefix scan was `LIKE LOWER(?)` with the bind
+  `"Women/"` and **no trailing `%`** (matches one string no row holds). Fixed with LIKE **prefixes**
+  + a `belongsUnder()` post-filter, **not** by enumerating spellings: ~126 values would exceed
+  **D1's 100 bound-parameter cap** and 500 the busiest click in the shop.
+- **`?category=nonsense` returned the whole shop.** It now matches nothing, in SQL too (`1=0`) —
+  showing everything under the wrong heading is worse than showing nothing, because it looks like it worked.
+- **Search matched title + description only**, so a brand typed into the **Brand** field was
+  unfindable. Now searches brand, colour, material, size, department. `?limit` was accepted and
+  silently ignored (`MARKET_LIMIT` 100 → 250, cap 500).
+- **`_redirects` 202 is invalid** — Pages only honours `200/301/302/303/307/308`, so the channel
+  OAuth landing pad 404'd → replaced by `functions/api/channels/callback/[[channel]].js` (allowlisted
+  in the auth-matrix test's `PUBLIC` map as an OAuth landing pad, same class as `ebay/oauth/callback`).
+
+### 17.2 IMPORTANT KEYS — where every credential lives
+
+**Nothing below is a value. This repo is pushed to a PUBLIC GitHub remote
+(`placebetsai/nexus-ai-suite`); name + path + length only, always.**
+
+| what | file / place | note |
+|---|---|---|
+| **Cloudflare, fashionistas/nexus acct `7eb89b01e9c3bec41ee24db8ecbe77f8`** | `.secrets/cf.env` (`-rw-------`, git-ignored): `CF_ACCOUNT_ID` (32) + `CF_API_TOKEN` (53) | drives `fashionistas-api`, all fashionistas Pages |
+| **DNS edit, all zones, fashionistas acct** | `.secrets/cf.env` `CF_DNS_TOKEN` (53) | |
+| **createstuff/placebets acct `2765cb2786006552f33cc3dfe0b680a1`** | `CS_ACCOUNT_ID` (32) + `CS_API_TOKEN` (53) | **clear `node_modules/.cache/wrangler/{wrangler-account,pages}.json` first** — stale cache points wrangler at the *fashionistas* account → `Project not found [8000007]` |
+| **fashionistas.ai site deploy** | `fashionistas-ai/.env.deploy`: `CLOUDFLARE_ACCOUNT_ID` (32) + `CLOUDFLARE_API_TOKEN` (53) | consumed by `bash scripts/deploy-local.sh` |
+| **fashionistas QA account (D1 `users` id 78)** | `.secrets/cf.env` `FASH_QA_EMAIL` (28) + `FASH_QA_PASSWORD` (19) | **username is `qa-post-test`, NOT the email** — `POST /api/auth/login` takes `{username,password}` and does `SELECT … WHERE username=?`. Cost a failed login this round |
+| **session token with no credentials** | `POST /api/auth/demo` | the easy way to reach session-gated AI routes. **Pre-existing asymmetry:** this mints a valid `fash_session` for the populated `demo` account (`users` id 50) while the password path `503`s — flagged in `ISSUE_LOG #59`, not changed |
+| **TMDB** | `.secrets/cf.env` `STV_TMDB_API_KEY` (32, `90ca…4e5e`) + `STV_TMDB_READ_TOKEN` (244) | set as Pages secret `TMDB_API_KEY` on `spanishtvshows-site`, prod **and** preview |
+| **R2 / IHC / STV / hiddencameras79** | `.secrets/cf.env` `IHC_*`, `STV_*`, `HIDDEN79_*` | `HIDDEN79_API_TOKEN`/`ACCOUNT_ID`/`ZONE_ID` + R2 pair, acct created 2026-10-10 |
+| **Worker bindings** | `workers/fashionistas-api/wrangler.toml` | D1 `DB`=`fashionistas-db` (`0c1b88be-00b2-4e25-ae54-d30564190c4d`), R2 `IMAGES`=`fashionistas-images`, KV `CACHE`=`2c710998e6d94970bf922643d4955452`, `AI` |
+| **still missing (blocked, not forgettable)** | — | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` (0 chars) → `#24`; 8 eBay/Etsy/Google vars → `#25`; `OPENCODE_API_KEY` → `#27`. **These are what stop a marketplace post** — see `#43` |
+
+### 17.3 Gotchas that cost time this round — read before touching anything
+
+1. **`/api/listings` is `401 Unauthorized`. `/api/market` is the public one.** A whole verification
+   sweep was written against `/api/listings` and returned `0` for *every* filter including "no
+   filter" — which looks exactly like the bug being tested. Check the auth class before believing a 0.
+2. **Login takes `username`, not `email`.** `qa-post-test`, not `qa-post-test@fashionistas.ai`.
+3. **The app bundle name is a content hash** (first 12 hex of sha256 of the file). Edit
+   `assets/app.<hash>.js` in place and the CDN serves stale bytes — **rename + repoint
+   `index.html:1471`**. This round: `app.93db949f7b21.js` → `app.393972daf76e.js`.
+4. **`bash scripts/deploy-local.sh` refuses a dirty tree** and regenerates `chrome-store/*.zip`.
+   It needs `.env.deploy`. Worker deploys are separate: `npx wrangler deploy` in
+   `workers/fashionistas-api` (run `--dry-run` first).
+5. **The local wrangler OAuth token has `d1 write`** — `wrangler d1 execute fashionistas-db --remote`
+   works. Older notes in this file claim otherwise; they are wrong.
+6. **Cloudflare's bot rule 403s Python's `urllib` User-Agent on the Worker API.** Use `curl`.
+7. **`wrangler deploy` propagates in stages** — a call made ~3 s after deploy can still hit the
+   previous isolate. Re-run the probe before concluding the fix didn't take (that happened here:
+   the "still lowercase" reading was the pre-deploy version).
+8. **Never enumerate spellings in a `WHERE` clause to work around a string mismatch** — use LIKE
+   **prefixes** + a post-filter, and stay under **D1's 100 bound parameters**.
+9. **Legacy category values were deliberately NOT backfilled into D1.** The legacy map funnels flat
+   words into Women (`Shoes` → `Women/Sneakers`). Baking that guess in would be permanent.
+10. **Never point the SPA at same-origin for token auth** — Pages D1 rejects Worker HMAC tokens and
+    would sign everyone out (carried forward from `#57`).
+
+### 17.4 Live verification, re-measured 2026-10-11
+
+`curl` against `https://fashionistas-api.fashionistas1979.workers.dev` (public `/api/market`):
+
+| probe | result |
+|---|---|
+| `?category=Women` / `Men` / `Women/Tops` | 2 / 1 / 1 |
+| `?category=Men/Coats & Jackets` / `Women/Bags & Handbags` | 1 / 1 |
+| `?category=Bags & Luggage/Handbags` / `Women's Clothing/Tops & Shirts` | 1 / 1 |
+| `?category=nonsense` | **0** (was: everything) |
+| no category | **7** |
+| `q=Versace` / `q=Keurig` / `q=blue` / `q=denim` | `[148]` / `[145]` / `[148,146,143]` / `[147]` |
+| `?limit=2` | 2 (was ignored) |
+| `/feed/google.xml` / `/feed/tiktok.csv` | **200** · 6,100 B / 7 `<item>` · 2,539 B / 8 rows (BOM) — were **404** |
+| `/api/channels/callback/…` | **400** (reaches the Worker) — was **404** |
+| `/shop/148` JSON-LD | `"brand":…"Versace"` · `addressCountry:"US"` (was `"UN"`) · `UsedCondition` · `InStock` |
+| `/api/ai/title-optimizer` ×4 on the shipped junk input | `Versace Polo Shirt Blue M` · `Versace Blue Polo Shirt M` · `Blue Versace Polo Shirt M` · `Versace Blue Polo Shirt M` — all ≤70, no repeat, no grade, brand present (was: the junk verbatim) |
+| `/api/health` | `{"ok":true,…,"version":"3.1.0"}` |
+
+**Gates:** `fashionistas-ai` `npm test` **409 pass / 0 fail** (new: `tests/category-parity.test.mjs`
+×10, `tests/product-feeds.test.mjs`, `tests/listing-quality.test.mjs`, auth-matrix `PUBLIC` allowlist
+entry) · `node workers/fashionistas-api/listing-titles.test.mjs` **20/20** (new — pulls
+`sanitizeIdent` + `cleanTitle` out of the Worker's **own source text**, same technique as
+`createstuff-api/versions.test.mjs`, so the deployed code is what is asserted) ·
+`wrangler deploy --dry-run` exit 0 · trees: `fashionistas-ai` **0 dirty**, `nexus-ai-suite` only
+`NEEDS_ISRAEL.txt` (yours) + `joffe-admin/` (yours), both left alone.
+
+### 17.5 Still open after this round — owner decisions, not code
+
+- **Listings 145–148 still have `category = NULL` and 148 still has the junk title *in D1*.** The
+  pipeline that produced them is fixed and the seller's "Retitle" button now returns a clean title,
+  but **no seller data was rewritten without asking.** 4 of 8 active listings are in this state.
+- Blocked as before: `#24` Stripe test key → `#25` 8 env vars → `#43` first real marketplace post.
+  No marketplace post has ever gone out. `#26` try-on credits (9 left) · `#27` `OPENCODE_API_KEY` ·
+  `#49` **decision needed**: `POST /api/ai/analyze` spends Groq anonymously, capped only per-IP (20/min
+  in KV), so rotating IPs can burn the quota and starve the real identify funnel.
+- Not started (owner backlog): placebets **casino games section**, **Daily edge** digest.
+- hiddencameras production blocked exactly as `NEEDS_ISRAEL` #9 describes.
+
+**Next agent:** sections 1–16 are history. Start from **§21** (newer than §20) → **§20** → **§19** → **§18** → **§17** → `ISSUE_LOG.md`
+`#59` → `HANDOFF-2026-10-06.md` → `PRIMETIME_CHECKLIST.md` → `NEEDS_ISRAEL.txt`.
+
+
 ## 2026-10-07 — PlaceBets.ai
 See `HANDOFF-2026-10-07.md` (deploy commands, creds by name, rollback IDs, live features, open items). Live deployment ecf69ab8-85aa-4461-a799-073c53922e96 (bot off-board picks, sports-only ticker news, Web Push); rollback b7c1e812-836a-4750-a088-d1bcff5c1995.
+
+## 18. 2026-10-11 evening ET — fashionistas try-on is a redraw, not a sticker
+
+**Fixed.** `https://fashionistas.ai/try-on/` no longer pastes the garment photo onto the person photo.
+
+The rejected result was `TryOnPipeline` in `try-on/tryon_pipeline.js`: canvas warp + composite. The page called it (and used it whenever `/api/tryon/hd` failed). That function now returns `{ ok:false, source:"removed" }` before it draws. The live page does not import it. Same change in `core/tryon_pipeline.js`. Chat facts no longer offer an "Instant" overlay.
+
+The only path is `POST /api/tryon/hd` → Modal FASHN VTON 1.5 (`https://fashionistas1979--fashn-vton-api.modal.run`). Signed in, 6/day, no Pro. A cold GPU that dies at Cloudflare's proxy timeout is retried once. No paste.
+
+**Live proof, 2026-10-11 ~19:35 ET.** Signed-in POST of the FASHN sample pair (person in a white tee, garment = black FASHN tee):
+
+- `200` in 26.2s, body `provider:"modal"`, `model:"modal/fashn-vton-1.5"`, `ms:22876`
+- `GET /api/tryon/image/bf739e5a2c464390803e28f5bdc032f6.webp` → `200 image/webp`, 46668 bytes, 576×864
+- Same seated person (hat, pants, boots, tattoo) now wearing the black logo shirt. The garment photo's model is not in the output.
+
+Product detail lives in `fashionistas-ai/docs/AGENT_HANDOFF.md` (top section, same date). Do not restore the sticker as a fallback.
+
+## 19. 2026-10-11 night ET — email off the site, countdown off, Gemini audit not followed
+
+Same session as §18. Full writeup: `fashionistas-ai/docs/AGENT_HANDOFF.md` top section. Deploys are wrangler Pages to project `fashionistas-ai` (account fashionistas, not the PlaceBets account). Not committed.
+
+**Email.** User: remove `fashionistas1979@gmail.com` from the sites, replace with nothing, keep the contact form, do not display `info@fashionistas.ai`. Public HTML already lacked the Gmail. The leak was `functions/api/contact.js` (FormSubmit recipient) and the browser calling `fashionistas-api.fashionistas1979.workers.dev`.
+
+- Form posts to `/api/contact`. Recipient is `env.CONTACT_TO` or, if unset, `info@fashionistas.ai`. Never rendered.
+- Browser calls `API = "/w"`. `functions/w/[[path]].js` proxies to the worker. `GET https://fashionistas.ai/w/api/health` → `200 {"ok":true,"version":"3.1.0"}`.
+- Live `/`, `/contact/`, `/about/`, `/privacy/`, `/try-on/`, `/connect/`, `/pricing/`, and the app bundle: no `gmail`, no `fashionistas1979`.
+- Deploy `https://7c68edd1.fashionistas-ai.pages.dev`.
+
+**Gemini (not done).** Claimed the landing page was a mock: fake countdown, Levi's card as a broken integration, no OAuth, no session, `$14.99` with no Stripe, footer Gmail. Asked to strip the product to photo → copy-listing, add Stripe, and gate after 3 free listings.
+
+False: sign-in is real (Worker token; used for the §18 try-on). Landing card said Free. Gmail was already off the footer. Stripe stays unset — do not invent a checkout. The site was not stripped. Try-on, Sell, and the shop stay.
+
+True, and shipped in `https://94967eab.fashionistas-ai.pages.dev`:
+
+- Countdown to `2026-10-14T09:45:00-04:00` removed. `countdown.js` is a no-op that deletes `#lc-bar`. Script tags gone from `index.html`, `try-on/index.html`, `see-in-space/index.html`. Live `/` does not load it. Older "countdown is live" notes are stale.
+- Hero card labeled `Example · Vintage Levi's Denim Jacket`.
+- FAQ and about no longer say eBay/Etsy/Whatnot post via API or that a sale auto-delists them. Pricing no longer says on-device try-on. App guide no longer says `$14.99/mo` or that Sell everywhere posts to eleven shops.
+- Bundle `/assets/app.151b586e54d8.js`. Immutable. Rename the file and the script src to change it.
+
+**Still true:** eBay, Etsy, Whatnot are not connected. No legal entity. No Stripe. Try-on is the Modal redraw, not a sticker.
+
+## 20. 2026-10-11 late ET — personal Gmail off the contact forms
+
+User: no personal Gmail addresses on the sites. The contact form is the public path. Do not print the addresses in a reply. Not committed.
+
+The 2026-09-28 resolution kept FormSubmit `action` attributes because that is what delivered the mail. That is overruled for a personal Gmail. A form action is public. Delivery is server-side, or the row sits in D1.
+
+**scooter.exchange.** The contact page posted to FormSubmit with a personal Gmail in the action. `packages/api/src/contact.ts` had the same address as `FORWARD_DEFAULT`. The page is now a client form that `POST`s JSON to `https://api.scooter.exchange/api/contact`. The worker still saves `site_contacts`. It forwards only when `RESEND_API_KEY` and `CONTACT_DEST` are both set. No fallback address.
+
+- Pages: `https://fef83535.scooters-exchange.pages.dev`, project `scooters-exchange`, branch `main`. Static export is `apps/web/out`. Wrangler 3.114.17 `pages deploy` (this artifact). Account is the scooter account (`IHC_*` in `nexus-ai-suite/.secrets/cf.env`), not the fashionistas account.
+- Worker: `scooters-exchange-api` version `2e94858d-8083-4790-9f9a-a4bfed526962`, custom domain `api.scooter.exchange`.
+- Live: `https://scooter.exchange/contact` HTML has no `gmail` and no `formsubmit`. The contact chunk contains `/api/contact` and neither string. `POST /api/contact` with a bad email → `400 {"error":"valid email required"}` (no row written).
+
+**marketpicks.ai.** `/contact` posted to FormSubmit with a personal Gmail in the action. It now `POST`s `/api/contact`. The route inserts `site_contacts` and forwards only if the Pages secret `CONTACT_EMAIL` is set. That secret is not set, so messages stay in D1.
+
+- Table created on `marketpicks-db` (`bcc97511-60b8-4fd7-ad03-f2c458b80c6a`) with `CREATE TABLE IF NOT EXISTS`. Not a wipe. The API token in `cf.env` cannot run D1; Wrangler OAuth on the fashionistas account can.
+- Pages: `https://d0aec8e2.marketpicks-ai.pages.dev`, project `marketpicks-ai`, branch `main`. Same fashionistas account. `npm run pages:build` then `wrangler pages deploy .vercel/output/static --branch=main`.
+- Privacy no longer says FormSubmit carries the contact form.
+- `scripts/send-welcomes.mjs` and `scripts/daily-digest.mjs` no longer default `GMAIL_USER` to a personal address. Set the env var or they do not send.
+- Live: `https://marketpicks.ai/contact` and `/privacy` have no `gmail` and no `formsubmit`. `POST /api/contact` with a bad email → `400`.
+
+**fashionistas.ai.** Already clean. See §19. Do not put the Gmail or `info@fashionistas.ai` back on a page.
+
+**placebets.ai.** Live `/contact` has no personal Gmail. The form still posts to `info@placebets.ai`. Left that way. `app/api/subscribe/route.js` no longer hardcodes a Gmail; it forwards only if `CONTACT_EMAIL` is set. That file change is not deployed. The running signup handler is the old one until the next PlaceBets deploy (`placebetsai` on the PlaceBets account, not `placebets-ai` on the fashionistas account).
+
+## 21. 2026-10-11 late ET — fashionistas shop rows, hiddencameras AdSense honesty
+
+**fashionistas.ai buyer shop.** Live `/w/api/market` had 7 photo listings. Three stored titles were stuffed and one size was the words `not visible`. D1 updates (not a wipe), then re-read live:
+
+- 148 title `Blue Versace Polo Shirt`, category `Men/T-Shirts`, size `M`, $45. `?category=Men` now returns 2 (this polo and the jean jacket).
+- 143 size cleared. Category still `Women/Tops`.
+- 98 title `Men's Jean Jacket`. Category still `Men/Coats & Jackets`.
+
+Left uncategorized on purpose, because the title does not say men's or women's and there is no appliance path: 147 vintage denim jacket, 146 blue henley, 145 Keurig. 24 other `active` rows have no `photo_url`. The shop hides those. Do not invent photos. Stripe is still off. eBay, Etsy, and Whatnot are still not connected.
+
+**hiddencameras.tv.** Production project is `hiddencameras` on the hiddencameras account (`HIDDEN79_*`), not `hiddencameras-tv`. Deploy `https://76c84d82.hiddencameras.pages.dev`, branch `main`. Live apex matches it.
+
+- Homepage title is `HiddenCameras.tv — Security Camera Reviews`. The "8 live public cameras" line is now "4 public webcams that actually stream." The other homepage tiles were stock photos.
+- `/live/` lists only entries with a YouTube id or a stream URL. It no longer counts the empty city cards as cameras.
+- Signup script no longer contains a Gmail. It `POST`s `/api/subscribe`. Bad email → `400 {"error":"valid email required"}`. Forward destination is the Pages secret `CONTACT_EMAIL`, otherwise `info@hiddencameras.tv`.
+- `/about/`, `/privacy/`, `/contact/`, `/terms/`, `/shop/`, and `ads.txt` are live. `/shop/` is the buying-guide hub, not the 5-word redirect.
+- Google can still refuse AdSense. Covert-camera and "looks like an everyday object" pages are a policy risk. Detection guides and named security-camera reviews are the part that can carry ads. Do not restore the placeholder cam grid.
+
+## 22. 2026-10-12 — try-on unblocked, the signing key rotated out of source, deploys gated on tests
+
+Four things were wrong. All four are fixed and verified live, and the live proof is pasted below rather than asserted.
+
+**1. Two auth systems that could not talk to each other — this is why try-on was a sticker.**
+`functions/api/_lib/auth.js` resolved a session by `SELECT … FROM sessions WHERE s.token = ?`. The Worker has never written that row: it signs `{sub, u, exp}` with HMAC and returns it. So a Worker session — the only kind the web app has — was **401 on every photoreal request, permanently**, no matter the credits or the GPU.
+`requireAuth()` now verifies a `.`-bearing token against `SESSION_SECRET` first, then falls back to the D1 lookup for tokens minted by Pages' own `/api/auth/*` routes. `SESSION_SECRET` may hold a **comma-separated list, newest first**; signing uses the first entry, verification tries every entry. That list is what made the rotation below possible with no gap.
+
+The engine on the other side was never the problem. Measured 2026-10-11/12:
+```
+GET  <modal>/healthz   200  {"ok":true,"model":"fashn-vton-1.5","steps_default":20}   (20.5s, L4 cold)
+POST <modal>/tryon     200  27,624 B WebP, 576x864, 25.1s   (person + the shop's Versace polo)
+POST <modal>/tryon     400  {"error":"no person detected"}  (1.3s, dog photo)  <- a real person detector
+```
+```
+POST https://fashionistas.ai/api/tryon/hd   (signed in, multipart person+garment+category)
+HTTP 200  49.0s
+{"ok":true,"url":"/api/tryon/image/8075c3425acc4c35997075ca2f3614fa.webp","type":"image/webp",
+ "size":23818,"model":"modal/fashn-vton-1.5","provider":"modal","category":"tops","steps":20,
+ "seed":42,"ms":47578,"entitled_via":"launch","cost_usd":0.01,"charged":0}
+```
+The rendered image is a redraw — collar seated, fabric draped with shadow — not a pasted rectangle.
+
+**2. The entitlement was a paywall nobody could pass, and it is now the free daily cap.**
+Before this round a signed-in account with 0 credits got `402 not_entitled`. The route now runs `LAUNCH_DAILY_CAP = 6` renders/day for any signed-in account (`entitled_via: "launch"`) while checkout is closed — `hd.js` header says so, `grounding.js` says so, and the assistant is told not to invent a Pro plan or a credit pack to explain access. Verified by setting the test account to 0 credits and probing: **`400 invalid_multipart`, not `402`** — entitlement passed and the request died later on the body. Entitlement is checked *before* multipart parsing, so that probe costs nothing.
+A note for anyone probing this route: **the demo token only works as `Authorization: Bearer`.** It is stateless and has no `sessions` row, so `Cookie: fash_session=` gets 401 on `/api/auth/me` and `/api/listings`. Real password logins do create a row.
+
+**3. The session signing key was committed to a public repository, and it bought every account.**
+`workers/fashionistas-api/src/index.js:11` held `Uint8Array.from([102,97,115,…])`, which is `fashionistas-v2-hmac-key`. It is in `HEAD` and in history (commit `18a784f`) on `github.com/placebetsai/nexus-ai-suite`. Forging a token with it:
+```
+before rotation:  GET /api/auth/me  200  {"id":1,"username":"admin","authenticated":true,…}
+after  rotation:  GET /api/auth/me  401  {"error":"Not signed in"}
+real login:       GET /api/auth/me  200  {"id":50,"username":"demo",…}
+```
+That 200 **is** the hole: anyone who read the repo could sign in as any user id. The key now comes from the `SESSION_SECRET` binding, never from source, and it appears in neither repo (checked by grepping both trees for the live value).
+
+Rotation was done with zero outage: publish `new,old` on both sides, confirm both accept, then drop `old`. Existing sessions die at the drop — that is inherent to rotation, not a bug.
+> **Gotcha that cost a round:** `wrangler pages secret put SESSION_SECRET` reported **"Success"** but did **not** reach production. Live still accepted the old key and rejected the new one until the next `wrangler pages deploy`. Evidence: new-key forgery → `402`/`400`, old-key forgery → `401` *after* a redeploy, while both were `401`/`200` before it. **A Pages secret change is not live until you redeploy.**
+
+**4. Nothing stopped untested code or a plaintext password from shipping.**
+`scripts/deploy-local.sh` ran no tests and asserted no branch — a clean `lane-3` checkout would have published to fashionistas.ai production. It now, in this order: runs `npm test` and **exits before uploading anything** on failure; refuses a detached HEAD; requires `ALLOW_BRANCH=<name>` to publish anything that is not `main`; then the old dirty-tree check. `SKIP_TESTS=1` still exists for a doc-only change and prints `This deploy is unverified`.
+`demoLogin()` wrote the seeded account's password into public JavaScript and typed it into the form — the **second** time (`af79ce8` removed it from `app.js`). The credential is now gone rather than renamed: the button `POST`s `/api/auth/demo`, which mints a session with no credentials, so one-click demo access survives with nothing to leak. Two stale bundles still carrying it were deleted. The bundle hash is `sha256` first 12 hex; renaming requires repointing `index.html:1471`.
+Live proof of the one-click path, run in the real page:
+```json
+{"demoLoginDefined":true,"sourceHasPassword":false,
+ "source":"async function demoLogin(){ try { const d = await api(\"/api/auth/demo\", { method:\"POST\", body:\"{}\" }); afterAuth(d); } catch(e){ toast(e.message); } }",
+ "tokenBefore":false,"error":null,
+ "tokenAfter":"eyJzdWIiOjUwLCJ1IjoiZGVtby...","user":"{\"id\":50,\"username\":\"demo\",…}"}
+```
+
+**State at the end of this round:** site commit **`adec560`**, `version.txt` == `adec560`, bundle `assets/app.6fc355b2689c.js`, **`npm test` 413/413, exit 0**. Worker `a1a766ed-67a3-4774-b085-8d104deeadeb`.
+
+### What is still true / still left (do not re-report these as unknown)
+
+| # | Thing | State |
+|---|---|---|
+| 1 | Production source was local-only | `fashionistas-ai` was on `tryon-open` with **no upstream**; `main` was 62 ahead of `origin/main`. nexus-ai-suite `master` was ahead 3 with the key rotation uncommitted. **Pushed this round** — but the lanes still diverge from `origin/main` |
+| 2 | `POST /api/ebay/listing` has no session gate | `functions/api/ebay/listing.js:372` calls `loadDurableToken()` with no `requireAuth`; `requireAuth` appears only in `onRequestGet:790`. `tests/api-auth-matrix.test.mjs` passes only because it probes with **GET**, so a real anonymous POST is never tested. Harmless while `EBAY_CLIENT_ID` is empty; live the moment it is set |
+| 3 | `legal/terms.html` + `legal/privacy.html` say out loud not to publish | `terms.html:197` "Do not publish this page as binding terms until counsel signs off"; `privacy.html:299` "`[PLACEHOLDER]` … **blocks launch**". Both are **served** (`robots.txt` only disallows `/legal/`). `privacy.html:299` also flags that `/privacy/` still denies posting to Depop/eBay/Poshmark, which the code does not do |
+| 4 | Pricing says three different things | `pricing/index.html:66` "There is nothing to buy here" · `:70` "list one item or five hundred" · `assets/app…` toast "needs the $14.99/mo plan → open the plan page" · `listing/_lib/usage.js:41` enforces **10 listings / 3 AI photos / 10 chats** free. The API enforces the cap the pricing page denies. One story, then make the API match |
+| 5 | Pages HTML has no CSP, no HSTS, no X-Frame-Options | matches `_headers`, so it is declared intent, not a regression — but the landing page can be iframed and has no script policy |
+| 6 | `POST /api/ai/analyze` is an open spend path | no auth, CORS `*`, and its KV limiter **fails open** (`if (!cache…) return true; catch { return true; }`) — if `CACHE`/`FASHIONISTAS_KV` is unbound it is unmetered Workers AI |
+| 7 | Chrome extension server contract points at routes that exist nowhere | `apps/extension/config/api.js:6-9` → `/api/jobs`, `/api/sessions` are in **neither** codebase; `/api/sales`, `/api/sales/delist-log`, `/api/delist` are Pages-only while the default base is the Worker. `chrome-store/PRIVACY.md:43-45` describes them to Chrome reviewers as live. Only `runLocalJobs()` actually works |
+| 8 | Extension is not published | `chrome-store/` package is complete (60 files, manifest at root, icons, `LISTING.md`, `PRIVACY.md`, `shots/`) but never submitted — that is why install needs "Load unpacked". Needs the owner's Google account + $5 one-time, plus a public URL for `PRIVACY.md` |
+| 9 | Marketplace posting is still impossible | Stripe / eBay / Etsy / Google are all declared-but-**empty** in `.env`. No code change fixes this. `POST /api/list/*` → 402 `requireActiveSubscriber()` with no active row for anyone |
+| 10 | Worker quota | D1 reads blown 2026-09-27 (5.13M/5M); Workers AI neurons blown 2026-09-29 (10,304/10,000), 86% again 2026-10-02. marketpicks owns 97.7% of D1 — fixed at the database with `idx_news_published` / `idx_pt_source` / `idx_pt_effective` (news query 1,573 → 36 rows read) |
+
+### Federation findings (reported by audit this round, NOT yet fixed)
+
+- **Dead chatbots:** `hiddencameras.tv` and `scooter.exchange` — both use `next.config.js` `output: "export"`, which **drops `pages/api/*` and `app/api/*` entirely**. The deployed worker contains 0 occurrences of `api/chatbot` or `groq`; live `GET /api/chatbot` → 404, `POST` → 405. The client widgets still ship the dead call (`components/ChatBot.js:31`, `ChatBot.tsx:27`).
+- **Not redeploying:** `ihatecollege.com` production last deployed **2026-10-06** and `spanishtvshows.com` **2026-10-05** — pushes from Oct 7/9/11 are on GitHub and not live (new spanishtvshows blog slugs 404).
+- **`site-blogs.sh` skips silently:** `if git … pull` guards mean a DNS failure logs nothing and exits 0. Oct 12: `Could not resolve host: github.com` for both repos → generator never ran. Oct 11: `429 Rate limit reached` 13×.
+- **Committed keys:** Groq in `Spanishtvshows.com/app/api/chatbot/route.js:11` (project only has `TMDB_API_KEY`, so the leaked key is load-bearing), Gemini in `Ihatecollege/scripts/expand-articles.js:8`, OpenRouter in `Placebetsai-src/lib/web-search.js:4`. Already logged as ISSUE_LOG #20–22.
+- **marketpicks chatbot:** runs but degraded — project secrets are `CONGRESS_INGEST_TOKEN` + `GROQ_API_KEY` only, so `route.ts:1252` disables the 3-model ensemble; the 2500ms Groq clamp ships canned templates ~1/3 of the time; `SELECT value FROM settings` queries a **table that does not exist**, and `INSERT INTO llm_usage (day, count)` uses a column that does not exist.
+- **`FEDERATION.md` is wrong:** claims "2 accounts", there are **6**; its deploy block points at another machine (`/home/joffe/projects/…`).

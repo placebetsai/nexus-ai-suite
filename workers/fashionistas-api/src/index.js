@@ -8,10 +8,16 @@ import {
   disconnectChannel, CALLBACK_PATH, channelReady, saveChannelKeys,
 } from "./channels.js";
 
-const SECRET = Uint8Array.from([102,97,115,104,105,111,110,105,115,116,97,115,45,118,50,45,104,109,97,99,45,107,101,121]);
-// The seeded demo account. Its password is never written to the client bundle —
-// it used to be, in demoLogin(), which published a working credential for a real
-// account in app.js.
+// Session signing key. It used to be a Uint8Array.from([...]) byte array spelled
+// out on this line, which meant the secret was committed to a public repository
+// in a form anyone can decode back to `fashionistas-v2-hmac-key` and use to sign
+// `{sub: <any user id>}` — total account takeover, no brute force required.
+// It now comes from the SESSION_SECRET binding, set per environment with
+// `wrangler secret put SESSION_SECRET`, and is never present in the source.
+//
+// The value may be a comma-separated list, newest first: signing always uses the
+// first entry, verification tries every entry. That is what makes a rotation
+// possible without a window in which nobody can sign in.
 const DEMO_USERNAME = "demo";
 // Session lifetime. A signed-in user must never be asked to sign in again
 // ("one and done forever"): tokens are stateless HMACs, so the session slides
@@ -24,25 +30,39 @@ const b64u = (buf) => [...new Uint8Array(buf)].map((b) => String.fromCharCode(b)
 const toB64 = (s) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const fromB64 = (s) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));
 
-async function hmac(data) {
-  const key = await crypto.subtle.importKey("raw", SECRET, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+function sessionSecrets(env) {
+  return String((env && env.SESSION_SECRET) || "")
+    .split(",").map((s) => s.trim()).filter(Boolean)
+    .map((s) => enc.encode(s));
+}
+
+async function hmacWith(keyBytes, data) {
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, typeof data === "string" ? enc.encode(data) : data);
   return toB64(b64u(sig));
 }
-async function signToken(payload) {
+async function signToken(env, payload) {
+  const secrets = sessionSecrets(env);
+  // Fail closed. With no key configured we would otherwise mint a token that
+  // looks valid and verifies nowhere — a session that dies on the next request.
+  if (!secrets.length) throw new Error("SESSION_SECRET is not set");
   const body = toB64(JSON.stringify(payload));
-  const sig = await hmac(body);
-  return `${body}.${sig}`;
+  return `${body}.${await hmacWith(secrets[0], body)}`;
 }
-async function verifyToken(token) {
+async function verifyToken(env, token) {
   try {
     const [body, sig] = token.split(".");
-    const expect = await hmac(body);
-    if (sig.length !== expect.length) return null;
-    for (let i = 0; i < expect.length; i++) if (sig[i] !== expect[i]) return null;
-    const p = JSON.parse(fromB64(body));
-    if (p.exp < Date.now()) return null;
-    return p;
+    for (const secret of sessionSecrets(env)) {
+      const expect = await hmacWith(secret, body);
+      if (expect.length !== sig.length) continue;
+      let diff = 0;
+      for (let i = 0; i < expect.length; i++) diff |= expect.charCodeAt(i) ^ sig.charCodeAt(i);
+      if (diff !== 0) continue;
+      const p = JSON.parse(fromB64(body));
+      if (p.exp < Date.now()) return null;
+      return p;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -208,10 +228,10 @@ async function hashPassword(pw) {
   return b64u(h).split("").map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
 }
 
-async function requireUser(request) {
+async function requireUser(request, env) {
   const auth = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!auth) return null;
-  return await verifyToken(auth);
+  return await verifyToken(env, auth);
 }
 
 /* ── Direct messages: tables are created from INSIDE the Worker.
@@ -1011,10 +1031,28 @@ const isAllowedOrigin = (o) =>
 function harden(request, res) {
   const origin = request.headers.get("Origin");
   const headers = new Headers(res.headers);
+  // Listing photos are public, unauthenticated bytes: anyone may <img> them.
+  // Letting "*" stand on those makes whichever variant a cache happens to hold
+  // readable, which is belt-and-braces behind Vary. Nothing else keeps it —
+  // that is exactly what stops any site from reading our API responses.
+  const publicAsset = new URL(request.url).pathname.startsWith("/api/images/");
+
+  // ALWAYS vary on Origin — this is the whole fix for "the garment would not
+  // load". This line used to sit inside the branch below, so a request with no
+  // Origin (every <img>, every <script>) came back with no Vary either. That
+  // response, cached for a year by max-age=31536000, was then served to the
+  // try-on page's CORS fetch — which needs Access-Control-Allow-Origin, and
+  // did not get one. The fetch died with TypeError: Failed to fetch and the
+  // shopper was told to upload the item they had just clicked on.
+  // Measured on prod: no-Origin → no ACAO; Origin → ACAO. Exactly one variant
+  // was being cached, and it was the wrong one.
+  const vary = (headers.get("Vary") || "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (!vary.some((v) => v.toLowerCase() === "origin")) vary.push("Origin");
+  headers.set("Vary", vary.join(", "));
+
   if (origin && isAllowedOrigin(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.append("Vary", "Origin");
-  } else {
+  } else if (!(publicAsset && headers.get("Access-Control-Allow-Origin") === "*")) {
     // No ACAO header => the browser blocks the cross-origin read.
     headers.delete("Access-Control-Allow-Origin");
   }
@@ -1135,7 +1173,7 @@ async function dispatch(request, env) {
       // every route defined below it and 401 the whole API — which is exactly
       // what the first draft did, and why the prefix check is load-bearing.
       if (path.startsWith("/api/channels/")) {
-        const me = await requireUser(request);
+        const me = await requireUser(request, env);
         if (!me) return json({ error: "Sign in to connect a shop." }, 401);
 
         // Which shops this seller has already connected. No tokens leave here.
@@ -1258,7 +1296,7 @@ async function dispatch(request, env) {
       // feature that did not exist. It exists now, so it says so.
       if (path === "/api/ebay/status" && method === "GET") {
         const on = channelConfigured(env, "ebay");
-        const me = await requireUser(request);
+        const me = await requireUser(request, env);
         let connected = false, shop = null;
         if (me) {
           await ensureChannelTables(env);
@@ -1287,7 +1325,7 @@ async function dispatch(request, env) {
       // built. The keys are the server's now, so the payload ignores any the
       // client sends, and the route does real work.
       if (path === "/api/ebay/listing" && method === "POST") {
-        const me = await requireUser(request);
+        const me = await requireUser(request, env);
         if (!me) return json({ error: "Connect your eBay shop first.", code: "not_connected" }, 401);
         if (!channelConfigured(env, "ebay")) {
           return json({ error: "eBay is not connected to this site yet.", need: CHANNELS.ebay.need }, 503);
@@ -1325,7 +1363,7 @@ async function dispatch(request, env) {
           .bind(username, hash, username, email).run();
         const id = r.meta.last_row_id;
         const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE id=?").bind(id).first();
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
+        const token = await signToken(env, { sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({ user, token }, 201);
       }
       if (path === "/api/auth/login" && method === "POST") {
@@ -1335,7 +1373,7 @@ async function dispatch(request, env) {
         const user = await env.DB.prepare("SELECT * FROM users WHERE username=?").bind(username).first();
         if (!user) return err("Invalid credentials", 401);
         if (user.password_hash !== (await hashPassword(password))) return err("Invalid credentials", 401);
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
+        const token = await signToken(env, { sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({ user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email }, token });
       }
       // Demo sign-in. The seeded account's password used to be written into the
@@ -1347,7 +1385,7 @@ async function dispatch(request, env) {
         if (!(await rateLimit(env, request, "login", 20))) return err("Too many requests", 429);
         const user = await env.DB.prepare("SELECT id, username, display_name, email FROM users WHERE username=?").bind(DEMO_USERNAME).first();
         if (!user) return err("The demo account is not available right now. Create a free account instead.", 503);
-        const token = await signToken({ sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
+        const token = await signToken(env, { sub: user.id, u: user.username, exp: Date.now() + SESSION_MS });
         return json({
           user: { id: user.id, username: user.username, display_name: user.display_name, email: user.email },
           token,
@@ -1365,9 +1403,9 @@ async function dispatch(request, env) {
       // an active seller is never asked to sign in again. The body carries only
       // what was already signed into the token (plus that renewal).
       if (path === "/api/auth/me" && method === "GET") {
-        const payload = await requireUser(request);
+        const payload = await requireUser(request, env);
         if (!payload || !payload.sub) return err("Not signed in", 401);
-        const token = await signToken({ sub: payload.sub, u: payload.u || null, exp: Date.now() + SESSION_MS });
+        const token = await signToken(env, { sub: payload.sub, u: payload.u || null, exp: Date.now() + SESSION_MS });
         return json({ id: payload.sub, username: payload.u || null, authenticated: true, token });
       }
       if (path === "/api/blog" && method === "GET") {
@@ -1657,7 +1695,7 @@ async function dispatch(request, env) {
         return json({ popups: rows, count: rows.length, coords: isFinite(myLat) && isFinite(myLng) ? { lat: myLat, lng: myLng } : null });
       }
 
-      const user = await requireUser(request);
+      const user = await requireUser(request, env);
       if (!user) return json({ error: "Unauthorized" }, 401);
 
       // images upload
