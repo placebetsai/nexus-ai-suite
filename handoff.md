@@ -2693,3 +2693,37 @@ Legal pages now 404 rather than serving drafts — **counsel is still required**
 Marketplace posting still needs `NEEDS_ISRAEL.txt`. Chrome store publication still needs a Google
 account. Pricing is now consistent but the owner may still want a paid tier designed.
 marketpicks chatbot still needs `OPENROUTER_API_KEY` (defects listed in ISSUE_LOG).
+
+### 23.6 Addendum — marketpicks chatbot + repo divergence closed (same evening)
+
+**marketpicks chatbot @ `b5050f9`, deployed and live-verified.** Six bugs, every one of them inside a
+`try {}` with a bare `catch {}` beside it — which is precisely why they shipped unnoticed:
+
+| Was | Why nobody saw it |
+| --- | --- |
+| cap read `SELECT value FROM settings` — **no such table** (30 in `sqlite_master`, none named settings) | threw every request, swallowed |
+| usage wrote `INSERT INTO llm_usage (day, count)` — **no `count` column** | threw every call, swallowed → **no usage row was ever written**, so the "500/day paid-LLM budget" existed only in the source |
+| counter read `COUNT(*)` on a table whose `day` is the **PRIMARY KEY** | could only ever return 1, so the cap still could not trip at any threshold |
+| `sanitizeAnswer` only matched `【<digits>】` | a `【LIVE DATA】` banner passed straight to the seller |
+| `bareSymbol` `^[A-Za-z]{2,6}$` matched "hello" → Yahoo resolved it to **MOMO** | a greeting became a stock quote and a fabricated answer about it |
+| citation gate's boundary `[^a-z0-9]` is satisfied by a **hyphen** | "fed" matched the Wikipedia summary "…also known as **K-Fed** and FedEx…" → Kevin Federline cited for a Federal Reserve question |
+
+**Live proof:** `POST /api/chatbot {"query":"hello"}` → *"Hey there! How's the market mood treating you
+today?"* with `"sources":[]`. `"what happened with the fed"` → no Federline, no Rolling Stones.
+Tests **66/66** (was 57); tsc 135, unchanged, zero in the touched files.
+
+Also deduped `earnings_calendar`: the upsert keys on `id` and the two providers mint different ids, so
+a disagreement produced two rows — **TSLA had `yahoo=2026-10-19` and `Nasdaq=2026-10-21`**, and
+`/api/resolve` returns the *earlier*, so the bot named the wrong earnings day with confidence. Nasdaq's
+own API now outranks Yahoo's scraped calendar. Live: `resolve TSLA` → `2026-10-21`, one row.
+
+**Repo divergence (ISSUE_LOG #76) closed.** Every federation repo now reads `[ahead 0]`, verified after
+each push. `fashionistas-ai` was fast-forwardable (`main` had nothing `tryon-open` lacked), so
+**`main` == `tryon-open` == live production** — proven by comparing `git rev-parse` on both against
+`/version.txt`. Also pushed `marketpicks-ai`, `hiddencameras-tv` (its 6 dirty files proven to *be* the
+deployed state — live serves that exact text), `wuwonline-com` (48 dirty files were `build.py` output
+deployed without committing), `createstuff-ai`, `diamonds-forsale`, `scooters-exchange` (commits only).
+
+**Still needs the owner, not a patch:** `OPENROUTER_API_KEY` — grepped every `.env`, `.secrets` and
+`~/.config` on the machine; **no OpenRouter key exists anywhere**, only an `.env.example`. Without it the
+3-model ensemble stays disabled. See ISSUE_LOG #80.
