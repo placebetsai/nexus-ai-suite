@@ -2760,3 +2760,42 @@ six places. 402 is kept (the client branches on it); the detail now tells the tr
 reads "…the site is free while it is in launch…", grep for `14.99`/`to subscribe` = 0.**
 
 Tests **436/436**. `main` == `tryon-open` == production `470d2f0`, both pushed.
+
+### 23.8 Addendum — live credentials in public repos, and a sanitizer that was inert
+
+**Four live API keys were committed to public GitHub repos.** Tested each literal directly on 2026-10-12:
+
+| key | where | live? |
+| --- | --- | --- |
+| OpenRouter `sk-or-v1-…` | `marketpicks-ai` (3 files) + `Placebetsai-src` | **200** |
+| Groq `gsk_…` | `marketpicks-ai` + `Spanishtvshows.com` | **200** |
+| Gemini `AIza…` | `Ihatecollege` | **403 — already revoked** |
+
+marketpicks is fixed: `OPENROUTER_API_KEY` set as a Pages secret (which also closes **#80**, the variable
+the 3-model ensemble had been blocked on) and `GROQ_API_KEY` already existed, so every literal is out of
+source. Placebetsai-src fixed too — safe because **nothing imports that module** (the chatbot uses
+`web-search-free.js`) and `LLM_ENABLE_PAID_WEB_SEARCH = "0"` in both wrangler environments.
+
+Ihc's key needed no rotation: Google had already killed it as leaked, which meant
+`scripts/expand-articles.js` was failing with an unexplained 403 and looking like a code bug. Replaced
+with a guard that says what happened and how to fix it. **Needs a new key from its owner.**
+
+**Spanishtvshows is the one I could not fix** — `spanishtvshows-site` has no secrets at all, and both
+`wrangler pages secret put` and the raw API `PUT …/secrets/GROQ_API_KEY` return `{"code":1001,
+"error":"method_not_allowed"}`. The token reads Pages but cannot write secrets. **The fallback must stay
+until the secret exists**, because that chatbot is live on it right now. **#86.**
+
+**A sanitizer that was present and inert.** The marketpicks model writes `[Live Data]` into its own
+answers — it is told to answer "using the LIVE DATA above", so it echoes the phrase back. The rule only
+matched `【LIVE DATA】`. Fixing that exposed a second defect in my own fix: the tidy step matched the
+ordinary space, but the model emits **U+202F** (narrow no-break space), so the rule silently never fired.
+Both now verified against real answers: marker 0, exotic spaces 0, `" ."` scars 0, citations intact.
+
+Worth recording: I added a test asserting every `return respond({...})` sanitizes its own answer, and it
+flagged 11 offenders. **That was wrong** — `respond()` is a single choke point that already sanitizes
+`body.answer`, so all ~20 returns were covered. The marker leaked because the *rule* was wrong, not
+because a call site skipped it. Pinning the wrong invariant would have produced 11 pointless edits and a
+false sense of safety. Replaced with a test pinning the real invariant.
+
+marketpicks tests **69/69**, tsc 135 unchanged. Pushed: marketpicks `b9f227d`, Placebetsai `d2bb746`,
+Ihatecollege `ac99703`.
