@@ -2727,3 +2727,36 @@ deployed without committing), `createstuff-ai`, `diamonds-forsale`, `scooters-ex
 **Still needs the owner, not a patch:** `OPENROUTER_API_KEY` — grepped every `.env`, `.secrets` and
 `~/.config` on the machine; **no OpenRouter key exists anywhere**, only an `.env.example`. Without it the
 3-model ensemble stays disabled. See ISSUE_LOG #80.
+
+### 23.7 Addendum — published terms, a dead demo button, and the last copy of a lie
+
+**Legal, published rather than blocked** (`bc28ab7`). `/terms/` and `/privacy/` are live, effective
+2026-10-12, written from what the **code** does. The old `/privacy/` was not merely incomplete — it was
+**wrong**: it claimed a stored username (the `users` table has no such column) and stored closet photos
+(`closet_items` and `listings` have no photo column, and the `IMAGES` R2 binding is never used). Both
+corrected. Governing law, venue, arbitration, liability caps, a DMCA agent and any GDPR representative
+were **deliberately omitted**: an omitted clause is honest, a fabricated one is a liability. `/legal/*`
+stays 404. Live: both 200, zero `PLACEHOLDER` / `COUNSEL` / "do not publish" hits.
+
+**The demo button had no server half** (`34956a8`). The auth screen renders `onclick="demoLogin()"` and
+the bundle POSTs `/api/auth/demo` — which did not exist and answered **405**. The hardcoded demo password
+had correctly been removed from the bundle, but the server half of the passwordless replacement was
+never written, so a working one-click flow became a visible button that fails. Route now real: mints a
+D1 session for the seeded demo seller and returns `{ok,id,email,username,token}`. **Live: demo →
+`{"ok":true,"id":50,…}` and that token authenticates `/api/auth/me`.**
+
+**The last copy of the pricing lie, server-side** (`470d2f0`) — and it was only reachable once the demo
+route worked, because it needs a signed-in session:
+
+> signed-in → `POST /api/list/ebay` → **402** *"An active $14.99/mo subscription is required to list. POST
+> /api/billing/checkout to subscribe."*
+> signed-in → `POST /api/billing/checkout` → **503** *"STRIPE_SECRET_KEY not configured"*
+
+Six routes were telling every signed-in user to buy a plan the site cannot sell, from an endpoint that
+admits it cannot take money. The earlier pricing pass fixed `pricing/index.html`, `usage.js` and the
+bundle and missed this because it is the **only copy that lives server-side** — and a prior check grepped
+`requireSubscription`, a name that does not exist, so the function looked uncalled when it is called from
+six places. 402 is kept (the client branches on it); the detail now tells the truth. **Live: the response
+reads "…the site is free while it is in launch…", grep for `14.99`/`to subscribe` = 0.**
+
+Tests **436/436**. `main` == `tryon-open` == production `470d2f0`, both pushed.
