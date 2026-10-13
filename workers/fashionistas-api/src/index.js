@@ -7,6 +7,7 @@ import {
   startAuth, finishAuth, freshToken, postListing, listConnections, getConnection,
   disconnectChannel, CALLBACK_PATH, channelReady, saveChannelKeys,
 } from "./channels.js";
+import { handleOneClick } from "./oneclick.js";
 
 // Session signing key. It used to be a Uint8Array.from([...]) byte array spelled
 // out on this line, which meant the secret was committed to a public repository
@@ -1348,6 +1349,10 @@ async function dispatch(request, env) {
       }
 
 
+      if (path.startsWith("/api/auth/passkey/") || path.startsWith("/api/auth/magic/") || path === "/api/auth/config" || path === "/api/auth/google/onetap") {
+        const r = await handleOneClick(path, method, request, env, { json, err, readJson, signToken, requireUser, SESSION_MS, rateLimit });
+        if (r) return r;
+      }
       if (path === "/api/auth/register" && method === "POST") {
         if (!(await rateLimit(env, request, "register", 10))) return err("Too many requests", 429);
         const { email, username, password } = await readJson(request);
