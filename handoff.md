@@ -2846,3 +2846,48 @@ today. Now marked done — safe there only because **nothing imports that module
 `web-search-free.js`) and `LLM_ENABLE_PAID_WEB_SEARCH = "0"` in both wrangler environments.
 
 Pushed: `a10b1ef` (IndexNow cron), `2fac86d` (STV prebuild guard).
+
+### 23.10 Addendum — the cron surface was wide open, and a test that caught itself
+
+**20 of 25 routes under `app/api/cron/` checked nothing.** Only `congress-official`, `grading`,
+`insider-alerts` and `insider` had any gate. Anyone who knew the URL could run the rest.
+
+`/api/cron/quotes` was the sharp edge: 145 symbols, 8 Yahoo Spark batches, per-symbol retries with
+sleeps, a CoinGecko fallback, and **one D1 write per row**. The free tier allows 100k writes/day, so
+**~700 unauthenticated requests would have emptied the day's budget** and left every other query on
+the site reading stale rows. No credential needed — knowing the URL was enough.
+
+**The gate is fail-open on purpose, and that is the important part.** The firing workers reach these
+URLs over plain HTTPS and carry no token. A fail-closed gate would have stopped *every* scheduled
+refresh the moment it deployed — a cron that quietly stops refreshing quotes is a worse outcome than
+the spam it guards against. So: `if (token && auth !== \`Bearer ${token}\`)` → 401, matching the
+pattern already in `grading`/`insider-alerts`.
+
+**To be blunt about what is not done:** `CRON_SECRET` is still unset, so this changes **no production
+behaviour today**. It makes lockdown *possible* (set the secret in Pages, add it to the firing worker),
+not done. The firing worker's source is not in this repo, so I could not wire the other half.
+
+**`tests/cron-gate.test.mjs` caught four of its own bugs while being written** — which is the only
+reason to trust it:
+
+- Asserting one literal gate spelling **failed twice on routes that are correct** — `grading` names the
+  binding `cronSecret`, `insider` puts the check in an `authorized()` helper. So it asserts the
+  *property* instead: rejecting because the secret is absent is forbidden, and an allow is not a
+  rejection. The first version flagged `insider`'s `if (!token) return true;` as fail-closed, which is
+  precisely backwards.
+- The detector could not see `Response.json(..., {status:401})`, only `NextResponse.json` — and the
+  route that uses it is `daily-digest`, the one I wrote while doing this. A **vacuity guard** (positive
+  and negative samples asserted against the detector itself) is what surfaced it.
+- `new URL(...).pathname` **percent-encodes the space** in `Documents/Default Project/` to `%20`, so
+  every `existsSync` returned false and the suite enumerated **ZERO routes while still passing its own
+  precondition** — a green test asserting nothing. Now `fileURLToPath`.
+
+That last one is the same bug class as the U+202F sanitizer earlier today: a check that cannot fail.
+
+**Also closed this round:** #13's three M4 leftovers verified genuinely resolved (on-topic no-data
+answers; confidence works as prose on the price-target path — `will NVDA hit 250` → `CONFIDENCE: 50%`;
+quotes batched). #23 Gmail SMTP passwords **verified dead** — both return 535 from Google, so the
+2026-09-29 removal was followed by a real rotation. hiddencameras' 478 tracked `.vercel` artifacts
+(16 MB) untracked.
+
+Pushed: marketpicks `3243eeb`, hiddencameras `0308a11`.
