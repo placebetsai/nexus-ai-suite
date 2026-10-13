@@ -106,8 +106,8 @@ fetch(){ # $1=url $2=outfile -> prints the HTTP code (000 when curl fails)
 
 # Read-only check: the deployed bytes must equal the local source bytes.
 verify_pages(){
-  local proj="$1" dir="$2"
-  local url="https://${proj}.pages.dev"
+  local proj="$1" dir="$2" host="${3:-${proj}.pages.dev}"
+  local url="https://${host}"
   local local_file="" local_sha="" local_bytes=0
   local attempt code bytes sha body="$WORK/live.html" ok=0 reason=""
   local verify_path="/"
@@ -257,8 +257,22 @@ bust_assets(){
 
 case "$ACTION" in
   env)
-    echo "FASHIONISTAS account (7eb89b01…): CF_API_TOKEN set = $([ -n "${CF_API_TOKEN:-}" ] && echo YES || echo NO)"
-    echo "CREATESTUFF account  (2765cb27…): CS_API_TOKEN set = $([ -n "${CS_API_TOKEN:-}" ] && echo YES || echo NO)"
+    echo "Accounts wired (loaded from .secrets/cf.env):"
+    echo "  FASHIONISTAS (7eb89b01…): CF_API_TOKEN  = $([ -n "${CF_API_TOKEN:-}" ] && echo YES || echo NO)   [default for pages/worker]"
+    echo "  CREATESTUFF  (2765cb27…): CS_API_TOKEN  = $([ -n "${CS_API_TOKEN:-}" ] && echo YES || echo NO)   [createstuff*, placebets*, purlaw]"
+    echo "  SPANISH TV   (555c6765…): STV_API_TOKEN = $([ -n "${STV_API_TOKEN:-}" ] && echo YES || echo NO)   [spanishtvshows-site]"
+    echo "  IHATECOLLEGE (90904956…): IHC_API_TOKEN = $([ -n "${IHC_API_TOKEN:-}" ] && echo YES || echo NO)   [ihatecollege, scooters-exchange, diamonds-forsale]"
+    echo "  HIDDEN CAMS  (426614a2…): HIDDEN79_API_TOKEN = $([ -n "${HIDDEN79_API_TOKEN:-}" ] && echo YES || echo NO)   [hiddencameras]"
+    ;;
+  routing)
+    echo "Pages project -> account token -> verify host:"
+    echo "  fashionistas-ai, marketpicks-ai, wuwonline-com, israeljoffe-com/org,"
+    echo "  religiousjews, placebets-ai                     -> CF  <name>.pages.dev"
+    echo "  createstuff-marketing, placebetsai              -> CS  <name>.pages.dev"
+    echo "  spanishtvshows-site                             -> STV <name>.pages.dev"
+    echo "  ihatecollege, scooters-exchange                 -> IHC <name>.pages.dev"
+    echo "  diamonds-forsale                                -> IHC diamonds-forsale-53r.pages.dev"
+    echo "  hiddencameras                                   -> HID <name>.pages.dev"
     ;;
   list)
     echo "Federation registry: see FEDERATION.md in repo root."
@@ -274,24 +288,35 @@ case "$ACTION" in
     HASHARG=()
     _h=$(commit_arg "$DIR" || true)
     if [[ -n "$_h" ]]; then HASHARG=("$_h"); echo ">> source commit: ${_h#--commit-hash=}"; fi
-    # placebetsai / placebets-ai-v2 / purlaw live ONLY on the second account
-    # (2765cb27…). Measured 2026-09-29: `placebetsai` comes back from
-    # CS_API_TOKEN and returns nothing from CF_API_TOKEN, so sending it with the
-    # account-A token can only fail. `marketpicks-ai` exists on BOTH accounts and
-    # is deliberately left on the default branch.
-    if [[ "$PROJ" == createstuff* || "$PROJ" == app-createstuff* || "$PROJ" == placebets* || "$PROJ" == purlaw ]]; then
-      CLOUDFLARE_API_TOKEN="$CS_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CS_ACCOUNT_ID" \
-        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main ${HASHARG[@]+"${HASHARG[@]}"}
-      verify_pages "$PROJ" "$DIR"
-    else
-      CLOUDFLARE_API_TOKEN="$CF_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT_ID" \
-        deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main ${HASHARG[@]+"${HASHARG[@]}"}
-      verify_pages "$PROJ" "$DIR"
-    fi
+    # Which Cloudflare account owns each project. Measured 2026-10-13 by listing
+    # Pages projects on all five accounts. The same NAME can exist on two
+    # accounts (`diamonds-forsale`, `marketpicks-ai`), so routing must be
+    # explicit: the wrong token either fails outright or silently deploys to a
+    # project nobody looks at while reporting success.
+    PG_TOKEN="$CF_API_TOKEN"; PG_ACCOUNT="$CF_ACCOUNT_ID"; PG_HOST="${PROJ}.pages.dev"
+    case "$PROJ" in
+      createstuff*|app-createstuff*|placebets*|purlaw)
+        PG_TOKEN="$CS_API_TOKEN"; PG_ACCOUNT="$CS_ACCOUNT_ID" ;;
+      hiddencameras)
+        PG_TOKEN="$HIDDEN79_API_TOKEN"; PG_ACCOUNT="$HIDDEN79_ACCOUNT_ID" ;;
+      spanishtvshows-site)
+        PG_TOKEN="$STV_API_TOKEN"; PG_ACCOUNT="$STV_ACCOUNT_ID" ;;
+      ihatecollege|scooters-exchange|diamonds-forsale)
+        PG_TOKEN="$IHC_API_TOKEN"; PG_ACCOUNT="$IHC_ACCOUNT_ID" ;;
+    esac
+    # `diamonds-forsale` on the IHC account has a suffixed subdomain, and a
+    # DIFFERENT project of the same name sits on the default account — checking
+    # ${PROJ}.pages.dev would verify against someone else's deployment.
+    if [[ "$PROJ" == diamonds-forsale ]]; then PG_HOST="diamonds-forsale-53r.pages.dev"; fi
+    [[ -n "$PG_TOKEN" && -n "$PG_ACCOUNT" ]] || fail "no Cloudflare account/token wired for project '$PROJ'"
+
+    CLOUDFLARE_API_TOKEN="$PG_TOKEN" CLOUDFLARE_ACCOUNT_ID="$PG_ACCOUNT" \
+      deploy_gate pages deploy "$DIR" --project-name="$PROJ" --branch main ${HASHARG[@]+"${HASHARG[@]}"}
+    verify_pages "$PROJ" "$DIR" "$PG_HOST"
     if (( DRY_RUN )); then
-      echo ">> DRY RUN VERIFY OK: pages project '$PROJ', live content verified at https://${PROJ}.pages.dev/ (wrangler exit code n/a)"
+      echo ">> DRY RUN VERIFY OK: pages project '$PROJ', live content verified at https://${PG_HOST}/ (wrangler exit code n/a)"
     else
-      echo ">> DEPLOY OK: pages project '$PROJ', wrangler exit code $(observed_rc), verified at https://${PROJ}.pages.dev/"
+      echo ">> DEPLOY OK: pages project '$PROJ', wrangler exit code $(observed_rc), verified at https://${PG_HOST}/"
     fi
     ;;
   worker)

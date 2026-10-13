@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Site admin — Israel Joffe</title>
+<link rel="stylesheet" href="/vendor/codemirror.min.css" />
+<script src="/vendor/codemirror.min.js"></script>
+<script src="/vendor/mode/xml/xml.min.js"></script>
+<script src="/vendor/mode/javascript/javascript.min.js"></script>
+<script src="/vendor/mode/css/css.min.js"></script>
+<script src="/vendor/mode/htmlmixed/htmlmixed.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #17171b;
+    --panel-2: #1e1e24;
+    --line: #2c2c34;
+    --text: #f3f1ec;
+    --muted: #9b978f;
+    --accent: #e8b86a;
+    --accent-ink: #24190c;
+    --danger: #e07a68;
+    --shadow: 0 18px 50px rgba(0,0,0,.28);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: var(--accent); }
+  header.app {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; justify-content: space-between; gap: 16px; align-items: center;
+    padding: 12px 18px; background: rgba(14,14,16,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  header.app strong { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  header.app span { color: var(--muted); margin-left: 8px; }
+  .sites { display: flex; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; }
+  .sites button, .toolbar button, .actions button, .uploader button, .editor-toolbar button, .add-footer, #add-nav, #fill-alts {
+    background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px;
+  }
+  .sites button { border-color: transparent; }
+  .sites button.active, .toolbar button.primary, .actions button.primary, .uploader button.primary, .editor-toolbar button.active, .link-pop button.primary, .file-line button.primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 650;
+  }
+  .toolbar { display: flex; gap: 8px; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 57px); }
+  aside { border-right: 1px solid var(--line); padding: 14px; background: #121216; }
+  aside input, input[type="text"], input[type="password"], textarea, input[type="file"] {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+  }
+  aside input { margin-bottom: 10px; }
+  input:focus, textarea:focus { outline: 2px solid rgba(232,184,106,.45); border-color: var(--accent); }
+  .page-list { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 120px); overflow: auto; }
+  .page-list button { text-align: left; background: transparent; border: 0; border-radius: 10px; padding: 9px 10px; }
+  .page-list button span { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-list button small { display: block; color: var(--muted); margin-top: 2px; font-size: 12px; }
+  .page-list button.active { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
+  main { display: flex; flex-direction: column; height: calc(100vh - 57px); overflow: hidden; padding: 18px 22px 16px; min-width: 0; }
+  .work { flex: 1; min-height: 0; overflow: auto; padding-right: 4px; }
+  .page-kicker { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: fit-content; max-width: 100%; flex-wrap: wrap; }
+  .tabs button { background: transparent; border: 0; color: var(--muted); padding: 8px 12px; border-radius: 10px; }
+  .tabs button.active { background: var(--panel-2); color: var(--text); }
+  section[data-panel] { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 16px 8px; }
+  label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  label.check { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); margin: 10px 0; }
+  textarea { min-height: 120px; }
+  #description, #new-description, #new-body { font-family: inherit; }
+  .row { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(180px, 1.4fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .row button, .shot button.remove { width: auto; border: 1px solid #5a332c; color: var(--danger); background: transparent; border-radius: 999px; padding: 7px 12px; text-align: center; }
+  .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+  #save-bar {
+    flex: none; margin-top: 12px; padding: 10px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--line);
+  }
+  #view { display: inline-flex; align-items: center; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; color: var(--text); }
+  #delete { border-color: #5a332c; color: var(--danger); }
+  .note { color: var(--muted); max-width: 72ch; margin-top: 0; }
+  .site-note {
+    display: block;
+    max-width: none;
+    margin: 6px 16px 0;
+    padding: 7px 11px;
+    border-left: 3px solid #b45309;
+    background: rgba(180, 83, 9, 0.12);
+  }
+  .site-note[hidden] { display: none; }
+  .editor-toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .editor-toolbar .spacer { flex: 1; }
+  .editor-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+  .editor-split.visual-only { grid-template-columns: 1fr; }
+  .editor-split.visual-only #code-wrap { display: none; }
+  .editor-split.code-only { grid-template-columns: 1fr; }
+  .editor-split.code-only #visual { display: none; }
+  #visual { min-height: 560px; max-height: 72vh; overflow: auto; padding: 28px 32px; border-radius: 12px; background: #f7f3ec; color: #1c1612; font: 18px/1.55 Georgia, "Iowan Old Style", serif; }
+  #visual:focus { outline: 2px solid var(--accent); }
+  #visual h1, #visual h2, #visual h3 { line-height: 1.15; margin: 0.6em 0 0.3em; }
+  #visual p { margin: 0 0 0.8em; }
+  #visual img { max-width: 280px; height: auto; border-radius: 8px; }
+  #visual a { color: #8a5a12; }
+  .CodeMirror { height: 560px; max-height: 72vh; border-radius: 12px; font-size: 13px; }
+  .link-pop { display: flex; gap: 8px; margin-bottom: 10px; }
+  .link-pop input { width: min(420px, 100%); }
+  .uploader { display: grid; grid-template-columns: 1fr 220px auto; gap: 10px; align-items: end; margin-bottom: 16px; }
+  .uploader strong { grid-column: 1 / -1; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin: 12px 0 20px; }
+  .gallery figure { margin: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .gallery img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
+  .gallery button { width: 100%; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 8px 10px; text-align: left; }
+  .shot { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: center; margin-bottom: 8px; padding: 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; }
+  .shot img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; background: #000; }
+  .foot-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 8px; margin-bottom: 12px; }
+  .foot-card h3 { margin: 0 0 4px; font-size: 15px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  .cards .foot-card { margin: 0; }
+  .serp { background: #fff; color: #202124; border-radius: 12px; padding: 12px 14px; margin: 4px 0 12px; }
+  .serp b { display: block; color: #1a0dab; font-size: 18px; font-weight: 500; line-height: 1.3; }
+  .serp small { display: block; color: #0b7a3b; margin-top: 2px; }
+  .serp span { display: block; color: #4d5156; margin-top: 4px; }
+  .preview { background: #0c0c0e; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: grid; place-items: center; color: var(--muted); min-height: 72px; }
+  .preview.wide { aspect-ratio: 1200 / 630; }
+  .preview.square { aspect-ratio: 1; max-width: 240px; }
+  .preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .icon-row { display: flex; gap: 18px; align-items: center; margin: 8px 0 12px; }
+  .icon-box { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .icon-box .preview { width: 72px; height: 72px; background: #f4f1ea; }
+  .file-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .file-line input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .file-line label {
+    display: inline-flex; align-items: center; width: auto; margin: 0;
+    text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; cursor: pointer;
+  }
+  .uses { display: flex; gap: 6px; padding: 8px; }
+  .uses button { flex: 1; width: auto; border: 1px solid var(--line); border-radius: 999px; background: transparent; padding: 6px 8px; }
+  .add-footer { margin: 4px 0 10px; }
+  .warn { color: var(--danger); }
+  #message:empty { display: none; }
+  #message { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #241e16; border: 1px solid #5a4630; color: var(--accent); }
+  #login { max-width: 420px; margin: 14vh auto; padding: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
+  #login h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -.03em; }
+  .hidden { display: none !important; }
+  pre.log { white-space: pre-wrap; background: #0c0b09; border-radius: 12px; padding: 12px; max-height: 240px; overflow: auto; font-size: 12px; }
+  @media (max-width: 900px) {
+    header.app { flex-wrap: wrap; }
+    main { height: auto; overflow: visible; }
+    .work { overflow: visible; }
+    .layout, .editor-split, .uploader, .cards { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    .row, .shot { grid-template-columns: 1fr; }
+    .tabs { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<form id="login">
+  <h1>Site admin</h1>
+  <p class="note">Pages, navigation, image alt text, and SEO for every federation site — sign in, pick a site on the right, then edit a page.</p>
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="current-password" required />
+  <div class="actions"><button class="primary" type="submit">Sign in</button></div>
+  <p id="login-error" class="warn"></p>
+</form>
+<div id="app" class="hidden">
+  <header class="app">
+    <div><strong>Site admin</strong> <span id="status"></span></div>
+    <div class="sites" id="sites"></div>
+    <div class="toolbar">
+      <button id="publish" class="primary" type="button">Publish this site</button>
+      <button id="logout" type="button">Sign out</button>
+    </div>
+  </header>
+  <p id="site-note" class="note site-note" hidden></p>
+  <div class="layout">
+    <aside>
+      <input id="filter" type="text" placeholder="Find a page" />
+      <div class="page-list" id="pages"></div>
+    </aside>
+    <main>
+      <div class="work">
+      <p class="page-kicker" id="editing"></p>
+      <div class="tabs">
+        <button type="button" data-tab="seo" class="active">Page</button>
+        <button type="button" data-tab="share">Share</button>
+        <button type="button" data-tab="content">Write</button>
+        <button type="button" data-tab="images">Photos</button>
+        <button type="button" data-tab="nav">Menu</button>
+        <button type="button" data-tab="links">Footer</button>
+        <button type="button" data-tab="new">New page</button>
+      </div>
+      <section data-panel="seo">
+        <div class="cards">
+          <div class="foot-card">
+            <h3>Search result</h3>
+            <p class="note">The title and description Google can show for this page.</p>
+            <div class="serp" id="serp">
+              <b id="serp-title"></b>
+              <small id="serp-url"></small>
+              <span id="serp-desc"></span>
+            </div>
+            <label for="title">Title</label><input id="title" type="text" />
+            <label for="description">Description</label><textarea id="description" style="min-height:90px"></textarea>
+            <label for="h1">Heading</label><input id="h1" type="text" />
+            <p id="h1-note" class="note"></p>
+          </div>
+          <div class="foot-card">
+            <h3>Where this page lives</h3>
+            <p class="note">The address, whether it can be indexed, and whether it shows in the menu.</p>
+            <label for="canonical">Address</label><input id="canonical" type="text" />
+            <label for="robots">Robots</label><input id="robots" type="text" />
+            <label class="check"><input id="in-nav" type="checkbox" /> Show this page in the menu</label>
+            <label class="check"><input id="in-sitemap" type="checkbox" /> Include this page in the sitemap</label>
+          </div>
+        </div>
+      </section>
+      <section data-panel="share" class="hidden">
+        <div class="cards">
+          <div class="foot-card">
+            <h3>Social card</h3>
+            <p class="note">The wide picture people see when this page is shared. About 1200 by 630 works best.</p>
+            <div class="preview wide" id="social-preview"><span>No social card yet</span></div>
+            <label for="social-alt">Text if the picture does not load</label>
+            <input id="social-alt" type="text" />
+            <div class="file-line">
+              <label for="social-file">Choose photo</label>
+              <input id="social-file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
+              <button id="social-upload" class="primary" type="button">Upload social card</button>
+            </div>
+          </div>
+          <div class="foot-card">
+            <h3>Link image</h3>
+            <p class="note">The square picture some apps use for the same link. About 1200 by 1200 works best.</p>
+            <div class="preview square" id="link-preview"><span>No link image yet</span></div>
+            <label for="link-alt">Text if the picture does not load</label>
+            <input id="link-alt" type="text" />
+            <div class="file-line">
+              <label for="link-file">Choose photo</label>
+              <input id="link-file" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
+              <button id="link-upload" class="primary" type="button">Upload link image</button>
+            </div>
+          </div>
+        </div>
+        <div class="foot-card">
+          <h3>Or use a photo already on the site</h3>
+          <div id="share-library" class="gallery"></div>
+        </div>
+        <div class="foot-card">
+          <h3>Site icon</h3>
+          <p class="note">The small picture beside the address in a browser tab, and the icon if someone adds the site to their home screen. This is the same on every page.</p>
+          <div class="icon-row">
+            <div class="icon-box">
+              <div class="preview" id="favicon-preview"><span>Icon</span></div>
+              <div class="file-line">
+                <label for="favicon-file">Choose icon</label>
+                <input id="favicon-file" type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" />
+                <button id="favicon-upload" type="button">Upload tab icon</button>
+              </div>
+            </div>
+            <div class="icon-box">
+              <div class="preview" id="apple-preview"><span>Home</span></div>
+              <div class="file-line">
+                <label for="apple-file">Choose PNG</label>
+                <input id="apple-file" type="file" accept="image/png" />
+                <button id="apple-upload" type="button">Upload home-screen icon</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section data-panel="content" class="hidden">
+        <div class="editor-toolbar">
+          <button type="button" data-cmd="bold"><b>B</b></button>
+          <button type="button" data-cmd="italic"><i>I</i></button>
+          <button type="button" data-block="h2">H2</button>
+          <button type="button" data-block="h3">H3</button>
+          <button type="button" data-block="p">Text</button>
+          <button type="button" data-cmd="insertUnorderedList">List</button>
+          <button type="button" id="editor-link">Link</button>
+          <button type="button" id="editor-image">Image</button>
+          <span class="spacer"></span>
+          <button type="button" id="show-visual">Visual</button>
+          <button type="button" id="show-split" class="active">Split</button>
+          <button type="button" id="show-code">Code</button>
+        </div>
+        <div id="link-pop" class="link-pop hidden">
+          <input id="link-url" type="text" placeholder="https://example.com" />
+          <button id="link-apply" class="primary" type="button">Insert link</button>
+        </div>
+        <div class="editor-split" id="editor-split">
+          <div id="visual" contenteditable="true" spellcheck="true"></div>
+          <div id="code-wrap"><textarea id="main"></textarea></div>
+        </div>
+      </section>
+      <section data-panel="images" class="hidden">
+        <div class="uploader">
+          <strong>Add a photo to this page</strong>
+          <input id="file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif" multiple />
+          <input id="upload-alt" type="text" value="Israel Joffe" placeholder="Alt text" />
+          <button id="upload" class="primary" type="button">Upload</button>
+        </div>
+        <p class="note">Or pick one already on the site.</p>
+        <div id="library" class="gallery"></div>
+        <p class="note">Photos already on this page. Change the alt text, then Save page.</p>
+        <div id="images"></div>
+        <button id="fill-alts" type="button">Fill empty alts with “Israel Joffe”</button>
+      </section>
+      <section data-panel="nav" class="hidden">
+        <p class="note">This menu is written onto every page of the selected site. The last row can stay as the highlighted Train button on WUW.</p>
+        <div id="nav"></div>
+        <button id="add-nav" type="button">Add link</button>
+      </section>
+      <section data-panel="links" class="hidden">
+        <p class="note">These are the links in the footer of every page. Change the words and the URL, remove one, or add one. Then save, and click Publish this site.</p>
+        <div id="footer"></div>
+        <div class="actions">
+          <button id="save-footer" class="primary" type="button">Save footer on every page</button>
+        </div>
+      </section>
+      <section data-panel="new" class="hidden">
+        <label>Address</label><input id="new-slug" type="text" placeholder="notes" />
+        <label>Title</label><input id="new-title" type="text" />
+        <label>Meta description</label><textarea id="new-description" style="min-height:80px"></textarea>
+        <label>Page text</label><textarea id="new-body" style="min-height:140px" placeholder="Write the page. Plain text is fine."></textarea>
+        <label class="check"><input id="new-nav" type="checkbox" /> Show this page in the menu</label>
+        <label class="check"><input id="new-sitemap" type="checkbox" checked /> Include this page in the sitemap</label>
+        <div class="actions"><button id="create-page" class="primary" type="button">Create page</button></div>
+      </section>
+      </div>
+      <div class="actions" id="save-bar">
+        <button id="save" class="primary" type="button">Save page</button>
+        <a id="view" href="#" target="_blank" rel="noopener">View live</a>
+        <button id="delete" type="button">Delete page</button>
+      </div>
+      <p id="message"></p>
+      <pre class="log hidden" id="log"></pre>
+    </main>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let site = "com";
+let pages = [];
+let current = null;
+let nav = [];
+let footerGroups = [];
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    ...options,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function showTab(name) {
+  document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
+  document.querySelectorAll("[data-panel]").forEach((panel) => panel.classList.toggle("hidden", panel.dataset.panel !== name));
+  $("save-bar").classList.toggle("hidden", name === "nav" || name === "links" || name === "new");
+  if (name === "images") loadLibrary().catch((error) => { $("message").textContent = error.message; });
+  if (name === "share") {
+    renderShare();
+    loadShareLibrary().catch((error) => { $("message").textContent = error.message; });
+  }
+  if (name === "content" && codeMirror) setTimeout(() => codeMirror.refresh(), 0);
+}
+
+function renderPages() {
+  const query = $("filter").value.trim().toLowerCase();
+  $("pages").replaceChildren();
+  pages.filter((page) => !query || `${page.path} ${page.title}`.toLowerCase().includes(query)).forEach((page) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = current && current.path === page.path ? "active" : "";
+    const title = document.createElement("span");
+    title.textContent = decodeText(page.title || page.path);
+    const meta = document.createElement("small");
+    const flags = [page.path];
+    if (page.inNav) flags.push("in menu");
+    if (page.inSitemap) flags.push("in sitemap");
+    if (page.missingAlt) flags.push(`${page.missingAlt} missing alt`);
+    meta.textContent = flags.join(" · ");
+    button.append(title, meta);
+    button.onclick = () => openPage(page.path);
+    $("pages").append(button);
+  });
+}
+
+function decodeText(value) {
+  const el = document.createElement("textarea");
+  el.innerHTML = String(value);
+  return el.value;
+}
+
+function mediaUrl(src) {
+  return `/api/sites/${site}/media${src}`;
+}
+
+function renderImages() {
+  $("images").replaceChildren();
+  if (!current.images.length) {
+    const empty = document.createElement("p");
+    empty.className = "note";
+    empty.textContent = "This page has no photos yet. Use Upload onto this page above.";
+    $("images").append(empty);
+  }
+  current.images.forEach((image, index) => {
+    const row = document.createElement("div");
+    row.className = "shot";
+    const img = document.createElement("img");
+    img.src = mediaUrl(image.src);
+    img.alt = image.alt || "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = image.alt;
+    input.placeholder = "Alt text";
+    input.addEventListener("input", () => { current.images[index].alt = input.value; });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "remove";
+    remove.textContent = "Remove";
+    remove.onclick = async () => {
+      if (!confirm("Take this photo off the page?")) return;
+      try {
+        await api(`/api/sites/${site}/remove-image`, { method: "POST", body: { path: current.path, src: image.src } });
+        $("message").textContent = "Photo removed from this page. Click Publish this site to update the live website.";
+        await openPage(current.path);
+      } catch (error) {
+        $("message").textContent = error.message;
+      }
+    };
+    row.append(img, input, remove);
+    $("images").append(row);
+  });
+}
+
+function previewSrc(src) {
+  if (!src) return "";
+  if (src.startsWith("/")) return mediaUrl(src);
+  return src;
+}
+
+function paintPreview(id, src, empty) {
+  const box = $(id);
+  box.replaceChildren();
+  if (!src) {
+    const span = document.createElement("span");
+    span.textContent = empty;
+    box.append(span);
+    return;
+  }
+  const img = document.createElement("img");
+  img.alt = "";
+  img.src = previewSrc(src);
+  img.onerror = () => {
+    const host = document.querySelector("#sites .active")?.textContent || "";
+    const live = src.startsWith("/") && host ? `https://${host}${src}` : "";
+    if (live && img.getAttribute("src") !== live) {
+      img.src = live;
+      return;
+    }
+    box.replaceChildren();
+    const span = document.createElement("span");
+    span.textContent = empty;
+    box.append(span);
+  };
+  box.append(img);
+}
+
+function renderShare() {
+  if (!current) return;
+  paintPreview("social-preview", current.socialImage, "No social card yet");
+  paintPreview("link-preview", current.linkImage, "No link image yet");
+  paintPreview("favicon-preview", current.favicon, "Icon");
+  paintPreview("apple-preview", current.appleIcon, "Home");
+  $("social-alt").value = current.socialAlt || "";
+  $("link-alt").value = current.linkAlt || "";
+}
+
+function renderSerp() {
+  $("serp-title").textContent = $("title").value || "Page title";
+  $("serp-url").textContent = $("canonical").value || "https://";
+  $("serp-desc").textContent = $("description").value || "Description";
+}
+
+async function loadLibrary() {
+  const data = await api(`/api/sites/${site}/library`);
+  $("library").replaceChildren();
+  data.images.forEach((image) => {
+    const figure = document.createElement("figure");
+    const img = document.createElement("img");
+    img.src = mediaUrl(image.src);
+    img.alt = "";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Add to this page";
+    button.onclick = () => placeExisting(image.src);
+    figure.append(img, button);
+    $("library").append(figure);
+  });
+}
+
+async function loadShareLibrary() {
+  const data = await api(`/api/sites/${site}/library`);
+  $("share-library").replaceChildren();
+  if (!data.images.length) {
+    const empty = document.createElement("p");
+    empty.className = "note";
+    empty.textContent = "No photos on this site yet. Upload one above.";
+    $("share-library").append(empty);
+    return;
+  }
+  data.images.forEach((image) => {
+    const figure = document.createElement("figure");
+    const img = document.createElement("img");
+    img.src = mediaUrl(image.src);
+    img.alt = "";
+    const uses = document.createElement("div");
+    uses.className = "uses";
+    const social = document.createElement("button");
+    social.type = "button";
+    social.textContent = "Social card";
+    social.onclick = () => chooseShare("social", image.src);
+    const link = document.createElement("button");
+    link.type = "button";
+    link.textContent = "Link image";
+    link.onclick = () => chooseShare("link", image.src);
+    uses.append(social, link);
+    figure.append(img, uses);
+    $("share-library").append(figure);
+  });
+}
+
+function chooseShare(kind, src) {
+  if (kind === "social") current.socialImage = src;
+  else current.linkImage = src;
+  renderShare();
+  $("message").textContent = kind === "social"
+    ? "Social card selected. Click Save page, then Publish this site."
+    : "Link image selected. Click Save page, then Publish this site.";
+}
+
+async function uploadRole(fileInput, role) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) { $("message").textContent = "Choose an image first."; return null; }
+  const form = new FormData();
+  form.append("file", file);
+  form.append("role", role);
+  const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Upload failed");
+  fileInput.value = "";
+  return data.src;
+}
+
+async function placeExisting(src) {
+  const alt = $("upload-alt").value.trim() || "Israel Joffe";
+  await api(`/api/sites/${site}/insert-image`, { method: "POST", body: { path: current.path, src, alt } });
+  $("message").textContent = "Photo added to this page. Click Publish this site to put it on the live website.";
+  await openPage(current.path);
+  await loadLibrary();
+}
+
+function renderNav() {
+  $("nav").replaceChildren();
+  nav.forEach((link, index) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("input");
+    label.type = "text";
+    label.value = link.label;
+    const href = document.createElement("input");
+    href.type = "text";
+    href.value = link.href;
+    label.addEventListener("input", () => { nav[index].label = label.value; });
+    href.addEventListener("input", () => { nav[index].href = href.value; });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.onclick = () => { nav.splice(index, 1); renderNav(); };
+    row.append(label, href, remove);
+    $("nav").append(row);
+  });
+}
+
+async function loadSites() {
+  const data = await api("/api/sites");
+  $("sites").replaceChildren();
+  data.sites.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.className = item.id === site ? "active" : "";
+    button.onclick = () => {
+      site = item.id;
+      if (item.id === "wuw" && $("upload-alt").value === "Israel Joffe") $("upload-alt").value = "World of Unpredictable Wrestling";
+      if (item.id !== "wuw" && $("upload-alt").value === "World of Unpredictable Wrestling") $("upload-alt").value = "Israel Joffe";
+      loadPages();
+      loadSites();
+      loadNav();
+      loadFooter();
+    };
+    $("sites").append(button);
+  });
+  // Tell the truth about what editing this site can and cannot do.
+  const active = data.sites.find((item) => item.id === site) || data.sites[0];
+  const bits = [];
+  if (active) {
+    if (active.note) bits.push(active.note);
+    else if (active.mode === "build") bits.push("Generated build output — publish right after editing; the next build overwrites these files.");
+    if (active.home === false) bits.push("It has no home page file, so its home page and menu cannot be edited here.");
+    if (active.ready === false) bits.push("Its local folder is missing, so there is nothing to edit yet.");
+  }
+  const noteEl = $("site-note");
+  noteEl.textContent = bits.join(" ");
+  noteEl.hidden = bits.length === 0;
+}
+
+async function loadPages() {
+  const data = await api(`/api/sites/${site}/pages`);
+  pages = data.pages;
+  renderPages();
+  if (!current || !pages.some((page) => page.path === current.path)) await openPage(pages[0]?.path || "/");
+}
+
+async function openPage(pagePath) {
+  current = await api(`/api/sites/${site}/page?path=${encodeURIComponent(pagePath)}`);
+  $("editing").textContent = current.path === "/" ? "Home" : current.path;
+  $("title").value = current.title;
+  $("description").value = current.description;
+  $("canonical").value = current.canonical;
+  $("robots").value = current.robots;
+  $("h1").value = current.h1;
+  $("h1").disabled = !current.h1Editable;
+  $("h1-note").textContent = current.h1Editable ? "" : "This heading is built from styled words. Change it in the content tab.";
+  $("in-nav").checked = Boolean(current.inNav);
+  $("in-nav").disabled = current.path === "/";
+  $("in-sitemap").checked = Boolean(current.inSitemap);
+  renderShare();
+  renderSerp();
+  loadEditor(current.main);
+  $("view").href = `https://${document.querySelector("#sites .active")?.textContent || ""}${current.path}`;
+  renderImages();
+  renderPages();
+}
+
+async function loadNav() {
+  const data = await api(`/api/sites/${site}/nav`);
+  nav = data.nav;
+  renderNav();
+}
+
+function renderFooter() {
+  $("footer").replaceChildren();
+  footerGroups.forEach((group, groupIndex) => {
+    const card = document.createElement("section");
+    card.className = "foot-card";
+    const head = document.createElement("h3");
+    head.textContent = group.label;
+    card.append(head);
+    if (!group.links.length) {
+      const empty = document.createElement("p");
+      empty.className = "note";
+      empty.textContent = "None yet.";
+      card.append(empty);
+    }
+    group.links.forEach((link, index) => {
+      const row = document.createElement("div");
+      row.className = "row";
+      const label = document.createElement("input");
+      label.type = "text";
+      label.value = link.label;
+      label.placeholder = "Words people click";
+      const href = document.createElement("input");
+      href.type = "text";
+      href.value = link.href;
+      href.placeholder = group.id === "network" ? "/network/…" : "https://";
+      label.addEventListener("input", () => { footerGroups[groupIndex].links[index].label = label.value; });
+      href.addEventListener("input", () => { footerGroups[groupIndex].links[index].href = href.value; });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.onclick = () => { footerGroups[groupIndex].links.splice(index, 1); renderFooter(); };
+      row.append(label, href, remove);
+      card.append(row);
+    });
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "add-footer";
+    add.textContent = "Add link";
+    add.onclick = () => {
+      footerGroups[groupIndex].links.push({ label: "", href: group.id === "network" ? "/" : "https://" });
+      renderFooter();
+    };
+    card.append(add);
+    $("footer").append(card);
+  });
+}
+
+async function loadFooter() {
+  const data = await api(`/api/sites/${site}/footer`);
+  footerGroups = data.groups;
+  renderFooter();
+}
+
+$("login").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("login-error").textContent = "";
+  try {
+    await api("/api/login", { method: "POST", body: { password: $("password").value } });
+    $("login").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    await loadSites();
+    await loadPages();
+    await loadNav();
+    await loadFooter();
+  } catch (error) {
+    $("login-error").textContent = error.message;
+  }
+});
+
+document.querySelectorAll("[data-tab]").forEach((button) => {
+  button.onclick = () => showTab(button.dataset.tab);
+});
+$("filter").addEventListener("input", renderPages);
+["title", "description", "canonical"].forEach((id) => $(id).addEventListener("input", renderSerp));
+$("social-alt").addEventListener("input", () => { if (current) current.socialAlt = $("social-alt").value; });
+$("link-alt").addEventListener("input", () => { if (current) current.linkAlt = $("link-alt").value; });
+$("social-upload").onclick = async () => {
+  try {
+    const src = await uploadRole($("social-file"), "card");
+    if (!src) return;
+    current.socialImage = src;
+    renderShare();
+    $("message").textContent = "Social card uploaded. Click Save page, then Publish this site.";
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("link-upload").onclick = async () => {
+  try {
+    const src = await uploadRole($("link-file"), "link");
+    if (!src) return;
+    current.linkImage = src;
+    renderShare();
+    $("message").textContent = "Link image uploaded. Click Save page, then Publish this site.";
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("favicon-upload").onclick = async () => {
+  try {
+    const src = await uploadRole($("favicon-file"), "icon");
+    if (!src) return;
+    const result = await api(`/api/sites/${site}/icons`, { method: "PUT", body: { favicon: src } });
+    current.favicon = src;
+    renderShare();
+    $("message").textContent = `Tab icon saved on ${result.updated} pages. Click Publish this site to put it on the live website.`;
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("apple-upload").onclick = async () => {
+  try {
+    const src = await uploadRole($("apple-file"), "apple");
+    if (!src) return;
+    const result = await api(`/api/sites/${site}/icons`, { method: "PUT", body: { appleIcon: src } });
+    current.appleIcon = src;
+    renderShare();
+    $("message").textContent = `Home-screen icon saved on ${result.updated} pages. Click Publish this site to put it on the live website.`;
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("save").onclick = async () => {
+  $("message").textContent = "Saving…";
+  try {
+    await api(`/api/sites/${site}/page`, {
+      method: "PUT",
+      body: {
+        path: current.path,
+        title: $("title").value,
+        description: $("description").value,
+        canonical: $("canonical").value,
+        robots: $("robots").value,
+        h1: $("h1").disabled ? undefined : $("h1").value,
+        socialImage: current.socialImage || "",
+        socialAlt: $("social-alt").value,
+        linkImage: current.linkImage || "",
+        linkAlt: $("link-alt").value,
+        main: editorHtml(),
+        images: current.images,
+        inNav: $("in-nav").checked,
+        inSitemap: $("in-sitemap").checked,
+        navLabel: $("title").value,
+      },
+    });
+    $("message").textContent = "Saved. Menu and sitemap updated on this computer. Click Publish this site to make it live.";
+    await loadPages();
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("upload").onclick = async () => {
+  const files = [...($("file").files || [])];
+  if (!files.length) { $("message").textContent = "Choose a photo first."; return; }
+  if (!current) { $("message").textContent = "Open a page first."; return; }
+  $("message").textContent = "Uploading…";
+  try {
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("alt", $("upload-alt").value.trim());
+      form.append("path", current.path);
+      form.append("insert", "1");
+      const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+    }
+    $("file").value = "";
+    $("message").textContent = "Photo is on this page. Click Publish this site to put it on the live website.";
+    await openPage(current.path);
+    await loadLibrary();
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("fill-alts").onclick = () => {
+  current.images.forEach((image) => { if (!image.alt.trim()) image.alt = "Israel Joffe"; });
+  renderImages();
+};
+$("add-nav").onclick = () => { nav.push({ href: "/", label: "New", className: "" }); renderNav(); };
+$("nav").parentElement.querySelector("#add-nav").insertAdjacentElement("afterend", Object.assign(document.createElement("button"), {
+  type: "button",
+  id: "save-nav",
+  textContent: "Save menu on every page",
+  className: "primary",
+  onclick: async () => {
+    const result = await api(`/api/sites/${site}/nav`, { method: "PUT", body: { nav } });
+    $("message").textContent = `Menu updated on ${result.updated} pages. Publish to make it live.`;
+  },
+}));
+$("save-footer").onclick = async () => {
+  try {
+    const result = await api(`/api/sites/${site}/footer`, { method: "PUT", body: { groups: footerGroups } });
+    footerGroups = result.groups;
+    renderFooter();
+    $("message").textContent = `Footer saved on ${result.updated} pages. Click Publish this site to put it on the live website.`;
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("create-page").onclick = async () => {
+  try {
+    const created = await api(`/api/sites/${site}/pages`, {
+      method: "POST",
+      body: {
+        slug: $("new-slug").value,
+        title: $("new-title").value,
+        description: $("new-description").value,
+        body: $("new-body").value,
+        addToNav: $("new-nav").checked,
+        inSitemap: $("new-sitemap").checked,
+        navLabel: $("new-title").value,
+      },
+    });
+    const where = `${created.inNav ? "in the menu" : "not in the menu"}, ${created.inSitemap ? "in the sitemap" : "not in the sitemap"}`;
+    $("message").textContent = `Created ${created.path} (${where}). Click Publish this site to make it live.`;
+    await loadPages();
+    await openPage(created.path);
+    showTab("seo");
+  } catch (error) {
+    $("message").textContent = error.message;
+  }
+};
+$("delete").onclick = async () => {
+  if (!current || current.path === "/") return;
+  if (!confirm(`Delete ${current.path}?`)) return;
+  await api(`/api/sites/${site}/page`, { method: "DELETE", body: { path: current.path } });
+  current = null;
+  $("message").textContent = "Page deleted on this computer.";
+  await loadPages();
+};
+$("publish").onclick = async () => {
+  if (!confirm(`Publish ${site} to Cloudflare?`)) return;
+  await api(`/api/sites/${site}/publish`, { method: "POST" });
+  $("log").classList.remove("hidden");
+  const timer = setInterval(async () => {
+    const job = await api("/api/publish");
+    $("log").textContent = job.log;
+    $("status").textContent = job.running ? `Publishing ${job.host}…` : job.host ? `${job.host} publish exit ${job.code}` : "";
+    if (!job.running) clearInterval(timer);
+  }, 2000);
+};
+$("logout").onclick = async () => {
+  await api("/api/logout", { method: "POST" });
+  location.reload();
+};
+
+let codeMirror = null;
+let editorLock = false;
+let visualDirty = false;
+let savedRange = null;
+
+function splitMain(html) {
+  const match = String(html || "").match(/^(\s*<main\b[^>]*>)([\s\S]*?)(<\/main>\s*)$/i);
+  if (!match) return { open: "<main>", inner: html || "", close: "</main>" };
+  return { open: match[1], inner: match[2], close: match[3] };
+}
+function editorSrc(html) {
+  return String(html).replace(/(src\s*=\s*["'])\/img\//gi, `$1/api/sites/${site}/media/img/`);
+}
+function storageSrc(html) {
+  return String(html).replace(new RegExp(`(src\\s*=\\s*["'])/api/sites/${site}/media/img/`, "gi"), "$1/img/");
+}
+function setCode(value) {
+  if (codeMirror) codeMirror.setValue(value);
+  else $("main").value = value;
+}
+function getCode() {
+  return codeMirror ? codeMirror.getValue() : $("main").value;
+}
+function loadEditor(html) {
+  editorLock = true;
+  const parts = splitMain(html);
+  $("visual").dataset.open = parts.open;
+  $("visual").dataset.close = parts.close;
+  $("visual").innerHTML = editorSrc(parts.inner);
+  setCode(parts.open + parts.inner + parts.close);
+  visualDirty = false;
+  editorLock = false;
+}
+function visualToCode() {
+  if (editorLock) return;
+  editorLock = true;
+  const open = $("visual").dataset.open || "<main>";
+  const close = $("visual").dataset.close || "</main>";
+  setCode(open + storageSrc($("visual").innerHTML) + close);
+  editorLock = false;
+}
+function codeToVisual() {
+  if (editorLock) return;
+  const parts = splitMain(getCode());
+  editorLock = true;
+  $("visual").dataset.open = parts.open;
+  $("visual").dataset.close = parts.close;
+  $("visual").innerHTML = editorSrc(parts.inner);
+  editorLock = false;
+}
+function editorHtml() {
+  if (visualDirty) visualToCode();
+  return getCode();
+}
+function rememberRange() {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  if (!$("visual").contains(selection.anchorNode)) return;
+  savedRange = selection.getRangeAt(0).cloneRange();
+}
+function restoreRange() {
+  $("visual").focus();
+  if (!savedRange) return;
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(savedRange);
+}
+function setEditorMode(mode) {
+  $("editor-split").classList.remove("visual-only", "code-only");
+  if (mode === "visual") $("editor-split").classList.add("visual-only");
+  if (mode === "code") $("editor-split").classList.add("code-only");
+  ["show-visual", "show-split", "show-code"].forEach((id) => {
+    $(id).classList.toggle("active", id === `show-${mode}`);
+  });
+  if (codeMirror) setTimeout(() => codeMirror.refresh(), 0);
+}
+$("visual").addEventListener("input", () => { visualDirty = true; visualToCode(); });
+$("visual").addEventListener("mouseup", rememberRange);
+$("visual").addEventListener("keyup", rememberRange);
+document.querySelectorAll("[data-cmd]").forEach((button) => {
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+  button.addEventListener("click", () => {
+    restoreRange();
+    document.execCommand(button.dataset.cmd, false, button.dataset.arg || null);
+    visualDirty = true;
+    visualToCode();
+  });
+});
+document.querySelectorAll("[data-block]").forEach((button) => {
+  button.addEventListener("mousedown", (event) => event.preventDefault());
+  button.addEventListener("click", () => {
+    restoreRange();
+    document.execCommand("formatBlock", false, `<${button.dataset.block}>`);
+    visualDirty = true;
+    visualToCode();
+  });
+});
+$("editor-link").addEventListener("mousedown", (event) => event.preventDefault());
+$("editor-link").onclick = () => {
+  rememberRange();
+  $("link-pop").classList.toggle("hidden");
+  $("link-url").focus();
+};
+$("link-apply").onclick = () => {
+  const url = $("link-url").value.trim();
+  if (!url) return;
+  restoreRange();
+  document.execCommand("createLink", false, url);
+  $("link-pop").classList.add("hidden");
+  $("link-url").value = "";
+  visualDirty = true;
+  visualToCode();
+};
+$("editor-image").onclick = () => {
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "image/jpeg,image/png,image/gif,image/webp,image/avif";
+  picker.onchange = async () => {
+    const file = picker.files && picker.files[0];
+    if (!file || !current) return;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("alt", $("upload-alt").value.trim() || "Israel Joffe");
+    form.append("insert", "0");
+    const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { $("message").textContent = data.error || "Upload failed"; return; }
+    if ($("visual").innerHTML.includes(data.src)) {
+      $("message").textContent = "That photo is already on this page. It was not added again.";
+      return;
+    }
+    restoreRange();
+    const alt = (data.alt || "Israel Joffe").replace(/"/g, "&quot;");
+    document.execCommand("insertHTML", false, `<img src="/api/sites/${site}/media${data.src}" alt="${alt}" style="max-width:280px;height:auto">`);
+    visualDirty = true;
+    visualToCode();
+    $("message").textContent = "Photo inserted. Click Save page, then Publish this site.";
+  };
+  picker.click();
+};
+$("show-visual").onclick = () => setEditorMode("visual");
+$("show-split").onclick = () => setEditorMode("split");
+$("show-code").onclick = () => setEditorMode("code");
+if (window.CodeMirror) {
+  codeMirror = CodeMirror.fromTextArea($("main"), {
+    mode: "htmlmixed",
+    lineNumbers: true,
+    lineWrapping: true,
+    tabSize: 2,
+  });
+  codeMirror.on("change", () => {
+    if (editorLock) return;
+    codeToVisual();
+  });
+}
+</script>
+</body>
+</html>
