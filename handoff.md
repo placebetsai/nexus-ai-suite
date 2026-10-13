@@ -1,9 +1,9 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
-> **Newer:** `HANDOFF-2026-10-06.md` — current daily handoff (accounts, tokens, deploy recipe, open blockers).
-**Last updated: 2026-10-12 (evening)** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
-**Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §23 (four claim-vs-behaviour gaps closed, CSP report-only, two chatbots made real, two stalled sites re-deployed) + §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-06.md` +
-`ISSUE_LOG.md` (newest `#80`) + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win.
+> **Also:** `HANDOFF-2026-10-07.md` is the latest *daily* handoff (accounts, tokens, deploy recipe, open blockers) — but it predates all of §22–§23.11, so **§23.11 below is the newest writing in this repo.** The older `HANDOFF-2026-*.md` files are history.
+**Last updated: 2026-10-13** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
+**Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §23.11 (the flagship shop walked as a shopper: a $68 listing whose photo was our own `/sample-jacket.jpg`, an `immutable` cache that would have shipped the fix to nobody, a false "Also listed on" claim, and a catalog with **zero** real sellers) + §23 (four claim-vs-behaviour gaps closed, CSP report-only, two chatbots made real, two stalled sites re-deployed) + §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-07.md` +
+`ISSUE_LOG.md` (newest `#95`) + `PRIMETIME_CHECKLIST.md`.** If a claim below disagrees with those, the other files win. **A later §23.x beats an earlier §23.x** — §23.5 was written before §23.7/§23.8/§23.11 and is corrected in place.
 **Try-on:** the on-device sticker is removed. Live proof is §18. Do not restore Instant / `TryOnPipeline`.
 **Public email:** no personal Gmail on a page, a footer, or a form action. Contact form only. See §20 and §19. The 2026-09-28 note that kept FormSubmit `action` attributes is overruled for personal Gmail addresses.
 **Countdown:** retired. Do not ship "Public launch". See §19.
@@ -2687,12 +2687,36 @@ Live: `resolve NVDA earnings` → **2026-11-18** (was `2026-07-22`); `POST /api/
 The 6 do-not-modify files were not committed. Note that any deploy publishes the *working tree*, so their
 changes rode along with the build — unavoidable for any deploy.
 
-### 23.5 Owner decisions still open (unchanged, still blocking)
+### 23.5 Owner decisions still open (corrected 2026-10-13 — two lines here were stale)
 
-Legal pages now 404 rather than serving drafts — **counsel is still required** before real terms exist.
-Marketplace posting still needs `NEEDS_ISRAEL.txt`. Chrome store publication still needs a Google
-account. Pricing is now consistent but the owner may still want a paid tier designed.
-marketpicks chatbot still needs `OPENROUTER_API_KEY` (defects listed in ISSUE_LOG).
+~~Legal pages now 404 rather than serving drafts~~ — **superseded by §23.7:** real `/terms/` and
+`/privacy/` are published (effective 2026-10-12), zero `PLACEHOLDER` hits, `/legal/*` stays 404.
+What is still open is the **deliberate omissions**: no governing law, venue, arbitration, liability
+cap, DMCA agent or GDPR rep — written out on purpose, because a fabricated clause is a liability.
+**Counsel is still required** for those.
+
+~~marketpicks chatbot still needs `OPENROUTER_API_KEY`~~ — **superseded by §23.8:** it is set as a
+Pages secret, which also closed ISSUE_LOG #80.
+
+Genuinely still open, in priority order:
+
+1. **#94 — the shop has no real inventory.** 32 active listings, every one `admin`/`demo`/QA, and
+   `/api/market` only shows the photo-bearing 5. Kids/Art/Other return **0**. Needs real sellers —
+   no code change can do this.
+2. **#95 — 3 active listings have `category = NULL`** and can never be found by a department click.
+   Not guessed on purpose: `Home/` has no kitchen path, so the Keurig has nowhere honest to go.
+3. **#86 — spanishtvshows Groq key still public.** Blocked on a token with Pages **write** (the
+   current one is read-only: `{"code":1001,"error":"method_not_allowed"}`).
+4. **#87 — ihatecollege needs a new Gemini key** (the committed one was revoked by Google).
+5. **#49 — `/api/ai/analyze` is public** behind a fail-closed limiter (503). Keep public vs require
+   a session is an owner call.
+6. **Chrome Web Store publication** — needs the owner's Google account + $5.
+7. **Marketplace posting** — needs `NEEDS_ISRAEL.txt`; Stripe/eBay/Etsy/Google still empty in `.env`.
+8. **marketpicks `CRON_SECRET` lockdown** — gates shipped fail-open (#89/#90) but the secret is
+   unset, so **no production behaviour changed**. Wiring it needs the firing worker's source, which
+   is not in this repo.
+9. **Pricing** — consistent now (free during launch, fair-use limits); a paid tier may still be
+   wanted later.
 
 ### 23.6 Addendum — marketpicks chatbot + repo divergence closed (same evening)
 
