@@ -406,14 +406,19 @@ async function ensureListingCols(env) {
   catch (e) { listingColsPending = null; throw e; }
 }
 
+// In-isolate rate limiter. Was a KV get+put on every login/register/ai/chat call,
+// which burned the 1k/day KV free-tier write cap. Per-isolate counting is enough
+// to stop bursts from one IP; no KV writes.
+const RL = new Map();
 async function rateLimit(env, request, bucket, limit = 30, windowSec = 60) {
   try {
     const ip = request.headers.get("CF-Connecting-IP") || "x";
     const w = Math.floor(Date.now() / 1000 / windowSec);
     const key = `rl:${bucket}:${w}:${ip}`;
-    const c = parseInt(await env.CACHE.get(key), 10) || 0;
+    if (RL.size > 5000) { for (const k of RL.keys()) { if (!k.includes(`:${w}:`)) RL.delete(k); } if (RL.size > 5000) RL.clear(); }
+    const c = RL.get(key) || 0;
     if (c >= limit) return false;
-    await env.CACHE.put(key, String(c + 1), { expirationTtl: windowSec * 2 });
+    RL.set(key, c + 1);
     return true;
   } catch {
     return true;

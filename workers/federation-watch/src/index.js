@@ -203,6 +203,7 @@ async function runAll(env, { bots }) {
   return { at: new Date().toISOString(), failing: results.filter((r) => !r.ok).length, results };
 }
 
+let memLast = null, memTickAt = 0;
 // State lives in KV so an alert fires once per outage, plus once on recovery.
 async function alertOnChanges(env, run) {
   const prev = (await env.STATE.get("status", "json")) || {};
@@ -216,8 +217,11 @@ async function alertOnChanges(env, run) {
     if (!r.ok && fails === 2) broke.push(r);
     if (r.ok && was && was.fails >= 2) fixed.push(r);
   }
-  await env.STATE.put("status", JSON.stringify(next));
-  await env.STATE.put("last", JSON.stringify(run));
+  // KV free tier = 1k writes/day. Only persist status when a check's state changed;
+  // keep the latest run in isolate memory (was 3 KV writes per 15-min tick = 288/day).
+  memLast = run;
+  const changed = run.results.some((r) => { const w = prev[r.name]; return !w || w.ok !== next[r.name].ok || w.fails !== next[r.name].fails; });
+  if (changed) await env.STATE.put("status", JSON.stringify(next));
   if (!env.NTFY_TOPIC || (!broke.length && !fixed.length)) return;
   const lines = [...broke.map((r) => `DOWN ${r.name}: ${r.detail}`), ...fixed.map((r) => `FIXED ${r.name}: ${r.detail}`)];
   await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
@@ -240,9 +244,9 @@ export default {
     // site-cron-trigger calls this every 15 minutes instead. Public but
     // throttled: at most one run per 10 minutes, whoever calls it.
     if (pathname === "/tick") {
-      const last = Number(await env.STATE.get("tickAt")) || 0;
+      const last = memTickAt;
       if (Date.now() - last < 10 * 60e3) return out({ skipped: "ran recently", at: new Date(last).toISOString() });
-      await env.STATE.put("tickAt", String(Date.now()));
+      memTickAt = Date.now();
       const run = await runAll(env, { bots: new Date().getUTCMinutes() < 15 });
       await alertOnChanges(env, run);
       return out({ ran: run.at, failing: run.failing });
@@ -253,6 +257,6 @@ export default {
       await alertOnChanges(env, run);
       return out(run);
     }
-    return out((await env.STATE.get("last", "json")) || { note: "no run yet" });
+    return out(memLast || (await env.STATE.get("last", "json")) || { note: "no run yet" });
   },
 };
