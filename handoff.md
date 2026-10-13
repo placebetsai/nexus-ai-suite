@@ -3072,3 +3072,31 @@ page-specific menus onto the canonical one — the same thing the old code did, 
 `updated: 5` instead of being silent about it.
 
 Pushed: nexus-ai-suite `406e55d..37cb898`.
+
+### 23.13 Addendum — IndexNow, and the three hosts it will not take (2026-10-13)
+
+The requirement was to push the sitemaps once the Israel Joffe pages were live. That turns out to
+need a key file *on each host*, and only **6 of 13** had one — so 7 sites had never had anything
+submitted at all. Key file written into every source and deployed (israeljoffe-com/org and the two
+sibling repos committed; diamonds needs it in `public/` **and** `out/`, because Next serves those;
+fashionistas is a static root). **Verified live: 13/13 return `200` with the exact key as the body.**
+
+Then submitted each host's own sitemap URLs through `api.indexnow.org`:
+
+| result | hosts | URLs |
+|---|---|---|
+| accepted (200/202) | israeljoffe.com 70, israeljoffe.org 25, wuwonline 45, religiousjews 25, fashionistas 24, createstuff 2, spanishtvshows 200, scooter 254, diamonds 62, marketpicks 143 | **7,632** |
+| rejected 403 | hiddencameras.tv, ihatecollege.com, placebets.ai | — |
+
+The endpoint requires `urlList`; the `sitemap` field returns `400 "The urlList field is required."`
+
+**The 403 is not a key-file problem, and I stopped rather than retry it into the ground.** Those three
+serve `200 text/plain` with the exact key bytes to IndexNowBot, bingbot, curl and an empty user agent
+alike, with no challenge — and their file is byte-identical to the one on spanishtvshows.com,
+scooter.exchange and marketpicks.ai, all of which submit fine. Both `api.indexnow.org` and
+`www.bing.com/indexnow` return the same `UserForbiddedToAccessSite`. So the block is on IndexNow's
+crawler side or behind a Cloudflare bot rule only the dashboard can see. Owner action is in
+ISSUE_LOG #105: the three zones' Security Level / Bot Fight Mode, then resubmit.
+
+Pushed: nexus-ai-suite `2735593`+; religiousjews `bf68453`, diamonds `7ea096a`, wuw `ef011b0`,
+fashionistas `fa032f2` (live, `version.txt` verified).
