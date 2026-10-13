@@ -2891,3 +2891,75 @@ quotes batched). #23 Gmail SMTP passwords **verified dead** — both return 535 
 (16 MB) untracked.
 
 Pushed: marketpicks `3243eeb`, hiddencameras `0308a11`.
+
+### 23.11 Addendum — the flagship shop, looked at as a shopper (2026-10-13)
+
+Everything through §23.10 was API-level. This round opened `fashionistas.ai` in a browser and walked
+the shop, because the sentinel only checks 200s and freshness and cannot see a page that is wrong.
+
+**Finding 1 — a $68 listing whose photo was our own stock image.** The shop showed three tiles as a
+flat blue garment on cream. They were not broken images: all 8 photos returned 200, all decoded, all
+eight `<img>` elements were `complete: true`, `naturalWidth: 720`, connected, `opacity: 1`, same
+rectangles as the working ones. The frontend was innocent — **the JPEG itself was the drawing.**
+
+| listing | entropy | unique colours | four corners |
+|---|---|---|---|
+| 147 "Vintage denim jacket" | **2.35 bits** | 346 | identical `#F5F0EA` |
+| 146 "Blue Henley Shirt" | **2.51 bits** | 441 | identical `#F5F0EA` |
+| 143 "Blue Dress Shirt" | **2.45 bits** | 440 | identical `#F5F0EA` |
+| 148 Versace polo (real) | 12.30 bits | 6142 | all different |
+
+62% of each is one flat colour, 23% a second. That is vector art, not photography.
+
+**Listing 147 was byte-identical to the site's own `/sample-jacket.jpg`** — md5
+`be648bd8908fa7ab6e46186fe7fb7398` for both. Root cause, in `listing-wizard.js`:
+
+- Line 249 puts a live button in the wizard: *"No photo handy? Try a sample"* → `LW.sample()` → loads
+  `/sample-jacket.jpg` into the tray and tags it `hint: "sample"`.
+- That hint was read in exactly **one** place (line 417, to tell the identify call it is a sample).
+- `submit()` uploaded `PHOTOS[0]` as `photo_url` with **no check on `hint` at all**. A seller could
+  walk the whole wizard and publish our stock drawing as their item.
+
+So a buyer could have paid $68 for a picture of a drawing. **Guard added before `BUSY` and before
+`uploadB64`:** promote a real photo to cover when one exists (announced, not silent), refuse outright
+when every photo is the sample. Nothing half-made reaches D1.
+
+**Finding 2 — the fix would have reached nobody.** After deploying, the new copy was on the origin and
+**the live URL still served the old bytes.** `/assets/app.*` is `Cache-Control: public,
+max-age=31536000, immutable`; the response was `cf-cache-status: HIT`, `age: 33136`. I had edited
+`app.6fc355b2689c.js` in place, and **the filename is the only cache-buster there is** — so the edge
+kept answering last year's body and every returning browser keeps its own copy for a year. Deploy
+green, origin correct, users running old code: the worst failure mode, because it looks fixed.
+
+The convention was there all along — `sha256` of the pre-edit bytes is exactly `6fc355b2689c`, which
+is how I confirmed it before renaming to `app.2ba96a44ec63.js`. Verified after deploy: `MISS`, served
+bytes hash to `2ba96a44ec63`, old copy absent, new copy present.
+
+**Finding 3 — a dead promise in the affiliate card.** *"Also listed on eBay ↗"* ×6, under *"It may be
+listed on these shops."* Those `href`s are each marketplace's **own search URL for the shopper's
+query** — the tooltip already said "searched for what you typed". Nothing is listed anywhere. Now
+**SEARCH AROUND / "Search these shops for the same thing" / "Search eBay ↗"** and an explicit *"we
+don't post there for you."*
+
+**Finding 4 — the catalog's actual state.** 32 rows are `active`, but the shop returns 8: `/api/market`
+filters to listings with a photo (deliberate — a photo-less card reads as junk). **All 32 belong to
+`admin` (15), `demo` (9), and audit/verify/tryon QA accounts.** There are no real sellers. Of the 8
+visible, 3 were the illustrations above. Delisted 143/146/147 (reversible, not deleted) → **5 items,
+every one a real photograph**, verified live.
+
+**Deliberately not done:** categories for 145/146/147 were left `NULL` rather than guessed. `Home/`
+contains only Furniture, Home Accents, Lamps & Lighting, Mirrors and Rugs — there is no kitchen path,
+so "assign the Keurig somewhere" would have been a guess dressed as a fix. That stays an owner call.
+
+**Corrections I made to my own read while doing this:** I reported two different headers (home
+"Log in/Try it on" vs shop "Sign in/More") as two brands sharing a domain. Wrong — `index.html` is one
+SPA with a landing chrome and an app shell; same file, two views. And I reported "placeholder images
+not loading" before the entropy test showed the images load fine and are themselves drawings.
+
+**Tests:** `tests/sample-photo-guard.test.mjs` (7) lifts the *shipped* guard block out of
+`listing-wizard.js` and executes it against synthetic photo trays — it tests behaviour, not spelling.
+`tests/bundle-cache-bust.test.mjs` (4) pins `filename == sha256(bytes)[:12]`, forbids a second bundle
+lurking in `assets/`, and records why `immutable` makes renaming mandatory. Both mutation-verified:
+deleting the guard fails 4; editing bytes without renaming fails 1. Suite **436 → 447**, all passing.
+
+Pushed: fashionistas `21c866d`, `d795beb` (live, version-verified).
