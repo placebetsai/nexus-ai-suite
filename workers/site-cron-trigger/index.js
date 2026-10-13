@@ -49,6 +49,63 @@ const SERVICE_BINDINGS = {
   "federation-watch.fashionistas1979.workers.dev": "FEDERATION_WATCH",
 };
 
+// ── IndexNow ───────────────────────────────────────────────────────────────
+// Search engines are told about marketpicks' URLs once a day. This used to run
+// ONLY from `npm run ship` on the owner's laptop (scripts/indexnow-ping.mjs),
+// so any stretch without a deploy was a stretch of search engines being told
+// nothing — a silent SEO regression with no alarm attached to it.
+//
+// The key below is NOT a secret and must not be treated like the credentials
+// pulled out of the public repos this week. IndexNow's design is that the key
+// is PUBLISHED: it is served as https://marketpicks.ai/<key>.txt and the API
+// fetches that URL to prove the submitter controls the domain. It has been
+// live at that path since commit a562c33. Removing it from here would break
+// verification, and "rotating" it would do nothing but invalidate the file.
+// This keeps the worker's no-secrets invariant (see wrangler.toml).
+const INDEXNOW = {
+  host: "marketpicks.ai",
+  key: "f096cd903fa35672ba1a716d8871bb6e",
+};
+
+// Once a day, in the 03:00-03:15 UTC window. This worker has no durable
+// storage, so the gate is "the single tick that falls inside that window"
+// rather than a stored timestamp — deterministic and storage-free. A missed
+// tick means a missed day, which is the right failure direction for a ping.
+// IndexNow also throttles (429) well below a per-tick cadence anyway.
+function indexNowDue() {
+  const now = new Date();
+  return now.getUTCHours() === 3 && now.getUTCMinutes() < 15;
+}
+
+async function pingIndexNow() {
+  const sitemap = await fetch(`https://${INDEXNOW.host}/sitemap.xml`, {
+    headers: { "user-agent": "marketpicks-indexnow/1.0" },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!sitemap.ok) throw new Error(`sitemap HTTP ${sitemap.status}`);
+  const xml = await sitemap.text();
+  const urls = [...new Set([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]))];
+  if (!urls.length) throw new Error("sitemap contained no <loc> entries");
+
+  const res = await fetch("https://api.indexnow.org/indexnow", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      host: INDEXNOW.host,
+      key: INDEXNOW.key,
+      keyLocation: `https://${INDEXNOW.host}/${INDEXNOW.key}.txt`,
+      urlList: urls,
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  // 200 = received, 202 = received and pending validation. Anything else is a
+  // real failure worth surfacing rather than swallowing.
+  if (res.status !== 200 && res.status !== 202) {
+    throw new Error(`indexnow HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  }
+  return { urls: urls.length, status: res.status };
+}
+
 async function runAll(env) {
   const results = await Promise.allSettled(
     ENDPOINTS.map(async (url) => {
@@ -70,11 +127,27 @@ async function runAll(env) {
       };
     })
   );
-  return results.map((r, i) =>
+  const rows = results.map((r, i) =>
     r.status === "fulfilled"
       ? r.value
       : { url: ENDPOINTS[i].replace("https://", ""), error: r.reason?.message || String(r.reason) }
   );
+
+  // IndexNow rides along so the manual / handler reports it too. It is skipped
+  // on ~95 of every 96 ticks, and a skip is reported AS a skip — "not due" and
+  // "failed" must never look the same, or a working worker reads as a broken
+  // one and a broken one reads as a quiet one.
+  try {
+    rows.push(
+      indexNowDue()
+        ? { url: `indexnow ${INDEXNOW.host}`, ...(await pingIndexNow()) }
+        : { url: `indexnow ${INDEXNOW.host}`, skipped: "not due (daily at 03:00 UTC)" }
+    );
+  } catch (e) {
+    rows.push({ url: `indexnow ${INDEXNOW.host}`, error: e?.message || String(e) });
+  }
+
+  return rows;
 }
 
 export default {
