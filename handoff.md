@@ -2987,3 +2987,88 @@ lurking in `assets/`, and records why `immutable` makes renaming mandatory. Both
 deleting the guard fails 4; editing bytes without renaming fails 1. Suite **436 → 447**, all passing.
 
 Pushed: fashionistas `21c866d`, `d795beb` (live, version-verified).
+
+### 23.12 Addendum — every site in the admin portal, and the menu save that flattened a site (2026-10-13)
+
+`joffe-admin` existed for one site. The owner wants to edit and SEO all of them, so it now carries
+**all 13** — `israeljoffe.com`, `israeljoffe.org`, `wuwonline.com`, `religiousjews.com`,
+`fashionistas.ai`, `createstuff.ai`, `hiddencameras.tv`, `spanishtvshows.com`, `scooter.exchange`,
+`diamonds-forsale`, `ihatecollege.com`, `placebets.ai`, `marketpicks.ai`. `ketiservice.com` and
+`ldm-realestate` were left alone on instruction. Every one reports `ready: true`, and
+**1306 of 1306 pages open** through the portal.
+
+Six sites are Cloudflare Pages with the files on disk (mode `static` — an edit survives a rebuild).
+Seven are Worker- or build-output-served (mode `build` — the files on disk are what a build produced,
+and the next build overwrites them). That difference is **surfaced, not hidden**: `/api/sites` returns
+`mode` and a `note`, and the UI puts a banner above the editor saying which kind it is, so nobody
+edits a generated file believing it will still be there tomorrow.
+
+**The bug that mattered: saving a menu rewrote every `<nav>` on a site from a list that had no
+structure in it.** `writeNav()` rebuilt the block from `parseAnchors()`, which returns a flat array of
+`{href, label, className}` — so everything between the anchors was simply gone. `religiousjews.com`
+keeps its desktop menu in three `<div class="nav-group">` blocks with `<span class="nav-group-label">`
+headings. Adding one page to the menu and deleting it again left **31 files modified and the groups
+gone**: `404.html` alone lost 14 lines of `<div class="nav-group">` / `<span …>Find</span>` and gained
+a flat row of bare `<a>`s. `israeljoffe.com` never hit it because its menu is already flat, which is
+exactly why a bug this size survives a year of use on one site and a single afternoon on another.
+
+Nav edits are now surgical — `addNavLink` / `removeNavLink` / `renameNavLink` touch only the one
+anchor that changed. Measured on the real files:
+
+| | before | after |
+|---|---|---|
+| add `/nav-test/` to `religiousjews.com` | 3 `<div class="nav-group">` per page | **3** (unchanged), link present |
+| delete it | 31 files dirty | 31 dirty during, **0 dirty after** |
+| `PUT` an identical menu | rewrote all 31 pages | touches only pages whose menu actually differs |
+
+Three placements are rules, not accidents: a new link goes **inside the last group** (so it is styled
+like its neighbours), **before** a `mobile-nav-fine` contact block (so the phone number never ends up
+last), and **before** a `primary-cta` link (so "Train" stays the last thing you see). A rename only
+fires on anchors holding the *old* label — `religiousjews.com`'s mobile menu says "Kosher Restaurants"
+where the desktop says "Restaurants", and renaming by `href` alone would have rewritten those too.
+
+**Five more, each caught by running it, not by reading it:**
+
+- **A `<title data-next-head="">` did not match the regex**, so `ihatecollege.com`'s title read as
+  empty and a save silently did nothing. The regex tolerates the attribute now, and a page with no
+  `<title>` gets one inserted rather than reporting a save that wrote nothing.
+- **`relToUrl()` reported `about.html`; Cloudflare serves `/about`.** Every flat-file page therefore
+  read back as "not in this sitemap" while its own `<loc>` sat there in the file. `urlToRel()` stays
+  pure (tests pin it); a disk-aware `urlToRelFor()` resolves the flat case, and the portal round-trips
+  `about` → `about/index.html` → `/about` on spanishtvshows, ihatecollege, scooter.exchange,
+  placebets and diamonds-forsale, all **200** where they were 404.
+- **`upsertSitemap()` wrote a trailing newline that `removeSitemap()` never consumed** — one stray
+  byte per add/remove cycle. religiousjews' sitemap is a single 2,464-byte line with **0 newlines** in
+  it, which is how a one-pixel discrepancy showed up at all. Removal is now the exact string that
+  insertion wrote, pinned by a byte-equality test.
+- **A `<sitemapindex>` made the sitemap toggle a no-op that reported success.** ihatecollege.com serves
+  an index, not a urlset; the write found no `</urlset>`, changed nothing, and returned 200. It now
+  throws a message saying a page can't be added to an index, and creating a page on a site with no
+  sitemap file returns **201 with `warnings[]`** instead of fabricating a 1-URL file that would shadow
+  marketpicks.ai's generated 143-URL one.
+- **Worker-rendered sites 500'd on three separate tabs.** placebets.ai and marketpicks.ai have no
+  `index.html` on disk. Page creation, the Backlinks tab and the Footer tab all read it unguarded.
+  They now return `{nav: [], home: false}` and a clear 409, and page creation resolves its template
+  through `about/index.html` → `about.html` → `index.html` → the first file that actually contains a
+  `<main>` (marketpicks' first file on disk is `500.html`, which does not).
+
+**`deploy.sh` routed two accounts.** A wrong token deploys to a project nobody looks at *while
+reporting success*. `pages` now routes by project name across all five accounts (CF, CS, STV, IHC,
+HID), `verify_pages` takes a third host argument because `diamonds-forsale` on IHC really is
+`diamonds-forsale-53r.pages.dev` — and a *different* project of the same name sits on the default
+account — and `deploy.sh routing` prints the whole map.
+
+**Tests: 25/25** (`node --test test/edit.test.js`, was 12 before this round). Four of the new ones
+encode the four bugs above as byte-equality or structure-preservation assertions, so each of them now
+fails loudly if it comes back. Every write-path claim in this section was run against the live portal
+on `127.0.0.1:8788` and then checked against `git status` on the real repos — the final state of
+`religiousjews-com` is **0 dirty files at `f49ae44`**.
+
+**Honest limitations, stated rather than polished over:** nav editing only works where a nav file
+exists, so the two Worker sites report `home: false` and refuse. Marketpicks.ai's sitemap is generated
+at build time, so the portal will not write to it. And a "no-op" menu save on `religiousjews.com`
+converges the 5 pages (`find`, `israel-travel`, `judaica`, `kosher`, `lifestyle`) that carry
+page-specific menus onto the canonical one — the same thing the old code did, now reported honestly as
+`updated: 5` instead of being silent about it.
+
+Pushed: nexus-ai-suite `406e55d..37cb898`.
