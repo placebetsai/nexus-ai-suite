@@ -2799,3 +2799,50 @@ false sense of safety. Replaced with a test pinning the real invariant.
 
 marketpicks tests **69/69**, tsc 135 unchanged. Pushed: marketpicks `b9f227d`, Placebetsai `d2bb746`,
 Ihatecollege `ac99703`.
+
+### 23.9 Addendum — two scheduled-job traps, and one log entry that was half-wrong
+
+**Issue #17 claimed three jobs were "homeless".** Auditing it properly:
+
+- **Federation Sentinel was never homeless.** Its source has lived at `workers/federation-watch/`
+  the whole time. The Worker is alive and current — `GET /` → 200,
+  `{"at":"2026-10-13T00:30:29Z","failing":0}`. It genuinely cannot own its *own* cron trigger
+  (free plan caps an account at 5, all 5 in use), which is exactly why `site-cron-trigger` fires its
+  `/tick` every 15 minutes. **The design was correct; the log entry describing it was stale.**
+- **IndexNow ping really was uncovered.** It ran only from `npm run ship` on a laptop, so any stretch
+  without a deploy was a stretch of search engines being told nothing — a silent SEO regression with
+  no alarm. Added to the existing fan-out (not a new Worker, because of that 5-trigger cap), firing
+  daily in the 03:00–03:15 UTC window. Gate is "the single tick inside the window" since the worker
+  has no durable storage; a missed tick means a missed day, which is the right failure direction for
+  a ping. Verified two ways: replicated `pingIndexNow()` standalone and ran it for real (142 sitemap
+  URLs → POST 200), then deployed and hit the manual trigger live —
+  `{"url":"indexnow marketpicks.ai","skipped":"not due (daily at 03:00 UTC)"}`, 6 rows, 0 errors.
+  **A skip reports as a skip**, never as silence and never as an error: "not due" and "failed" must
+  not look the same, or a working worker reads as broken and a broken one reads as quiet.
+- **STV *Generate Spanish Pages* runs on every deploy** via `prebuild` — but that made it a trap:
+
+**A third-party outage was becoming our outage.** `prebuild` runs
+`scripts/generate-spanish-pages.cjs`. It *had* a fallback — for the harmless case:
+
+```
+if (!TMDB_API_KEY) { if (existsSync(OUT_FILE)) { …skip…; return; } die(); }
+```
+
+Key **missing** → reuse committed content. Key **present but TMDB unreachable** → `fetchShows()`
+throws → `main().catch()` → `process.exit(1)` → `prebuild` fails → `next build` never runs →
+**deploy dies**, for a site whose committed `content/generated/spanish-pages.json` (214 KB, tracked
+in git) was perfectly serviceable the whole time.
+
+The tail now makes the same trade, for the reason that actually happens in production: reuse the
+committed file, warn that it's stale, return 0. Only with nothing to fall back on does it still exit
+1 — and the message then says to commit that file so the next outage degrades instead of failing.
+
+**Tested rather than assumed** — simulated the outage with a bad key (TMDB 401): `exit=0`, reuse
+message printed, and the file's md5 unchanged before and after
+(`581a2e8169e60c3b7e256322f5e38b3f`), so the fallback *reuses* rather than *clobbers*. STV tests 9/9.
+
+**Also stale:** #20 (Placebetsai `sk-or-v1-…` key) was still listed OPEN after it was fixed earlier
+today. Now marked done — safe there only because **nothing imports that module** (the chatbot uses
+`web-search-free.js`) and `LLM_ENABLE_PAID_WEB_SEARCH = "0"` in both wrangler environments.
+
+Pushed: `a10b1ef` (IndexNow cron), `2fac86d` (STV prebuild guard).
