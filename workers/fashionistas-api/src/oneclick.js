@@ -49,10 +49,42 @@ async function ensureTables(env) {
   ready = true;
 }
 
-async function kvPut(env, key, val, ttl) { await env.CACHE.put(key, JSON.stringify(val), { expirationTtl: ttl }); }
+// Short-lived sign-in state (passkey challenges, magic links) lives in D1, not KV:
+// the login page asks for a passkey challenge on every load, which burned the
+// account's 1k/day KV write cap. Falls back to KV, and never throws on the put.
+let tmpReady = false;
+async function tmpDb(env) {
+  if (!env.DB) return null;
+  if (!tmpReady) {
+    await env.DB.prepare("CREATE TABLE IF NOT EXISTS auth_tmp (k TEXT PRIMARY KEY, v TEXT NOT NULL, exp INTEGER NOT NULL)").run();
+    tmpReady = true;
+  }
+  return env.DB;
+}
+async function kvPut(env, key, val, ttl) {
+  try {
+    const db = await tmpDb(env);
+    if (db) {
+      await db.prepare("INSERT OR REPLACE INTO auth_tmp (k,v,exp) VALUES (?1,?2,?3)").bind(key, JSON.stringify(val), Date.now() + ttl * 1000).run();
+      if (Math.random() < 0.02) await db.prepare("DELETE FROM auth_tmp WHERE exp < ?1").bind(Date.now()).run();
+      return;
+    }
+  } catch {}
+  try { await env.CACHE.put(key, JSON.stringify(val), { expirationTtl: ttl }); } catch {}
+}
 async function kvTake(env, key) {
-  const v = await env.CACHE.get(key); if (!v) return null;
-  await env.CACHE.delete(key); return JSON.parse(v);
+  try {
+    const db = await tmpDb(env);
+    if (db) {
+      const r = await db.prepare("DELETE FROM auth_tmp WHERE k=?1 RETURNING v, exp").bind(key).first();
+      if (r) return r.exp > Date.now() ? JSON.parse(r.v) : null;
+    }
+  } catch {}
+  try {
+    const v = await env.CACHE.get(key); if (!v) return null;
+    try { await env.CACHE.delete(key); } catch {}
+    return JSON.parse(v);
+  } catch { return null; }
 }
 
 const pubUser = (u) => ({ id: u.id, username: u.username, display_name: u.display_name, email: u.email });
