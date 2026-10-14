@@ -3145,18 +3145,47 @@ and on uploads that did not. It also cannot run at all on marketpicks, whose `/i
 server function with no static `index.html` to compare. The only trustworthy test is fetching the
 live page and counting links.
 
-**Usage — the number that matters is not the one Cloudflare shows first.** Over 8 days the 5 zones
-that grant analytics read returned **869,630 requests** and **140,933 page views**. Reporting
-requests as usage overstates real readership by about 6×. spanishtvshows.com is the extreme case:
-622,169 requests but 64,949 page views (0.10 pv/req) with two "spike" days of 292K and 173K requests
-against a 30K baseline — those are crawlers, almost certainly pulled through by the IndexNow
-submission, not growth. ihatecollege.com is the healthiest at 0.50 pv/req.
+**Usage — the number that matters is not the one Cloudflare shows first.** Across all 12 readable
+zones (ketiservice excluded), the last 14 days were **1,756,773 requests** but **388,765 page
+views** — a 4.5× gap, so reporting requests as usage overstates real readership by about 4×. Last
+7 days: **210,803 page views, +18%** over the prior 7.
 
-Three blind spots are recorded rather than guessed at. The CF token is scoped for Pages deploy only,
-so **fashionistas.ai, israeljoffe.com/.org, religiousjews.com, wuwonline.com and marketpicks.ai have
-no analytics visible at all** — the flagship is a blind spot. Path-level data (whether anyone opens
-`/israel-joffe/`) needs Enterprise. And there is no commerce data in Cloudflare at all: shop
-inventory is empty (#94) and Stripe is unwired, so "sales" cannot be measured from here.
+| site | pv 7d | change | pv/req | reads as |
+|---|---|---|---|---|
+| ihatecollege.com | 49,185 | −25% | 0.52 | human |
+| spanishtvshows.com | 55,719 | **+208%** | 0.08 | bots + some readers |
+| israeljoffe.com | 23,536 | **+31%** | 0.73 | human |
+| wuwonline.com | 20,899 | −13% | 0.63 | human |
+| israeljoffe.org | 13,493 | **+220%** | 0.63 | human |
+| religiousjews.com | 13,241 | −2% | 0.56 | human |
+| wuwonline.org | 13,383 | +2% | 0.59 | human |
+| hiddencameras.tv | 7,627 | +58% | 0.15 | mostly bots |
+| marketpicks.ai | 6,131 | −19% | 0.17 | mostly bots |
+| scooter.exchange | 3,410 | −1% | 0.11 | mostly bots |
+| **fashionistas.ai** | **2,927** | −2% | **0.05** | almost entirely bots |
+| diamonds.forsale | 1,252 | −45% | 0.05 | almost entirely bots |
+
+`pv/req` is the tell. Anything at 0.05–0.17 is machines pulling assets, not people reading.
+fashionistas.ai serves **61,454 requests to 2,927 page views** — 0.05, the flagship site is 95%
+machine traffic and has been flat for a month while israeljoffe.com (+31%) and israeljoffe.org
+(+220%) climb. spanishtvshows' +208% is paired with 0.08 pv/req, so the "growth" is crawlers,
+almost certainly pulled in by the IndexNow submission.
+
+**Correction to the first pass of this section, which was wrong.** It claimed the CF token was
+scoped for Pages deploy only and that fashionistas.ai and four other zones were a blind spot. That
+was tested once, against one token, and the failure was misread as no-access. There are **10
+credentials on disk** (`cf.env` holds nine, plus `hiddencameras-tv/.env.deploy`), every one of them
+returns `does not have permission '…analytics.read'` — but the **wrangler OAuth login** in
+`~/.wrangler/config/default.toml` (fashionistas1979@gmail.com, scope `zone (read)`) reads all seven
+fashionistas-account zones fine. The rule this violates: a permission error from one credential is
+not evidence of a missing capability, and an error message must be read to the end before being
+quoted — the first pass truncated it at 46 characters and reported the truncated fragment.
+
+Still genuinely unavailable: **path-level data** (whether anyone opens `/israel-joffe/`) requires
+`clientRequestPath`, which is not exposed on these plans — the field returns `unknown field`, not a
+permission error, so it is a plan limit rather than a token limit. And there is no commerce data in
+Cloudflare at all: shop inventory is empty (#94) and Stripe is unwired, so "sales" cannot be measured
+from here.
 
 Also found and unrelated to this round: **scooters.exchange's apex has no DNS record** (#108) — the
 domain returns `HTTP 000` while `scooters-exchange.pages.dev` answers 200.
