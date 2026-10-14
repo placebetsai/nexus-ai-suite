@@ -169,3 +169,22 @@ Production untouched (main 91d21ff). Waiting on Iz "ship it".
 - Preview /api/odds serves 169 events vs prod 256 (preview has no D1 binding); bot reads prod board so answers are unaffected.
 
 **Remaining:** apply D1 cleanup + fix games-ingest timeout; add KV/AI bindings to prod at ship; add THE_ODDS_API_KEY or retire source; search key; run LLM-judge; install daily workflow; remove/keep harmless `diag`/`llm_down` request flags; cosmetic "Spread TB -245" (ML shown as spread for NHL) in board line formatter.
+
+## Fix 5 — UPDATE 2:00 PM ET (preview only; deploy 690cc0fb → chatbot-preview-5)
+Branch head pushed: feat/chatbot-intent-router-2026-10-14. Production untouched.
+- **Spread formatter:** a moneyline in the spread field ("Spread TB -245") is no longer shown; spread printed only if it is a real handicap (|n|≤60). Parlay spread legs guarded the same way.
+- **games ingest D1 timeout fixed in code** (app/api/cron/ingest-games): chunked `db.batch` writes of 50 (was 1 round trip/row), schema DDL once per isolate, `games-ingest` health row (success or error), dedupe by sport+matchup+date. Verified against a mock D1 only (360 rows → 8 batches + 1 health batch); NOT run against prod.
+- **Runtime self-verification** (lib/verify/answer-verify.js, last step in POST): every "<board team> <price>" re-checked vs live board (consensus + books); mismatch → replaced with the board's true line; missing As-of appended; board >3h → refuse; failures logged to MARKET_DATA_DB `chat_verify_failures` (prod only; preview has no D1). Response carries `verified:{checked,ok,...}`.
+- **Freshness monitor:** GET /api/health/data — per-league odds_updated_at, age, upcoming 48h, stale flag (>3h with upcoming games), board_stale. /api/odds now adds `staleLeagues` + `ev.stale`; board shows a STALE badge; bot appends "⚠️ Stale data: <league> odds last updated Nh ago".
+  - Note: /api/odds `updatedAt` is generation time (always "now"), so per-league D1 timestamps are the real freshness signal.
+- **Canary:** `npm run canary -- <base>` = 50 rotating questions (seeded by 30-min slot, all categories), ~25 s, failures-only, JSON summary, exit 1 on failure. Run every 30 min.
+- **Eval gate before every deploy:** `scripts/ship/deploy-gated.sh <branch>` builds → deploys `gate-candidate` preview → full eval `--gate 99` (also fails on any invented_stat / odds_on_offtopic / leg_not_on_board / invented_prop_line / dead_end) → only then deploys `<branch>`. `main` refused unless SHIP_IT=1. `npm run eval:gate -- <base>` for gate alone.
+- **Results:** gated deploy 1019/1026 (7 = transient HTML edge errors on the fresh candidate; eval now retries + reports them); rerun on chatbot-preview-5: **1026/1026, 0 hard failures, p50 520 ms, p95 4355 ms**. Canary 50/50.
+- Screenshot: /workspace/placebets-preview/preview5-matchup2.png (Bears @ Falcons: real spread Falcons +2.5, As of shown).
+
+### D1 games cleanup — APPROVED by Iz (2026-10-14) for SHIP TIME, backup first
+Do NOT run before "ship it". Then run `scripts/ship/d1-games-cleanup.sh`:
+1. record Time Travel restore point; 2. `wrangler d1 export prediction-market-data --remote` → /workspace/backups/<db>-<ts>.sql + sha256;
+3. verify games row count in dump == live count (abort on mismatch); 4. copy to R2 `placebets-backups/d1/` (bucket must be created first: `npx wrangler r2 bucket create placebets-backups`; only existing bucket is forge-projects);
+5. apply migrations/proposed/2026-10-14-games-cleanup.sql; 6. report counts; rollback = `wrangler d1 time-travel restore` to the recorded point.
+Other ship-time steps: add KV (7558ad9c…) binding to production Pages; deploy via deploy-gated.sh main with SHIP_IT=1; install 30-min canary + daily eval workflows (token lacks `workflow` scope).
