@@ -44,13 +44,14 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 3. Champion answers read like Wikipedia — consider a bookie-voice wrapper that stays deterministic (templated, no LLM).
 4. Internal source tags (e.g. `no_line_for_matchup`, "Wikipedia") visible under answers — hide/humanize.
 5. lib/__tests__/chatbot-quality.test.mjs: Knicks-typo SUBJECT case fails (also on main before #18).
-6. Real-line answers: LLM path sometimes omits "As of … ET" (1 of 3 live Nets@Heat runs) and quotes "92% of bets" — verify that source/enforce As-of.
+6. ~~Real-line answers omit "As of … ET" / quote "92% of bets"~~ — FIXED ON PREVIEW (Chatbot fix 3), awaiting Iz "ship it". See section below.
 7. AdSense dashboard (Iz): enable Anchor ads; optional in-feed unit for the odds board.
 8. Affiliate links — top revenue gap (none on site).
 9. The Odds API source has never succeeded in cron health.
 10. Prod KV namespace id looks invalid — verify binding.
 11. deploy.sh still points at `placebets-ai` (Nexus account) — fix or treat as DO NOT USE.
 12. Old git stashes on the box main working copy (/workspace/tnr/Placebetsai) — review/drop.
+13. Champion phrasing gap: "who won the 2026 NBA championship and who will win next year" routes to the futures path (no-priced-market / futures board) instead of the Knicks fact; only "Who won the NBA title in 2026, who's winning next year" phrasing hits the knowledge path. Pre-existing on prod, not a fix-3 regression.
 
 ## Valuation findings (2026-10-14; full report /workspace/placebets-valuation-2026-10-14.md on the box)
 - Top gap: no sportsbook affiliate links (FanDuel/DraftKings/BetMGM/Caesars/Fanatics + state registrations), so no revenue.
@@ -101,3 +102,11 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Preview verification, 5x each, identical every run: NBA 2026 + next year (Knicks, no scoreboard), Super Bowl 2026 (Seahawks over Patriots 29–13), Stanley Cup 2026 (Hurricanes over Golden Knights), Yankees vs Red Sox (no line + "Want today's MLB board?"), Bulls vs Bucks (real ML CHI -130 / MIL +110, "As of … ET").
 - Screenshots (Pixel 412x915): /workspace/placebets-preview/fix2-*.png
 - Known: preview futures feed returned no complete NBA/NFL/NHL market, so "next year" says no priced market (local run had NFL/NHL futures). lib/__tests__/chatbot-quality: knicks-typo SUBJECT case fails on main too; pushback arithmetic case is LLM-flaky.
+
+## Chatbot fix 3 — PREVIEW ONLY, awaiting "ship it" (2026-10-14 ~11:25 AM ET)
+- Branch: `fix/chatbot-realline-deterministic-2026-10-14`, commit 66ae650. PR not opened yet — compare: https://github.com/placebetsai/Placebetsai/compare/main...fix/chatbot-realline-deterministic-2026-10-14
+- Preview: https://chatbot-preview-3.placebetsai.pages.dev (deploy https://45720828.placebetsai.pages.dev). Prod NOT deployed; rollback target remains 21a5da3a.
+- Root cause: real-line odds path built the grounded answer, then sent board data to the LLM for "polish" and served LLM text whenever it passed gates that only checked American-odds tokens + injuries → invented "92% of bets / 52% of money" slipped through, and that path never stamped "As of … ET". Fallback was degraded because `parseMoneylineBlock` regex couldn't parse `+250 (implied 28.6%)`.
+- Fix: exact matchups with a real moneyline skip the LLM entirely (deterministic ML + implied %, team-labelled spread, O/U, As of ET); parser fixed + reads structured event; new `fabricatedBettingStats` filter in `enforceGroundedAnswer` + final POST sweep; Reddit chatter with % dropped; champion facts cached 1h + one retry (fixed 2/10 "Couldn't pull a live Wikipedia read"); champion answers now carry As of ET.
+- Preview verification, 10 runs each vs live /api/odds: Nets @ Heat 10/10, Hornets vs Celtics 10/10, NBA 2026 + next year (Knicks over Spurs) 10/10, Yankees vs Red Sox (no line, no swap) 10/10, Super Bowl 2026 (Seahawks 29–13) 10/10.
+- Screenshot (Android 412x915): /workspace/placebets-preview/preview3-realline.png — self-reviewed: real lines, As of 11:25 AM ET, no betting stats, no truncation.
