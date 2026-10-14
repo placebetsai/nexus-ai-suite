@@ -286,3 +286,10 @@ Shown on: SEO game pages (Draw row + implied %, "No-vig 3-way" line with book ma
 Coverage at 7:15 PM ET: draw present on 100% of priced games in EPL, La Liga, Serie A, Bundesliga, Ligue 1, UCL, Europa, Eredivisie, Liga MX, Liga Portugal, Brasileirão, Süper Lig; MLS 31/33.
 Gate (preview-7 deploy cc391635): eval 1026/1026, canary 50/50, page test 0 fail. Page test now tolerates board churn: a 404 fails only if a fresh nocache board or fresh sitemap still lists the page (one retry); reported as `churned`. Cause: The Odds Gap keeps returning 429 to preview (no D1 fallback), so the preview board flaps 187↔383 events.
 Screenshots: /workspace/placebets-preview/preview7-draw.png (Excelsior vs Heerenveen: +370 / Draw +310 / -160, no-vig 19.8/22.8/57.4, margin 7.2%) and preview7-draw-home.png (hero cards with Draw rows) reviewed.
+
+## Hero-card price alignment (2026-10-14 ~7:55 PM ET) — preview only
+- Root cause: label/price boxes already lined up (measured via getBoundingClientRect). The offset came from JetBrains Mono vs sans glyph metrics under align-items:center.
+- Fix 5a33c9d (feat/fix7-seo-game-pages): `align-self: baseline` on `.pb-hero-card-team > .pb-hero-card-name/.pb-hero-card-odds` (globals.css). Applies to team rows + Draw row.
+- Gate: run 1 eval 1016/1026 (99.03%, 8 hard fails = parlay legs missing from flapping board; CSS-only diff); rerun eval 1026/1026, canary 50/50, page-test 572 pages / 0 fail / 0 churn. chatbot-preview-7 = c1d3f0a7.
+- Screens: /workspace/placebets-preview/preview7-draw-home.png, preview7-draw-home-2x.png (reviewed: baselines aligned).
+- NOT shipped to production — awaiting Iz "ship it".
