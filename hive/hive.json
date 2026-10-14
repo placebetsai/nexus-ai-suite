@@ -5,11 +5,11 @@
   "provider": "opencode",
   "model_prefix": "opencode/",
   "verified": {
-    "last_probe": "2026-09-29",
+    "last_probe": "2026-10-14",
     "free_models_total": 8,
     "agents_acked": 10,
     "probe_method": "opencode run --model opencode/<id>",
-    "note": "Model IDs are the EXACT ids returned by opencode.models. The old 'opencode-zen/' prefix caused 100% silent fallback.",
+    "note": "Model IDs are the EXACT ids returned by opencode.models. Measured 2026-10-14: all 10 agents ack in 8-20s, but under REAL load ling-3.1-flash-free fails instantly (UnknownError) and nemotron-3-ultra-free hangs to the 600s timeout. Both reassigned. timeout_per_task_ms cut 420000->150000 so a hung agent falls back in 2.5 min instead of freezing the board for 7.",
     "endpoint_unavailable": {
       "ling-3.0-flash-fin-free": "2026-09-29 opencode run -> exit 1 'Upstream request failed: Endpoint is unavailable.' Listed by opencode.models but not serving. No agent may request it.",
       "muse-spark-1.2-contributor-free": "2026-09-29 removed: no longer returned by opencode.models at all (roster dropped it). Was pictor's primary and vogue's fallback."
@@ -164,8 +164,8 @@
       "id": "sentinel",
       "name": "Sentinel",
       "role": "Security + code review: auth hardening, input validation, secret hygiene",
-      "model": "nemotron-3-ultra-free",
-      "fallback": "nemotron-3.5-lightning-free",
+      "model": "space-bunny-free",
+      "fallback": "big-pickle",
       "free": true,
       "workstreams": [
         "qa"
@@ -201,8 +201,8 @@
       "id": "scribe",
       "name": "Scribe",
       "role": "SEO + copy: meta tags, OG, JSON-LD, landing copy, blog posts, keyword strategy",
-      "model": "ling-3.1-flash-free",
-      "fallback": "muse-spark-1.3-contributor-free",
+      "model": "muse-spark-1.3-contributor-free",
+      "fallback": "longcat-2.5-preview-free",
       "free": true,
       "workstreams": [
         "seo",
@@ -214,8 +214,8 @@
   ],
   "dispatch": {
     "parallelism": 10,
-    "timeout_per_task_ms": 420000,
-    "probe_timeout_ms": 120000,
+    "timeout_per_task_ms": 150000,
+    "probe_timeout_ms": 45000,
     "fallback_on_error": true,
     "strip_ansi": true
   }
