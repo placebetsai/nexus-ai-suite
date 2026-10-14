@@ -299,3 +299,8 @@ Then: preview deploy, screenshots, e2e 12+/12, handoffs, report. No prod without
 
 ### 2026-10-14 13:35 ET — revenue milestone
 - Audit of all 4 sites: REVENUE-AUDIT-2026-10-14.md (this repo). fashionistas preview branch `revenue` @ 1039402 → https://revenue.fashionistas-ai.pages.dev: env-gated EPN_CAMPID / AMAZON_TAG affiliate tagging on Buy-on links + disclosure; pSEO plan (gated ≥5 real listings). Not shipped. Ext branch 735c21a still unshipped; revenue branched from ext.
+
+## 2026-10-14 14:10 ET — SHIPPED revenue+ext+easy
+- Production: `89bf396` (merge of revenue 1039402, incl. ext 735c21a + easy b0a4855) = deploy `47a70a52-041e-4e46-b7c4-7c620c1ccfb6`. **Rollback:** `d8b758aa-0ed8-430d-a4e4-c780c7b90be9` (86d6d70).
+- Verified live: version.txt; /, /shop/, /seller/board/, /pricing/, /try-on/, /blog/ 200, no JS errors; checklist + Post-everywhere run (test listing, cleaned); extension loads + board detects it (faExt 0.1.0); Woo OAuth start URL ok, Shopify app_not_registered, forged callbacks rejected; /api/crosslist/links affiliate:false (no EPN_CAMPID/AMAZON_TAG); ads.txt + sitemap (40) intact; e2e 12/12; test seller 0 listings / 0 connections. CHANNEL_KEY untouched.
+- Pending on Iz: EPN_CAMPID / AMAZON_TAG secrets, OAuth app registrations, Chrome Web Store upload of dist/fashionistas-crosslister-0.1.0.zip, real-account selector testing for the extension.
