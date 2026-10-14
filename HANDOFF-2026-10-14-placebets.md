@@ -142,3 +142,30 @@ Branch: `feat/chatbot-intent-router-2026-10-14` (off fix 4 `fix/chatbot-champion
 - p95 latency reasonable (target < 8s; p50 < 3s).
 - Data audit findings + freshness checks documented; no stale futures served as current.
 - Android 412x915 screenshots (preview5-*.png) self-reviewed; then Iz "ship it".
+
+## Fix 5 — STATUS UPDATE 1:40 PM ET (preview built + evaluated, NOT shipped)
+Preview: https://chatbot-preview-5.placebetsai.pages.dev (deploy 05632080). Branch feat/chatbot-intent-router-2026-10-14 (includes fix 4 ca6680b), pushed.
+Compare: https://github.com/placebetsai/Placebetsai/compare/main...feat/chatbot-intent-router-2026-10-14
+Production untouched (main 91d21ff). Waiting on Iz "ship it".
+
+**Eval (`npm run eval -- --base <url>`, 1026 items, graded vs production board the bot reads):**
+- LLM router on: 1026/1026, p50 516 ms, p95 4341 ms.
+- LLM-down (`--llm-down`, rules only): 1025/1026 (1 = line moved mid-run, right game), p50 28 ms, p95 4050 ms.
+- Ship gate: must stay >=99% and 0 invented_stat / odds_on_offtopic / leg_not_on_board.
+- LLM-as-judge (`--judge`) wired but NOT run: needs GROQ_API_KEY on the runner.
+- Daily failures-only eval: `npm run eval:daily`; GitHub workflow template at scripts/eval/daily-eval.workflow.yml (token lacks `workflow` scope; copy into .github/workflows by hand).
+
+**Done:** LLM intent/slot extractor (lib/llm/intent.js; numbers never from LLM; rules fallback), exact two-nickname board matchup fast path, rule slots override LLM year/league, Wikipedia/Wikidata champions layer (cited, KV cached), typo fixer w/ protected city/2-word nicknames, futures refused unless a complete market, board >3h stale refused, no-data LLM numeric gate, RG helpline, parlay legs priced from the served board, preview AI+KV bindings.
+
+**Data audit:**
+- MARKET_DATA_DB `games`: 2,578 rows; 1,275 >1 day past; 414 dup matchup+date; mixed timestamp formats; duplicate sport labels (LaLiga/LALIGA, SerieA/SERIEA, Ligue1/LIGUE1); no odds_updated_at for Brasileirao, LigaMX, Eredivisie, SuperLig, LigaPortugal, WTA, ATP, F1, PGA.
+- Cleanup SQL written, NOT applied (destructive on prod D1, needs Iz OK): migrations/proposed/2026-10-14-games-cleanup.sql.
+- cron_health: games-ingest never succeeded (D1 timeout 2026-07-15); espn + kalshi last ok 2026-08-17; scrape-sports + thesportsdb fresh. Kalshi markets (53) stale since June; Polymarket fresh.
+- KV: prod Pages has NO KV binding; wrangler.toml id "placebets-cache" was a title not an id, and Pages ignores wrangler.toml anyway. Preview now bound to 7558ad9c… Prod needs the same in dashboard at ship time.
+- The Odds API: dead because no THE_ODDS_API_KEY/ODDS_API_KEY in prod env.
+- Futures: NBA feed is a stale 3-team remnant (Warriors +6000); bot now refuses incomplete markets.
+- chat_logs: 0 rows, so no real user queries to mine.
+- Web search: only Wikipedia + DuckDuckGo lite. Need BRAVE_API_KEY (or GOOGLE_CSE_KEY + GOOGLE_CSE_CX).
+- Preview /api/odds serves 169 events vs prod 256 (preview has no D1 binding); bot reads prod board so answers are unaffected.
+
+**Remaining:** apply D1 cleanup + fix games-ingest timeout; add KV/AI bindings to prod at ship; add THE_ODDS_API_KEY or retire source; search key; run LLM-judge; install daily workflow; remove/keep harmless `diag`/`llm_down` request flags; cosmetic "Spread TB -245" (ML shown as spread for NHL) in board line formatter.
