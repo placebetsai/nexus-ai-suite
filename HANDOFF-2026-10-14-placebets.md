@@ -188,3 +188,15 @@ Do NOT run before "ship it". Then run `scripts/ship/d1-games-cleanup.sh`:
 3. verify games row count in dump == live count (abort on mismatch); 4. copy to R2 `placebets-backups/d1/` (bucket must be created first: `npx wrangler r2 bucket create placebets-backups`; only existing bucket is forge-projects);
 5. apply migrations/proposed/2026-10-14-games-cleanup.sql; 6. report counts; rollback = `wrangler d1 time-travel restore` to the recorded point.
 Other ship-time steps: add KV (7558ad9c…) binding to production Pages; deploy via deploy-gated.sh main with SHIP_IT=1; install 30-min canary + daily eval workflows (token lacks `workflow` scope).
+
+## Fix 5 — SHIPPED 2:22 PM ET (Iz: "GO / ship it")
+- **Merge:** a38e7ed into main (plus f8dd2b1 eval-only tweak). Production deploy: https://ecddd446.placebetsai.pages.dev → https://placebets.ai (eval-gated via `SHIP_IT=1 scripts/ship/deploy-gated.sh main`; gate candidate 17f533ad: 1026/1026, 0 hard).
+- **Rollback:** previous prod = 91d21ff build 13c11646 (older: 21a5da3a, ed7d5097). D1 Time Travel restore point 2026-10-14T18:12:39Z.
+- **D1 cleanup DONE:** backup /workspace/backups/prediction-market-data-20261014-141149.sql (17.2 MB, sha256 OK) and R2 placebets-backups/d1/ (byte-verified). games live=2580 = dump 2580 (verified before running).
+  Before: 2580 rows, 1275 past, 415 dups, 32 sport labels. After: 1159 rows, 0 past, 0 dups, 29 labels.
+- **Bindings:** production Pages now has KV (7558ad9c…) + AI; D1 DB, MARKET_DATA_DB and env vars kept.
+- **Live verification:** / , /legal-states, /ads.txt, /api/health/data all 200. Canary 50/50 (p50 1088 ms, p95 7730 ms).
+  Full live eval: 1018/1026. The 8 misses were parlay legs graded against a 60 s-old board snapshot while prod lines moved; every quoted price was on the live board, and the in-bot verifier passed them. Re-run of parlay: 40/40. Eval snapshots are now 15 s. No rollback.
+- **/api/health/data (live):** d1=true, board fresh. 29 leagues tracked. Stale = CHAMPIONSTOUR, EREDIVISIE, LPGA, PGA, SUPERLIG, WTA (games but no odds timestamps — ingest gap from audit). NBA/NFL/NHL/MLB/MLS/soccer ages 0–2 min.
+- Screenshot: /workspace/placebets-preview/live5-matchup.png (Bears @ Falcons, real spread +2.5, As of 2:21 PM ET).
+- **Next:** fill odds timestamps for the 6 stale leagues; schedule `npm run canary -- https://placebets.ai` every 30 min + daily eval (needs workflow-scoped token or cron box); Odds API key or retire; Brave/Google search key; Groq key for LLM-judge runs.
