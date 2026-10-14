@@ -310,3 +310,21 @@ Then: preview deploy, screenshots, e2e 12+/12, handoffs, report. No prod without
 - Fix (backend only): SEO-tool bot guard in marketpicks scripts/edge-cache-wrapper.mjs (cached copy or 503 Retry-After; Googlebot/Bing/humans unchanged). Prod 280dc36b (preview b059dbaf verified). Rollback 0cb3f854.
 - Other >10ms scripts on the account (smaller): federation-watch cron p50 14ms (96/day), placebets-scheduler p50 10ms (110/day), marketpicks-ai-api p90 34ms + 76 exceptions.
 - Post everywhere 13/17: likely by design — run-through drops ThredUp/RealReal/Amazon/Walmart/Whatnot (see Board notes above); not re-verified.
+
+## Agile reset (2026-10-14, evening)
+Iz called the app the worst-put-together he'd seen. It now runs as an agile project, and the docs are on fashionistas-ai branch `docs/agile`:
+- docs/agile/UX-RESEARCH.md: 10 sourced findings.
+  - Delist-on-sale is the #1 crosslister failure.
+  - No API keys: connect through logged-in sessions.
+  - Honest AI with no fake %.
+  - Background clean must be non-destructive.
+  - Honest empty states.
+  - Baymard mobile filters.
+- docs/agile/BACKLOG.md: BUG-1..7 from Iz's screenshots, plus seller, buyer and trust stories with MoSCoW and severity. Supersedes docs/USER-STORIES.md.
+- docs/agile/SPRINTS.md: 2–3 day sprints.
+  - S1 (Oct 14–16, branch `seller-ux`, other worker): no-key connect, no "not built", non-destructive clean, honest AI (coffee-lid fixture), greeting, $0 empty dashboard, plain tiles, Post everywhere (eBay, Poshmark, Depop, Mercari).
+  - S2: delist-everywhere.
+  - S3: buyer filters and item page.
+  - S4: messages and payouts.
+  - S5: SEO, AdSense, Chrome Web Store.
+- Done = the e2e/agile test passes on preview, 412x915 screenshots are posted, and Iz says "ship it".
