@@ -3100,3 +3100,68 @@ ISSUE_LOG #105: the three zones' Security Level / Bot Fight Mode, then resubmit.
 
 Pushed: nexus-ai-suite `2735593`+; religiousjews `bf68453`, diamonds `7ea096a`, wuw `ef011b0`,
 fashionistas `fa032f2` (live, `version.txt` verified).
+
+### 23.14 Addendum — linking the Monday Night Wrestling articles, and what "usage" actually is (2026-10-13/14)
+
+Asked for a link pass rather than more meta-tag edits. The target was never inventoried:
+**17 articles by and about Israel Joffe live on `mondaynightwrestling.com`** and nothing in the
+federation pointed at a single one. The `wuwonline.com/israel-joffe-articles/` hub listed 6 of
+them, but no page linked *out* to the publication.
+
+**What shipped (8 sites, verified live).** 9 editorial pages carry 36 contextual links, each on a
+page whose subject matches the articles it links — Johnny Rodz's page links the two Johnny Rodz
+profiles, `/certifications/` links *Prediction Beats Degrees* and the federal-and-state-regulation
+piece, `/press/` links the profile and the public-service articles. Not a link farm: 2–13 links per
+page, all with real headings and intros. The `/israel-joffe/` biography on 6 sites gained 4 links
+each, inserted into each site's existing source list (`ij-docs`, `ij-links`, or a `DOCS` data array
+that ihatecollege and hiddencameras map over).
+
+Every edit was made at the **source** — `app/israel-joffe/page.js`, `pages/israel-joffe.js`, or the
+static `index.html` — never at `.vercel/output` or `.next`, which a rebuild overwrites. Live now:
+fashionistas.ai, createstuff.ai, spanishtvshows.com, ihatecollege.com, wuwonline.com,
+religiousjews.com (4 links each on the biography), plus israeljoffe.com `/bjj/` `/press/`
+`/certifications/` and israeljoffe.org `/wuw/` `/writing/`.
+
+Two false positives were caught and re-done rather than shipped. A first pass marked
+`wuwonline.com/israel-joffe/` "already linked" because the check matched the bare
+`mondaynightwrestling.com/` URL inside a JSON-LD `sameAs` array instead of an article `/p/` link —
+the check could not fail, which is exactly why it passed on a page with zero links. And a fashionistas
+git-add referenced `/bjj/`, `/press/` and `/certifications/` files that only exist on israeljoffe.com;
+those pages correctly 404 on fashionistas and were never claimed as shipped.
+
+**What did not ship (5 sites) — ISSUE_LOG #107.** placebets.ai, marketpicks.ai, diamonds.forsale,
+hiddencameras.tv and scooter.exchange. Two independent causes. `wrangler pages deploy` from this
+machine dies mid-upload on every Next.js site (hiddencameras at file 276/499 five times running,
+diamonds at 51/192, `ECONNRESET`), and it is neither payload size nor IPv6 — `--dns-result-order=ipv4first`
+changes nothing, and the same machine pushed those repos to GitHub without trouble. The CI fallback
+is switched off: every deploy workflow on diamonds and scooters is `state=disabled_manually`, and
+re-enabling needs the `workflow` scope the token lacks. The commits are pushed; the source edits are
+committed and built. Owner action is one click per repo.
+
+**The verification trap worth remembering.** `verify_pages` compares a byte-exact sha256 of
+`index.html` against live. On a Next.js site the build ID is embedded in that file, so it changes on
+every build and the comparison can *never* pass — it reports FAILED on uploads that may have landed
+and on uploads that did not. It also cannot run at all on marketpicks, whose `/israel-joffe/` is a
+server function with no static `index.html` to compare. The only trustworthy test is fetching the
+live page and counting links.
+
+**Usage — the number that matters is not the one Cloudflare shows first.** Over 8 days the 5 zones
+that grant analytics read returned **869,630 requests** and **140,933 page views**. Reporting
+requests as usage overstates real readership by about 6×. spanishtvshows.com is the extreme case:
+622,169 requests but 64,949 page views (0.10 pv/req) with two "spike" days of 292K and 173K requests
+against a 30K baseline — those are crawlers, almost certainly pulled through by the IndexNow
+submission, not growth. ihatecollege.com is the healthiest at 0.50 pv/req.
+
+Three blind spots are recorded rather than guessed at. The CF token is scoped for Pages deploy only,
+so **fashionistas.ai, israeljoffe.com/.org, religiousjews.com, wuwonline.com and marketpicks.ai have
+no analytics visible at all** — the flagship is a blind spot. Path-level data (whether anyone opens
+`/israel-joffe/`) needs Enterprise. And there is no commerce data in Cloudflare at all: shop
+inventory is empty (#94) and Stripe is unwired, so "sales" cannot be measured from here.
+
+Also found and unrelated to this round: **scooters.exchange's apex has no DNS record** (#108) — the
+domain returns `HTTP 000` while `scooters-exchange.pages.dev` answers 200.
+
+Pushed: Spanishtvshows `02f36c7` and Ihatecollege `4b54203` (both shipped by GitHub Actions,
+4 links live each), diamonds `636bbf0`, scooters `09cbd20`, marketpicks `ee9304f`, Placebetsai
+`3b3b506`, hiddencameras `c525f6c6`, wuw `eadcd94`, religiousjews `59d8651`, nexus-ai-suite `fb0eae7`,
+fashionistas `69a854f` (live, `version.txt` verified).
