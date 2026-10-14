@@ -125,3 +125,19 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Preview verification: 17 champion phrasings × 3 = 51/51 (NBA/Knicks, Super Bowl/Seahawks 29–13, World Series 2025/Dodgers, Stanley Cup/Hurricanes; compound asks carry a next-season futures line or "no complete priced futures"). Regression ×5: Nets @ Heat (matches /api/odds) 5/5, Yankees vs Red Sox 5/5, Super Bowl 2026 5/5. All with As of ET, no invented stats.
 - Screenshot (Android 412x915): /workspace/placebets-preview/preview4-champ.png — self-reviewed: Knicks over Spurs 4–1, next-season no-priced-market note, As of 12:06 PM ET.
 - Known (pre-existing): NBA futures feed is stale (GSW +6000 leader in pure futures answers) — item 2.
+
+## Chatbot + data overhaul (fix 5) — IN PROGRESS (started 2026-10-14 ~12:20 PM ET; Iz: "build the overhaul first, ship everything together")
+Branch: `feat/chatbot-intent-router-2026-10-14` (off fix 4 `fix/chatbot-champion-phrasing-2026-10-14` ca6680b — fix 4 bundled, ships together). Preview only: `--branch chatbot-preview-5`. Prod stays 13c11646 (fix 3); rollback 21a5da3a. No prod deploy/merge without Iz "ship it".
+
+### Plan / scope
+1. **Intent router (stop regex whack-a-mole):** LLM intent/slot extractor (existing provider chain: Groq → MiMo → Workers AI binding `AI`) returns validated JSON {intent: game_odds|pick|past_champion|futures|scores|news|parlay|explain|responsible_gambling|off_topic|general, league, teams, year, next_season, canonical query}. Short timeout + memo; falls back to current rules on LLM failure. LLM never produces numbers — answers stay deterministic from /api/odds, ESPN scores, Wikipedia champion facts, futures feed, with "As of … ET"; grounding + invented-stat filters kept.
+2. **Data layer (A):** audit D1 `DB` + `MARKET_DATA_DB` (schema, row counts/league, freshness, stale/duplicate rows); fix prod KV binding (ID looks invalid); dead The Odds API source; stale futures feed (NBA leader Warriors +6000); champion facts cache. Ingest so every board league + futures has fresh timestamped data; freshness checks; bot refuses stale data (fail soft). Real sources only.
+3. **Eval bank (B):** 1000+ questions (all board leagues, phrasings, typos, slang, compound, no-line games, futures, champions across years, props, live, parlays, responsible gambling, off-topic, real past user queries from logs with no PII). Programmatic checks (lines match /api/odds, As-of present, no invented stats, champion facts, no game swap) + LLM-as-judge; p50/p95 latency; LLM-down fallback run. `npm run eval -- --base <url>`.
+4. **Daily live eval (C):** script reporting failures only.
+
+### Acceptance bar (hard ship gate)
+- Eval bank ~100% pass on preview (genuinely unanswerable items listed, answered fail-soft); 0 invented odds/stats; 0 game swaps; As-of on every data answer.
+- LLM-down run passes the same checks via rule fallback.
+- p95 latency reasonable (target < 8s; p50 < 3s).
+- Data audit findings + freshness checks documented; no stale futures served as current.
+- Android 412x915 screenshots (preview5-*.png) self-reviewed; then Iz "ship it".
