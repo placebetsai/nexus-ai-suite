@@ -3194,3 +3194,59 @@ Pushed: Spanishtvshows `02f36c7` and Ihatecollege `4b54203` (both shipped by Git
 4 links live each), diamonds `636bbf0`, scooters `09cbd20`, marketpicks `ee9304f`, Placebetsai
 `3b3b506`, hiddencameras `c525f6c6`, wuw `eadcd94`, religiousjews `59d8651`, nexus-ai-suite `fb0eae7`,
 fashionistas `69a854f` (live, `version.txt` verified).
+
+### 23.15 Addendum — the 5 "blocked" sites were never blocked, and one of them went down first (2026-10-14)
+
+§23.14 left four of the `/israel-joffe/` pages unshipped behind two stated blockers
+(ISSUE_LOG #107): wrangler dying mid-upload with `ECONNRESET`, and the GitHub Actions
+fallback being switched off. Both were wrong, and chasing them cost a production outage.
+
+**The real blocker was an API contract nobody had read.** Recovered from
+`wrangler-dist/cli.js` (3.114.17) rather than guessed at:
+
+| Wrong assumption | What is actually true |
+|---|---|
+| `POST /pages/projects/{p}/uploads` starts an upload session | **405 `method_not_allowed`** — the endpoint is gone |
+| …and GETting it would at least fail loudly | `GET` returns **200 with the project object**. `urllib.request.Request(url, data=None)` sends **GET**, so the first uploader printed success, uploaded **zero files**, and every deploy after that referenced hashes Cloudflare never received |
+| the deployments body is JSON with `assets: {files, digest}` | it is **multipart/form-data**. JSON returns 400 code 8000096 *"a manifest field was expected"* **even when `manifest` is in the body**, because nothing parses it. A part carrying `filename=` (curl `-F manifest=@file`) is ignored for the same reason — the value must be inline |
+| files are hashed with sha256 and keyed `hash → path` | **MD5, keyed `path → hash`, with a leading slash**: `{"/about.html": "<md5>"}` — exactly the `files` shape returned by a healthy deployment |
+| `/pages/assets/*` goes under the account | **no account prefix.** With prefix + JWT → 400 code 9106; with prefix + API token → 404. Only `/pages/projects/*` is account-scoped |
+
+The working sequence: `GET …/upload-token` → JWT → `POST /pages/assets/check-missing {hashes}`
+→ `POST /pages/assets/upload` `[{key, value: base64, metadata, base64: true}]` →
+`POST /pages/assets/upsert-hashes` → `POST …/deployments` (multipart, inline `manifest`).
+Saved at `/tmp/cfpages.py`; it lives here in prose because `/tmp` does not survive reboot.
+
+**Outage caused by this round, and restored.** A raw manifest deploy does not carry
+functions. Running it against marketpicks put `/_worker.js/**` into the static file list,
+produced `uses_functions=False` (against `True` on every prior healthy deployment) and
+registered no worker — so **`/`, `/israel-joffe/`, `/screener` all returned 404**. The healthy
+deployment held 101 files with no `_worker.js` entries; mine held 288 with them. Restored with
+`wrangler pages deploy` (4.86.0), which recompiles the worker and re-uploads `_routes.json`.
+Verified against the site's **own sitemap** — all 8 routes 200 — not against guessed paths;
+`/nba-props/` and `/nfl/` are not in that sitemap and were never live. **Rule: next-on-pages /
+worker projects go through wrangler. The raw manifest is only for genuinely static projects**
+(diamonds is static, which is why it worked).
+
+**Shipped and verified live this round — 4 sites, each with 4 MNW links on `/israel-joffe`:**
+
+| site | files | deployment | how |
+|---|---|---|---|
+| diamonds.forsale | 199 | `5809da85` | recovered REST flow (pure static) |
+| marketpicks.ai | 288 | wrangler `0cb3f854` | rebuilt through wrangler after the outage |
+| hiddencameras.tv | 507 | `ead486cd` | **`.vercel/output` was frozen at 10-05 while `.next` was built 10-13**, so the deployable had no links at all; regenerated with next-on-pages |
+| scooters.exchange | 618 | `c4d1ad69` | workspace monorepo — deps hoist to root, so `apps/web/node_modules` is *legitimately* empty (`next` still resolves from root) |
+
+`/israel-joffe` on each returns 200 with `israel-joffe`, `…-public-service`, `…-firefighter`
+and `prediction-beats-degrees` linked. That is **12 of 13** sites carrying the Monday Night
+Wrestling articles.
+
+**The 13th is deliberately undeployed (ISSUE_LOG #112).** The only placebets copy here is
+`Placebetsai-src`, which Grok's `HANDOFF-2026-10-14-placebets.md` marks **Retired** — the
+canonical source is `/workspace/tnr/Placebetsai` on the box, shipped **three times today**
+with chatbot fixes 1–3 (`979933e`, `91d21ff`, PRs #16/#17/#18). Deploying this machine's copy
+would have reverted all three. Links are committed (`3b3b506`) and ship from the box.
+
+Still open and unrelated to the above: **scooters.exchange apex has no DNS record** (#108) —
+`scooters-exchange.pages.dev` answers 200, apex is `HTTP 000`. The GitHub Actions re-enable
+advised in #107 is **no longer needed** for these four sites.
