@@ -260,3 +260,12 @@ Compare: https://github.com/placebetsai/Placebetsai/compare/main...feat/fix6-fre
   - Apply to the affiliate programs; several states need an affiliate/vendor license (NY, NJ, PA…).
   - Fanatics sportsbook contact.
   - Optional: add D1 to preview for prod-like TTFB.
+
+## Fix 7 — Programmatic SEO odds pages (PREVIEW ONLY, not shipped)
+- Branch `feat/fix7-seo-game-pages` (head 8db0e7b, stacked on fix 6 — ship together). Preview: https://chatbot-preview-7.placebetsai.pages.dev (deploy 3028d427).
+- Routes: `/odds`, `/odds/<league>` hubs, `/odds/<league>/<away>-vs-<home>-<YYYY-MM-DD>` games, `/odds/<league>/<team>` teams. Real board data only (ML/implied/open, spread, total, best price, As of ET), ESPN recent results, deterministic summary, FAQ, chatbot `?ask=` deep-link, RG/legal notes, 1 in-content ad, affiliate CTA off.
+- SEO: unique title/meta, canonical, SportsEvent+BreadcrumbList+FAQPage JSON-LD, `/sitemap-index.xml` + `/sitemap-odds.xml`, revalidate 300, noindex on final/old/no-line games and teams with no priced game.
+- FAB hides while any `[data-fab-avoid]` (CTA disclosure, RG note) is visible. Mobile nav "More" → "Contact" (Lighthouse link-text).
+- Gate: eval 1026/1026 (p95 787ms), canary 50/50; page test (`scripts/seo/page-test.mjs`) 707 pages/0 fail earlier, 460 pages/0 fail at 5:55 PM ET (count shrinks as games finish); Lighthouse mobile SEO 100, perf 90–92 on game/hub/team; /games 25/25 200.
+- Screenshots: /workspace/placebets-preview/preview7-{game,hub,team}.png.
+- Known: Ask FAB overlaps the right edge of the bottom nav (pre-existing). Next: Iz "ship it" → merge fix6+fix7 → `SHIP_IT=1 scripts/ship/deploy-gated.sh main`, then submit sitemap-index in GSC.
