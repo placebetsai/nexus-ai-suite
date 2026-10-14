@@ -1,5 +1,13 @@
 # HANDOFF — fashionistas.ai — 2026-10-14 (~09:45 ET)
 
+## UPDATE ~7:50 PM ET — full app rebuild on PREVIEW (branch `rebuild`, not shipped)
+- Preview: https://rebuild.fashionistas-ai.pages.dev (prod untouched). Repo commit 62863c7, pushed.
+- One app: Shop / Sell / You tabs; Sell → Review → Posted (3 screens); dashboard with per-marketplace status + mark sold; buyer feed/search/filter drawer/sort/item/try-on/message/reserve/seller profile. Old app at /classic.
+- Tests: npm 459/459; e2e rebuild journeys 25/25 light + dark (4 full runs); sweep 19/19 (sort/filter combos, slow net, API down, every link/button). Matrix + screenshots: box /workspace/fash-ship-qa/rebuild/.
+- Iz to do: reinstall extension 0.2.1 (/seller/get-extension/) and test crossposting with real accounts; say "ship it" to promote.
+- Gaps: item gallery shows cover only (market API lacks photos[]); no edit screen in new app yet; try-on page reskinned not rebuilt.
+- OpenCode brief updated: ~/fashionistas-ai/OPENCODE-START-HERE.md (branch rebuild).
+
 ## OpenCode takeover — 2026-10-14 ~5:05 PM ET
 Iz: stop burning tokens on browser affiliate signups; write the laptop handoff and let OpenCode (MiMo) finish Fashionistas.
 
