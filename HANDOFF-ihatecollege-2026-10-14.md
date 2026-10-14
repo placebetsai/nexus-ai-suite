@@ -56,3 +56,10 @@ Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 - Chatbot API body: POST /api/chatbot `{"query": "...", "history": []}`.
 - Screenshots: /workspace/ihc-live-shots/ (box).
 - Open: a "Check Loan Rates" floating bar covers chatbot suggestion chips on mobile; check whether it should hide while the chat is open.
+
+## Mobile/data sweep — shipped Oct 14 2026 (~5:35 PM ET)
+- Merged `fix/mobile-data-sweep-2026-10-14` into Ihatecollege `main` as a fast-forward → `353f9d6`. Deploy run 38640944614: success.
+- What changed: replaced 5 dead Unsplash images (85+ blog posts plus the job board); AdUnit now loads AdSense on edge-rendered `/college/[slug]` pages, which skip `_document`; added CSS to hide AdSense anchor ins while the chat is open; concrete-finisher post now uses BLS May 2025 figures (median $57,020, P10 $39,190, P90 $85,480) with a 2026 title; the sitemap generator adds the 261 `/campus/*` pages and drops the literal `[slug]`.
+- Live checks passed: 10 sample posts and the job board have 0 broken images; `/college/harvard-university` loads adsbygoogle.js exactly once; concrete-finisher shows the new title and figures; `/blog` has no 2024 headings; sitemap-static has 261 campus URLs and 0 `[slug]` entries.
+- Still open: Google's auto-ad "Check Loan Rates" bar sometimes still covers the chat suggestion chips on mobile (seen live). It doesn't match the anchor CSS selector, and it shows up only intermittently. Next step: turn off anchor / search-style auto-ad formats in the AdSense UI, or find the bar's real selector when it appears.
+- Pending, NOT approved: the daily blog workflow is parked at `ops/daily-content.yml` (Groq, 3 posts/day, push to main, then dispatch the deploy). It's inactive because the token lacks the `workflow` scope and the user hasn't approved it. The Railway generator has posted nothing since Oct 7.
