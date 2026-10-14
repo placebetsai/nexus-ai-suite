@@ -44,7 +44,7 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 3. Champion answers read like Wikipedia — consider a bookie-voice wrapper that stays deterministic (templated, no LLM).
 4. Internal source tags (e.g. `no_line_for_matchup`, "Wikipedia") visible under answers — hide/humanize.
 5. lib/__tests__/chatbot-quality.test.mjs: Knicks-typo SUBJECT case fails (also on main before #18).
-6. ~~Real-line answers omit "As of … ET" / quote "92% of bets"~~ — FIXED ON PREVIEW (Chatbot fix 3), awaiting Iz "ship it". See section below.
+6. ~~Real-line answers omit "As of … ET" / quote "92% of bets"~~ — CLOSED: shipped to prod in Chatbot fix 3 (2026-10-14 ~11:32 AM ET).
 7. AdSense dashboard (Iz): enable Anchor ads; optional in-feed unit for the odds board.
 8. Affiliate links — top revenue gap (none on site).
 9. The Odds API source has never succeeded in cron health.
@@ -103,7 +103,13 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Screenshots (Pixel 412x915): /workspace/placebets-preview/fix2-*.png
 - Known: preview futures feed returned no complete NBA/NFL/NHL market, so "next year" says no priced market (local run had NFL/NHL futures). lib/__tests__/chatbot-quality: knicks-typo SUBJECT case fails on main too; pushback arithmetic case is LLM-flaky.
 
-## Chatbot fix 3 — PREVIEW ONLY, awaiting "ship it" (2026-10-14 ~11:25 AM ET)
+## Chatbot fix 3 — SHIPPED 2026-10-14 ~11:32 AM ET (Iz: "ship it" 11:30 AM ET)
+- Merge commit on main: 91d21ff (https://github.com/placebetsai/Placebetsai/commit/91d21ff21fb608367f9309d757921d5294832043), git merge --no-ff (no PR opened).
+- Production deploy: https://13c11646.placebetsai.pages.dev → placebets.ai. Rollback target: 21a5da3a (or ed7d5097 = 979933e).
+- Live verification on https://placebets.ai/api/chatbot, 5x each vs live /api/odds: Nets @ Heat 5/5, Hornets vs Celtics 5/5, NBA 2026 + next year (Knicks) 5/5, Yankees vs Red Sox (no line, no swap) 5/5, Super Bowl 2026 (Seahawks 29–13) 5/5. All with As of ET, no invented stats. Homepage, /legal-states, /ads.txt all 200.
+- Live screenshot: /workspace/placebets-preview/live3-realline.png (in progress).
+
+### Preview notes (fix 3)
 - Branch: `fix/chatbot-realline-deterministic-2026-10-14`, commit 66ae650. PR not opened yet — compare: https://github.com/placebetsai/Placebetsai/compare/main...fix/chatbot-realline-deterministic-2026-10-14
 - Preview: https://chatbot-preview-3.placebetsai.pages.dev (deploy https://45720828.placebetsai.pages.dev). Prod NOT deployed; rollback target remains 21a5da3a.
 - Root cause: real-line odds path built the grounded answer, then sent board data to the LLM for "polish" and served LLM text whenever it passed gates that only checked American-odds tokens + injuries → invented "92% of bets / 52% of money" slipped through, and that path never stamped "As of … ET". Fallback was degraded because `parseMoneylineBlock` regex couldn't parse `+250 (implied 28.6%)`.
