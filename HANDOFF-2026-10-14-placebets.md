@@ -63,3 +63,24 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Set up Google Analytics + Search Console. Build per-game/team pages and email/push alerts.
 - A public, timestamped pick track record + bet tracker and line-movement alerts are the moat.
 - Ads: Google restricts gambling-promoting content (allowed for US viewers). Plan direct sportsbook sponsorships alongside AdSense.
+
+## Production ship — 2026-10-14 ~9:53 AM ET (Iz: "ship it")
+- PR #16 (chatbot exact-matchup + champion year) merged: `d369b56`
+- PR #17 (ads/SEO/compliance) merged: `1257e69` (main HEAD)
+- Deployed with Wrangler to Pages project `placebetsai`, branch `main` (production): https://21a5da3a.placebetsai.pages.dev → placebets.ai
+- Rollback target if needed: previous production deployment (commit 4a6a369).
+
+### Live verification (placebets.ai)
+- PASS: homepage 200, footer "21+ | Gambling Problem? Call 1-800-GAMBLER", no "shit", adsbygoogle present, no noindex header
+- PASS: /responsible-gambling, /games/slots 200; /legal-states 200 (first hit 404 from edge cache, 200 after cache-bust)
+- PASS: /ads.txt text/plain `google.com, pub-7215975042937417, DIRECT, f08c47fec0942fa0`
+- PASS: /api/odds 233 events, 15 leagues (MLB, NBA, NFL, NHL, WNBA, college FB, EPL, La Liga, etc.)
+- PASS: "Who wins Yankees vs Red Sox tonight?" → says no line for Yankees, no game swap
+- PASS: "Who wins Brooklyn Nets vs Miami Heat?" → real moneyline (MIA -290); UI shows "Odds checked 9:56 AM ET"
+- INTERMITTENT FAIL: "Who won the NBA title in 2026, who's winning next year" → 1 of 4 live tries answered Knicks 2026 (Wikipedia, no boxing note); 3 of 4 got replaced by last night's ESPN NBA scores. Cause: the `claimsNoLiveData` gate (chatbot-placebets.js ~L3241 and the final sweep ~L3409) rewrites the model's "no priced futures" wording into a `buildLiveScoreAnswer` scoreboard. NBA preseason scores are now in the feed, so this shows up. Fix: skip that rewrite when the champion/knowledge path ran (or when liveResultsAsk(query) is false). Not rolled back, because the previous production gave the wrong year plus the boxing note.
+- Screenshots: /workspace/placebets-preview/live-homepage.png, live-chatbot.png (Pixel 412x915)
+
+## Next
+1. Fix the claimsNoLiveData override for champion + next-year asks (above). Preview first.
+2. Homepage perf: ~17s total blocking time.
+3. AdSense dashboard (Iz): turn on Anchor ads; optional in-feed unit for the odds board.
