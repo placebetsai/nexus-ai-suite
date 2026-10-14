@@ -30,3 +30,20 @@ Read this first, then the site handoff below. Iz's goal: category-leading, high-
 
 ## Leave to Chief of Staff
 - Shipping decisions, browser/phone QA, cross-site priorities, anything needing Iz's accounts or keys.
+
+## OpenCode takeover — Fashionistas (2026-10-14 evening)
+Iz handed Fashionistas grind to OpenCode (MiMo) on the laptop. Chief of Staff keeps ship-it / Iz blockers / affiliates.
+
+**Start here on the laptop:** `~/fashionistas-ai/OPENCODE-START-HERE.md` (main commit `1954149`).
+
+**Rules reminder for OpenCode:**
+- Only `~/fashionistas-ai` (ignore `fa-*`, `fashionistas-wt-*`).
+- Deploy via `scripts/deploy-local.sh`. Preview: `DEPLOY_BRANCH=<name> ALLOW_BRANCH=<name>`.
+- UI → preview + 412×915 screenshots → Iz says "ship it" → then prod. Never invent data. Never print secrets. Never touch CHANNEL_KEY.
+- Update this repo's `HANDOFF-fashionistas-2026-10-14.md` after every milestone and push (doc-only).
+
+**Branches (do not merge until ship-it):**
+- `seller-ux` @ `2200a8f` → https://seller-ux.fashionistas-ai.pages.dev (Sprint 1 UX awaiting ship-it)
+- `docs/agile` @ `6e60f5b` → backlog / sprints / research (reference only)
+
+**Affiliate plan:** `AFFILIATES-PLAN-2026-10-14.md` (placebetsai@gmail.com). Iz still owns tax/bank/phone for EPN, Amazon, Impact, CJ.

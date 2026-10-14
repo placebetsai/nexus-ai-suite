@@ -1,5 +1,30 @@
 # HANDOFF — fashionistas.ai — 2026-10-14 (~09:45 ET)
 
+## OpenCode takeover — 2026-10-14 ~5:05 PM ET
+Iz: stop burning tokens on browser affiliate signups; write the laptop handoff and let OpenCode (MiMo) finish Fashionistas.
+
+**Laptop entrypoint:** `~/fashionistas-ai/OPENCODE-START-HERE.md` (main `1954149`, docs-only; not merged with seller-ux / docs/agile).
+
+### State
+- **Production:** git `89bf396` = Pages `47a70a52`. Rollback `d8b758aa`.
+- **seller-ux PREVIEW (needs Iz "ship it"):** https://seller-ux.fashionistas-ai.pages.dev — tip `2200a8f` (dashboard / connect-no-keys / clean-bg off / honest AI). Branch `seller-ux`.
+- **Agile docs:** branch `docs/agile` @ `6e60f5b` — `docs/agile/BACKLOG.md`, `SPRINTS.md`, `UX-RESEARCH.md`. Reference only; do not merge as code.
+- **MarketPicks crawler guard** (same CF account, not Fashionistas): deploy `280dc36b`, rollback `0cb3f854`.
+
+### OpenCode ordered work (from BACKLOG / SPRINTS)
+1. **Sprint 1 remaining on `seller-ux`:** write `e2e/agile/s1-*.spec.js` (not written yet); real-account extension test eBay/Poshmark/Depop/Mercari; real logos; multi-item post (waits up to ~15 min/site — make queue honest); ensure e2e does not inflate test-seller sales. Then screenshots → ship-it → merge.
+2. **Sprint 2:** S-INV1 delist-on-sale everywhere + log + retry (biggest reason sellers quit crosslisters).
+3. **Sprint 3:** buyer search / filters / sort / item page / Buy-on.
+4. **Sprint 4:** messages / offers / onboarding / payout copy.
+5. **Sprint 5:** SEO / AdSense slots / Chrome Web Store listing.
+
+### Iz-only blockers
+EPN (signing into his eBay now), Amazon Associates, secrets `EPN_CAMPID`/`AMAZON_TAG`, Impact/CJ tax, OAuth app registrations, Chrome Web Store $5, Play/Apple accounts. Plan: `AFFILIATES-PLAN-2026-10-14.md`.
+
+### Rules (repeat)
+Only `~/fashionistas-ai`. `scripts/deploy-local.sh` (+ `DEPLOY_BRANCH`/`ALLOW_BRANCH` for previews). Preview + 412×915 + "ship it" before prod. No secrets printed. No CHANNEL_KEY changes. No invented data. Free forever; AdSense/affiliates only. Lean D1. Update this handoff + AGENT_HANDOFF after every step; push nexus.
+
+---
 ## LATEST — 2026-10-14 ~5:00 PM ET: seller-ux PREVIEW (not production; needs Iz's "ship it")
 - **Preview:** https://seller-ux.fashionistas-ai.pages.dev (branch `seller-ux`, HEAD `2200a8f`, on top of main `aa86c6d`; main hasn't moved, so no rebase was needed). Production is unchanged.
 - **Shipped to the preview one fix at a time:**
