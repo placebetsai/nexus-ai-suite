@@ -296,3 +296,6 @@ Then: preview deploy, screenshots, e2e 12+/12, handoffs, report. No prod without
 - Board: Post everywhere → extension if installed (else step-by-step); Sold → offers extension delist; run-through drops ThredUp/RealReal/Amazon/Walmart/Whatnot.
 - Tested: mock page fills all 7 fields + 2 photos + auto-submit; unpacked extension loads (service worker OK), bridge detected on preview board. Real sell pages all require login (Poshmark/Etsy/Vinted redirect to sign-in; Mercari/Depop/Grailed render nothing signed out; eBay timed out) → site selectors are UNVERIFIED until tested with real seller accounts.
 - Next: test with real accounts and fix selectors per site; Chrome Web Store: $5 dev account, upload zip, privacy policy + single-purpose + host-permission justifications; 'ship it' to merge ext → main.
+
+### 2026-10-14 13:35 ET — revenue milestone
+- Audit of all 4 sites: REVENUE-AUDIT-2026-10-14.md (this repo). fashionistas preview branch `revenue` @ 1039402 → https://revenue.fashionistas-ai.pages.dev: env-gated EPN_CAMPID / AMAZON_TAG affiliate tagging on Buy-on links + disclosure; pSEO plan (gated ≥5 real listings). Not shipped. Ext branch 735c21a still unshipped; revenue branched from ext.
