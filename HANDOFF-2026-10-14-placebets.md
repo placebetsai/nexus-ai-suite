@@ -200,3 +200,29 @@ Other ship-time steps: add KV (7558ad9c…) binding to production Pages; deploy 
 - **/api/health/data (live):** d1=true, board fresh. 29 leagues tracked. Stale = CHAMPIONSTOUR, EREDIVISIE, LPGA, PGA, SUPERLIG, WTA (games but no odds timestamps — ingest gap from audit). NBA/NFL/NHL/MLB/MLS/soccer ages 0–2 min.
 - Screenshot: /workspace/placebets-preview/live5-matchup.png (Bears @ Falcons, real spread +2.5, As of 2:21 PM ET).
 - **Next:** fill odds timestamps for the 6 stale leagues; schedule `npm run canary -- https://placebets.ai` every 30 min + daily eval (needs workflow-scoped token or cron box); Odds API key or retire; Brave/Google search key; Groq key for LLM-judge runs.
+
+## Live monitoring (since fix 5 ship) — 4:45 PM ET
+- Monitor routine is running: /api/health/data every 15 min, plus the 50-question canary (`npm run canary -- https://placebets.ai`) at :22 and :52.
+- All clear so far. The canary has gone 50/50 on several runs. Major leagues are fresh. The only stale ones are the 6 known minor leagues (CHAMPIONSTOUR, EREDIVISIE, LPGA, PGA, SUPERLIG, WTA).
+
+## Fix 6 — IN PROGRESS (branch feat/fix6-freshness-latency-affiliate, PREVIEW ONLY: chatbot-preview-6)
+**Scope:**
+1. Odds freshness for the 6 stale leagues, or honest marking where no real odds source exists.
+2. Make /api/health/data read the board without a self-fetch.
+3. Get p95 latency under 3 s without failing the gates.
+4. Fix the ~17 s homepage freeze.
+5. Affiliate CTA scaffolding: config-driven, state-aware, follows /legal-states, 21+/RG disclosures, rel=sponsored nofollow, OFF until real IDs exist; list of programs to apply to.
+6. Full eval + canary gate, Android screenshots, handoff.
+
+**Progress so far:**
+- (1) scrape-sports now writes odds_updated_at on every moneyline write and keeps the last moneyline instead of nulling it. That covers EREDIVISIE and SUPERLIG, which have DraftKings lines via ESPN.
+  - Golf and tennis (PGA, LPGA, CHAMPIONSTOUR, WTA) have no moneyline source at all, so they're reported as `no_odds_source` rather than stale. They were already hidden from the board.
+- (2) Done: the odds handler is called in-process. On preview, board_updated_at is populated.
+- (3) Root cause: Pages Function responses are never edge-cached (cf-cache-status DYNAMIC), so /api/odds recomputed in 4–7 s on every read. Changes:
+  - Added a Cache API wrapper: fresh under 60 s, stale-while-revalidate up to 10 min.
+  - The bot reads the board in-process on the same cache key.
+  - Futures memo plus edge-cached ESPN subrequests; predict cap cut to 2 s, and no-line asks skip waiting on it.
+  - Glossary/board/props fast routes.
+  - **Preview eval 1026/1026, p50 518 ms, p95 887 ms (was 4.4 s).**
+- (4) Diagnosed: the homepage fires /api/odds 3–4 times in parallel with `?_t=` cache-busting (each one recomputed in ~6 s), from HomePageClient, SportsbookHomepage, Navbar and GlobalTicker. Fix in progress: one shared client fetch plus the cached endpoint.
+- (5), (6): next.
