@@ -226,3 +226,37 @@ Other ship-time steps: add KV (7558ad9c…) binding to production Pages; deploy 
   - **Preview eval 1026/1026, p50 518 ms, p95 887 ms (was 4.4 s).**
 - (4) Diagnosed: the homepage fires /api/odds 3–4 times in parallel with `?_t=` cache-busting (each one recomputed in ~6 s), from HomePageClient, SportsbookHomepage, Navbar and GlobalTicker. Fix in progress: one shared client fetch plus the cached endpoint.
 - (5), (6): next.
+
+## Fix 6 — READY ON PREVIEW 5:00 PM ET (NOT shipped; waiting on Iz "ship it")
+Preview: https://chatbot-preview-6.placebetsai.pages.dev (deploy 97191583). Branch feat/fix6-freshness-latency-affiliate (head bb006e8).
+Compare: https://github.com/placebetsai/Placebetsai/compare/main...feat/fix6-freshness-latency-affiliate
+
+**Gate (eval-gated deploy):** full eval 1026/1026, 0 hard failures, **p50 488 ms, p95 909 ms** (fix 5: p95 4.3–4.5 s). Canary 50/50, p95 2.2 s. Both runs graded against the candidate's own board.
+
+1. **Freshness:**
+   - scrape-sports now writes `odds_updated_at` on every moneyline write and keeps the last moneyline instead of nulling it. This covers EREDIVISIE and SUPERLIG (DraftKings via ESPN).
+   - PGA, LPGA, CHAMPIONSTOUR and WTA have NO moneyline source (outrights or schedule only, 0 moneyline rows). They are now reported as `no_odds_source`, not stale, and stay off the board.
+2. **/api/health/data** calls the odds handler in-process. board_updated_at is populated and `board_error` is reported.
+3. **Latency root cause:** Pages Function responses are never edge-cached (cf-cache-status DYNAMIC), so /api/odds recomputed in 4–7 s on every read. Changes:
+   - Cache API wrapper on /api/odds: fresh under 60 s, stale-while-revalidate up to 10 min. Response headers x-pb-cache and x-pb-age-s.
+   - The bot reads the board in-process on the same cache key.
+   - Futures memo plus edge-cached ESPN subrequests; predict cap 2 s, and skipped when there's no line.
+   - Glossary fixes (PK, "over under", vig); "what NFL games…" routes to the board; generic prop asks get an honest no-feed answer.
+4. **Homepage freeze root cause:** 3–4 parallel cache-busted /api/odds?_t= fetches (HomePageClient, SportsbookHomepage, Navbar, GlobalTicker; SignalBoard also no-store), each a ~6 s recompute.
+   - Now one shared client read (lib/client/board-client.js, 30 s memo) on top of the cached endpoint.
+   - Logos use 96 px ESPN thumbnails instead of the 500 px originals (up to 150 KB each).
+   - Pixel 4x-CPU test: one /api/odds at ~0.3 s (was 3 × ~6 s); long tasks 914 ms total (was 1.8 s).
+   - The preview's HTML TTFB is still 3–5 s because the preview has no D1 binding; prod uses the D1 fast path (~1.4 s).
+5. **Affiliate scaffolding (OFF):**
+   - lib/affiliates/config.js: AFFILIATES_ENABLED=false, every trackingUrl null, no IDs invented.
+   - lib/legal-states.js is now the shared source for /legal-states.
+   - /api/geo uses CF region and stores nothing.
+   - components/SportsbookCTA.js renders only when enabled + legal state + a real link exists. It carries "Ad · Sponsored", 21+, the legal-states link and 1-800-GAMBLER, with rel="sponsored nofollow noopener noreferrer". `?cta_preview=1` shows an inert layout preview.
+   - Program list in AFFILIATES.md: DraftKings draftkings.com/affiliates (verified); FanDuel affiliates.fanduel.com/registration.asp (official, blocks bots); BetMGM betmgmpartners.com (verified); Caesars caesarsaffiliates.com (verified); bet365 bet365partners.com/en (verified); Fanatics Sportsbook NOT verified (fanatics.com/affiliates is the merch program; fanaticspartners.com is parked).
+6. **Screenshots:** /workspace/placebets-preview/preview6-home.png, preview6-oddscard-cta.png (CTA moved full-width under the cards after a layout bug).
+- **Deploy gate** now grades against the candidate's own board and also requires the canary to pass.
+- **Needs Iz:**
+  - "ship it" for fix 6.
+  - Apply to the affiliate programs; several states need an affiliate/vendor license (NY, NJ, PA…).
+  - Fanatics sportsbook contact.
+  - Optional: add D1 to preview for prod-like TTFB.
