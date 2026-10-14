@@ -47,3 +47,12 @@ Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 ## Blockers / needs from Iz
 - Pick the next priority (ROI calculator is recommended).
 - The IHC Cloudflare token is only on the laptop, not on the box. CI deploys work without it; it's needed only for manual wrangler/D1 work.
+
+## Freshness overhaul — shipped Oct 14 2026 (~4:30–4:45 PM ET)
+- Merged `feat/freshness-overhaul-2026-10-14` into Ihatecollege `main` as a fast-forward → `c062b92`. Deploy run 38632189085: success.
+- Follow-up `39b390e` (chatbot prompt wording: "median debt at graduation" is undergraduate debt; the 3-yr repayment rate means "paying down principal", not paid off; no conclusions beyond what FIRE reports). Deploy run 38632825720: success.
+- What changed: Scorecard data now from the June 2026 bulk CSV (`scripts/import-scorecard-csv.js`), repaymentRate filled in, Carnegie R1/R2 mapping fixed, data year shown on pages; `-2025` pages became `-2026` with BLS/NY Fed/FSA citations, and the old slugs 308-redirect; the homepage hero CTA is now "Where does your campus stand?", backed by FIRE data (261 campuses, `/liberal-vs-conservative`, `/campus/[slug]`); the blog index lists newest first and the title-truncation bug is fixed (template posts are still indexed, per Iz); the chatbot is grounded in Scorecard + FIRE, cites sources, falls back to OpenRouter, and gives a deterministic answer if the AI call fails.
+- Live checks passed: / 200 with the CTA; /liberal-vs-conservative 200; /campus/university-of-california-berkeley 200; /roi-calculator 200; /is-college-worth-it-2025 and /trade-school-vs-college-salary-2025 → 308 to -2026; /college/ucla → 308 to /college/university-of-california-los-angeles; /blog newest = Oct 14 2026; /api/search-colleges?q=UCLA repaymentRate "79%".
+- Chatbot API body: POST /api/chatbot `{"query": "...", "history": []}`.
+- Screenshots: /workspace/ihc-live-shots/ (box).
+- Open: a "Check Loan Rates" floating bar covers chatbot suggestion chips on mobile; check whether it should hide while the chat is open.
