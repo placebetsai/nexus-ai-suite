@@ -41,8 +41,25 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 ## Open items
 1. PR #16 (`fix/chatbot-exact-matchup-champion-year-2026-10-14`, head `19eeb09`) — preview https://chatbot-preview.placebetsai.pages.dev — awaiting Iz's "ship it".
 2. No priced futures in the odds feed → "next year" answers can't quote real futures prices.
-3. Chat answers show raw ISO as-of timestamp; humanize it.
-4. Header tagline "Shit-talking odds expert" — needs Iz's call.
+3. ~~Chat answers show raw ISO as-of timestamp~~ — DONE in preview (PR #17): "As of 9:16 AM ET".
+4. ~~Header tagline "Shit-talking odds expert"~~ — DONE in preview (PR #17): "Straight-talking odds expert"; profanity removed from user copy/prompts.
 5. The Odds API source has never recorded a success in cron health (429 / stale).
 6. Prod KV namespace id in config looks invalid — verify binding.
 7. Site is 100% free: no paywall / Pro tier.
+8. PR #17 (`fix/compliance-brand-2026-10-14`, builds on #16; merge #16 first) — https://github.com/placebetsai/Placebetsai/pull/17 — preview https://compliance-preview.placebetsai.pages.dev — awaiting Iz's "ship it". Contains:
+   - /legal-states (30 states + DC, AGMA as of 2026-10-14, cross-checked Action Network; Delaware omitted, sources disagree) + footer/odds-board notice "Sports betting is legal only in some states. 21+. Gambling problem? Call 1-800-GAMBLER."
+   - /responsible-gambling help box (1-800-GAMBLER + NCPG), no ads there.
+   - Slots/casino: Iz decided to KEEP them (removal reverted). All 24 /games/* pages now have unique title/description, canonical, OG, visible FAQ + FAQPage JSON-LD, breadcrumbs, a free-play/no-real-money/21+ note.
+   - SEO: 0 duplicate titles (was 22), 0 missing canonicals (was 28); metadata moved into <head> (htmlLimitedBots); SportsEvent JSON-LD on home; sitemap drops 8 "coming soon" games; stale public/sitemap.xml removed.
+   - Ads (already AdSense-approved, pub-7215975042937417, existing slot ids): labeled "Advertisement", reserved min-height, lazy. Placement: home odds board after 8 Live cards + after every 2 sport sections; home after Top Stories; guides after 1st section; /calculators after hero; /games/* before FAQ; desktop ≥1480px sticky left rail (sidebar slot). None in the chatbot, /legal-states or /responsible-gambling. Missing: a native in-feed slot id (display slot used); mobile anchor = turn on Auto ads → Anchor in the AdSense dashboard.
+   - AdSense policy (Google Publisher Restrictions, "Online gambling"): restricted (not banned) = content that "enables users to participate in online, real-money gambling…", examples include "online sports betting, aggregator or affiliate sites that promote online gambling pages"; excluded when shown to users in the US (and 17 other listed countries). Free-play casino with virtual chips isn't real-money gambling by that definition. Risk: once affiliate links go in, those pages count as online gambling content, and non-US visitors get restricted ads. Publisher Policies also bar personalized ads based on "activity by users on … gambling … sites".
+   - Lighthouse mobile (box-run, noisy): home perf 36→52, SEO 83→92. Slots/sports SEO shows 58 on the preview only because pages.dev sends `x-robots-tag: noindex`. The slots LCP of ~13s and CLS of 0.139 also show on prod, so they were already there. Home TBT is ~17s (main JS chunk + ticker), which needs its own perf PR.
+   - Screenshots: /workspace/placebets-preview/compliance-*.png (box).
+9. Both PR #16 and PR #17 await Iz's literal "ship it". Nothing on main.
+
+## Valuation findings (2026-10-14; full report /workspace/placebets-valuation-2026-10-14.md on the box)
+- Top gap: no sportsbook affiliate links (FanDuel/DraftKings/BetMGM/Caesars/Fanatics + state registrations), so no revenue.
+- Budget for a paid, licensed odds feed (scraped sources are fragile + legal risk); add real futures.
+- Set up Google Analytics + Search Console. Build per-game/team pages and email/push alerts.
+- A public, timestamped pick track record + bet tracker and line-movement alerts are the moat.
+- Ads: Google restricts gambling-promoting content (allowed for US viewers). Plan direct sportsbook sponsorships alongside AdSense.
