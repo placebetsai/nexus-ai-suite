@@ -51,7 +51,7 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 10. Prod KV namespace id looks invalid — verify binding.
 11. deploy.sh still points at `placebets-ai` (Nexus account) — fix or treat as DO NOT USE.
 12. Old git stashes on the box main working copy (/workspace/tnr/Placebetsai) — review/drop.
-13. Champion phrasing gap: "who won the 2026 NBA championship and who will win next year" routes to the futures path (no-priced-market / futures board) instead of the Knicks fact; only "Who won the NBA title in 2026, who's winning next year" phrasing hits the knowledge path. Pre-existing on prod, not a fix-3 regression.
+13. ~~Champion phrasing gap~~ — FIXED ON PREVIEW (Chatbot fix 4), awaiting Iz "ship it". See section below.
 
 ## Valuation findings (2026-10-14; full report /workspace/placebets-valuation-2026-10-14.md on the box)
 - Top gap: no sportsbook affiliate links (FanDuel/DraftKings/BetMGM/Caesars/Fanatics + state registrations), so no revenue.
@@ -116,3 +116,12 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Fix: exact matchups with a real moneyline skip the LLM entirely (deterministic ML + implied %, team-labelled spread, O/U, As of ET); parser fixed + reads structured event; new `fabricatedBettingStats` filter in `enforceGroundedAnswer` + final POST sweep; Reddit chatter with % dropped; champion facts cached 1h + one retry (fixed 2/10 "Couldn't pull a live Wikipedia read"); champion answers now carry As of ET.
 - Preview verification, 10 runs each vs live /api/odds: Nets @ Heat 10/10, Hornets vs Celtics 10/10, NBA 2026 + next year (Knicks over Spurs) 10/10, Yankees vs Red Sox (no line, no swap) 10/10, Super Bowl 2026 (Seahawks 29–13) 10/10.
 - Screenshot (Android 412x915): /workspace/placebets-preview/preview3-realline.png — self-reviewed: real lines, As of 11:25 AM ET, no betting stats, no truncation.
+
+## Chatbot fix 4 — PREVIEW ONLY, awaiting "ship it" (2026-10-14 ~12:06 PM ET)
+- Branch `fix/chatbot-champion-phrasing-2026-10-14`, commit ca6680b (off main 91d21ff). PR not opened — compare: https://github.com/placebetsai/Placebetsai/compare/main...fix/chatbot-champion-phrasing-2026-10-14
+- Preview: https://chatbot-preview-4.placebetsai.pages.dev (deploy https://e96e5cf6.placebetsai.pages.dev). Prod NOT deployed; prod stays 13c11646 (fix 3), rollback 21a5da3a.
+- Root cause: `isSportsKnowledgeQuery` bailed on any "who will win" in the text, so compound asks ("who won the 2026 NBA championship and who will win next year") fell to the futures path; other phrasings (champs, rings, won it all, sport words, 2025-26 seasons) weren't recognised or hit news/live-score paths first.
+- Fix: new `championFactAsk` + `canonicalChampQuery` (champs/rings/won it all/finals/title, year before or after, season years 2025-26→2026, basketball/hockey/baseball/football→league), routed right after out-of-domain before news/live-scores/futures; pure futures ("who will win the NBA title next year", "2027 Super Bowl", "championship odds") still go to futures. Next-season futures tail detection broadened. Fail soft "not inventing a champion" + As of ET.
+- Preview verification: 17 champion phrasings × 3 = 51/51 (NBA/Knicks, Super Bowl/Seahawks 29–13, World Series 2025/Dodgers, Stanley Cup/Hurricanes; compound asks carry a next-season futures line or "no complete priced futures"). Regression ×5: Nets @ Heat (matches /api/odds) 5/5, Yankees vs Red Sox 5/5, Super Bowl 2026 5/5. All with As of ET, no invented stats.
+- Screenshot (Android 412x915): /workspace/placebets-preview/preview4-champ.png — self-reviewed: Knicks over Spurs 4–1, next-season no-priced-market note, As of 12:06 PM ET.
+- Known (pre-existing): NBA futures feed is stale (GSW +6000 leader in pure futures answers) — item 2.
