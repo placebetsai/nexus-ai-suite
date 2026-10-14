@@ -84,3 +84,14 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 1. Fix the claimsNoLiveData override for champion + next-year asks (above). Preview first.
 2. Homepage perf: ~17s total blocking time.
 3. AdSense dashboard (Iz): turn on Anchor ads; optional in-feed unit for the odds board.
+
+## Chatbot fix 2 — PREVIEW ONLY, awaiting Iz's "ship it" (2026-10-14 ~10:10 AM ET)
+- PR #18: https://github.com/placebetsai/Placebetsai/pull/18 (branch `fix/chatbot-champion-noswap-2026-10-14`, off main `1257e69`)
+- Preview: https://chatbot-preview-2.placebetsai.pages.dev (Wrangler, `--branch chatbot-preview-2`; production untouched)
+- Changes (lib/llm/chatbot-placebets.js):
+  1. Champion/knowledge path is deterministic (Wikipedia fact + `futuresTailFor` tail, no LLM draft). Champion/futures results carry an internal `no_swap` flag; the no-live-data gate and the final sweep never swap a scoreboard into a champion/futures answer, any league (they drop only an offending sentence).
+  2. Asked team/matchup not on the board → deterministic "No line … Want today's <league> board?" — no lean on another game. Matchup detection now uses every league's nicknames + Red Sox/White Sox/Blue Jays/Maple Leafs/Trail Blazers/Golden Knights (Red Sox was missing, which sent Yankees–Red Sox to the LLM path that leaned on Dodgers).
+  3. Real-line LLM answers always include "As of h:mm AM ET".
+- Preview verification, 5x each, identical every run: NBA 2026 + next year (Knicks, no scoreboard), Super Bowl 2026 (Seahawks over Patriots 29–13), Stanley Cup 2026 (Hurricanes over Golden Knights), Yankees vs Red Sox (no line + "Want today's MLB board?"), Bulls vs Bucks (real ML CHI -130 / MIL +110, "As of … ET").
+- Screenshots (Pixel 412x915): /workspace/placebets-preview/fix2-*.png
+- Known: preview futures feed returned no complete NBA/NFL/NHL market, so "next year" says no priced market (local run had NFL/NHL futures). lib/__tests__/chatbot-quality: knicks-typo SUBJECT case fails on main too; pushback arithmetic case is LLM-flaky.
