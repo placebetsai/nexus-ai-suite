@@ -107,7 +107,7 @@ Any UI / mobile / chatbot-behaviour change → preview deploy first → Android 
 - Merge commit on main: 91d21ff (https://github.com/placebetsai/Placebetsai/commit/91d21ff21fb608367f9309d757921d5294832043), git merge --no-ff (no PR opened).
 - Production deploy: https://13c11646.placebetsai.pages.dev → placebets.ai. Rollback target: 21a5da3a (or ed7d5097 = 979933e).
 - Live verification on https://placebets.ai/api/chatbot, 5x each vs live /api/odds: Nets @ Heat 5/5, Hornets vs Celtics 5/5, NBA 2026 + next year (Knicks) 5/5, Yankees vs Red Sox (no line, no swap) 5/5, Super Bowl 2026 (Seahawks 29–13) 5/5. All with As of ET, no invented stats. Homepage, /legal-states, /ads.txt all 200.
-- Live screenshot: /workspace/placebets-preview/live3-realline.png (in progress).
+- Live screenshot (Android 412x915): /workspace/placebets-preview/live3-realline.png — self-reviewed: Nets +250 / Heat -310, Heat -7.5, O/U 232.5 (matches /api/odds at 11:38 AM ET after line moved from -305), As of 11:38 AM ET, no betting stats.
 
 ### Preview notes (fix 3)
 - Branch: `fix/chatbot-realline-deterministic-2026-10-14`, commit 66ae650. PR not opened yet — compare: https://github.com/placebetsai/Placebetsai/compare/main...fix/chatbot-realline-deterministic-2026-10-14
