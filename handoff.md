@@ -3301,3 +3301,95 @@ all ~32 ASINs against live Amazon. Known already: `B01A7MACL2` is a $23 Faraday 
 $44.97 (site says "Mini Palm-Size WiFi Nanny Cam $34.99"), and homepage hero picks
 `B0B8QYZRSC` / `B0C7VN19YS` have zero web references (likely dead ASINs). Product data
 gets rewritten to verified reality, then rebuilt + deployed.
+
+## 25. 2026-10-15 (evening) — AdSense: why three approved sites rendered zero ads (the slot IDs were invented)
+
+**The complaint.** AdSense approved on ihatecollege, spanishtvshows and
+placebets.ai, yet ads render only on wuwonline.com.
+
+**Diagnosis trail (so nobody repeats it).** All five sites serve identical-looking
+markup: loader tag, `ca-pub-7215975042937417`, correct `ads.txt`, server-rendered
+`<ins>` units. Two runtime rigs were built to catch the difference: headless
+Chrome netlogs (per-request URLs + statuses), then a live CDP probe (ws →
+Network/Runtime domains, reads the final DOM, console, every ad-network response).
+Both proved the ad JS *setup* runs — `aswift_N_host` scaffolds appear inside every
+`<ins>`, the push queue gets processed — but the fill request never leaves the
+browser **from this machine, on ANY site, including known-good controls**
+(makeuseof.com too). Two environment facts, not site facts: this box's system
+resolver returns NXDOMAIN for `pagead2.googlesyndication.com` and
+`googleads.g.doubleclick.net` (public DoH resolves both; worked around with
+`--host-resolver-rules` mapped to DoH answers, ISSUE_LOG #128) and even with DNS
+mapped the rig is bot-gated to zero fills everywhere. **Local rendering cannot
+arbitrate this — the answer was structural.**
+
+**Root cause: 4 of the 5 AdSense slot IDs are fabrications.** The same five-key
+map was copy-pasted into AdUnit components federation-wide:
+
+```js
+SLOTS = { default: "6600722153", hero: "5079047997", inContent: "2843751862",
+          sidebar: "9124683051", bottom: "3357291048" }
+```
+
+Only `6600722153` was ever a real ad unit (the only one ever supplied by the
+owner). The evidence matches exactly: wuwonline and hiddencameras use *only*
+`6600722153` → the only sites where ads could show; spanishtvshows' homepage had
+7 units of which 5 used invented numbers → AdSense rejects unknown slots → blank
+boxes even on an approved domain. The four fake IDs were found in **8 repos**.
+
+**Fixed in source (every fake ID collapsed to `6600722153`):**
+
+| repo | commit | deploy status |
+|---|---|---|
+| Spanishtvshows.com | `70086f9` | **DEPLOYED** — rebuilt `.vercel/output/static`, wrangler; live `/`, `/blog`, `/resources`: slots=`['6600722153']`, loader=Y, claim=0 (build output: 312× real slot, 0 fakes) |
+| Ihatecollege | `7cfcee7` | **DEPLOYED** — its own `scripts/deploy-safe.sh`: preview smoke → prod smoke **16/17 PASS, 0 failed** on `ihatecollege.com` (1 warning = pre-existing empty `/api/civil-service-data`, missing USAJOBS key); live slots all real |
+| scooters-exchange | `76a3547` + out rebuild `5962bcb` | **DEPLOYED** — gate script, preview + prod smoke **6/6 PASS**, `scooter.exchange` pages clean (29× real slot in export, 0 fakes) |
+| marketpicks-ai | `1505b3c` | **NOT DEPLOYED** — build green; gate's preview timing check failed cold (`/stock/NVDA` 6628 ms vs 6000 ms), then 10 straight wrangler deaths on the `POST …/deployments` call (it alone carries a multi-MB `_worker.bundle`; large POSTs from this box have been dying since ~21:15 UTC). A manual API preview create worked (200 → `6cb9f47e.marketpicks-ai.pages.dev`) but without the worker bundle it 404s — tooling battle logged as #124 |
+| fashionistas-ai | `5343f52` | **NOT DEPLOYED** — deploy.sh gates it on a `scripts/deploy-safe.sh` that **does not exist** in the repo (#125) |
+| wuwonline-com | `4f54394` | build.py map fixed; live pages already emit only the real slot → no deploy needed |
+| createstuff-ai | `79c9851` | 3 inline fake slots fixed in `index.html`; live currently serves 0 units → not deployed |
+| Placebetsai-src | *(edit reverted)* | repo sits **mid-merge** (4 unmerged files = someone's WIP) and is the Retired copy — working tree left exactly as found; live placebets.ai still broken (#126) |
+
+**Deploy-gate battles worth remembering (ISSUE_LOG #123):**
+
+- **ihatecollege**: PATH wrangler is `4.138.0` and dies with `fetch failed` on the
+  `POST …/deployments` call (twice); `USE_NPX_WRANGLER=1` (wrangler 4.147+) ships
+  fine. First preview smoke also hit a **propagation race**: `/api/chatbot`
+  answered 404 for the first minutes although the route was in the build
+  (`pages/api/chatbot.js` present, `/api/chatbot.func` in nop-build-log) — re-smoke
+  went 16/17 green with a real "Rutgers–New Brunswick" answer. Don't chase that
+  404; re-run the smoke.
+- **scooters**: the gate runs `npx @cloudflare/next-on-pages` on an
+  `output: 'export'` project, which writes `import("./__next-on-pages-dist__/assets/**/*.bin")`
+  into `_worker.js` — the glob can never resolve (0 `.bin` files; the assets dir
+  doesn't even exist; wrangler has no `.bin` loader regardless). That worker is
+  dead weight for a pure static export (no server code is possible), so it is
+  stripped from the deploy dir → static-only upload, gate green.
+
+**What's left (this round's queue):**
+
+1. **placebets.ai** — live code ships from the box (`/workspace/tnr/Placebetsai`,
+   #112); its `<ins>` tags still use invented slots. Same one-line collapse of
+   `components/AdUnit.js` `SLOTS` → `6600722153` there.
+2. **marketpicks.ai** — re-run `SKIP_BUILD=1 USE_NPX_WRANGLER=1 bash scripts/deploy-safe.sh`.
+   If `/stock/NVDA` times out warm too, it's a real perf bug (#13), not a cold start.
+3. **fashionistas** — figure out how it actually ships (worker? static?), then
+   either create its `scripts/deploy-safe.sh` or amend the gate; `5343f52` is
+   sitting unshipped until then.
+4. **hiddencameras.tv** — live homepage has **no loader tag** at all
+   (`adsbygoogle.js?client=` absent from HTML although the `<script>` is in
+   `pages/_app.js`) → units can never init on prod (#127). Rebuild ships **with**
+   the ASIN truth-pass deploy (#114) so production gets one deploy, not two.
+5. **ASIN truth pass (#114)** — background agent re-verifying all ~51 ASINs
+   (`/tmp/verify-jobs.json` → `/tmp/asin-fix-map.json`), first attempt died on a
+   model rate limit, relaunched. religiousjews' 16 ASINs queue behind it
+   (`/tmp/rj-verify-jobs.json`) — same-IP Amazon rate limits, strictly sequential.
+6. **2 dead Netflix `/title/` links** (HTTP 404) in
+   `Spanishtvshows.com/app/learn-spanish/page.js:238,262` + bare
+   `js0hy0-ux.myshopify.com` CATALOG (402) in 3 shop pages — still unfixed.
+7. **Owner, two clicks in AdSense (never credentials — just look):**
+   - **Sites** → status of spanishtvshows.com / ihatecollege.com / placebets.ai.
+     Approval is asserted but not verifiable from here; if a domain says
+     "Getting ready" or "Disapproved", no code fixes it.
+   - **Ad units** → list the real unit IDs. If units exist beyond `6600722153`,
+     send the numbers and placements get re-split (hero/sidebar/bottom) instead of
+     everything pointing at the one real unit.
