@@ -6,6 +6,8 @@ you assumed, this file wins.
 
 Last updated: 2026-09-26.
 
+> **HARD RULE — WHOLE BOT FARM (Iz, 2026-10-15):** Every site deploys ONLY with Wrangler straight to Cloudflare (use the repo's `scripts/deploy-safe.sh` where it exists). NEVER deploy through GitHub Actions or any GitHub-triggered pipeline — Iz does not pay for Actions. Do not add, enable, or rely on deploy workflows; disable any you find (`gh workflow disable <id>`). GitHub = source + handoff docs only.
+
 ---
 
 ## 1. How files are stored and shipped (the important part)
