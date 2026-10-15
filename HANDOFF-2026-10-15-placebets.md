@@ -1,5 +1,35 @@
-# Handoff: placebets.ai, current as of 7:40 AM ET, Thu Oct 15 2026
+# Handoff: placebets.ai, current as of 8:05 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
+
+## 0. SHIP ATTEMPT 7:44 AM ET (Iz: "ship it"): STOPPED at the deploy-safe preview smoke. Production NOT changed.
+- `main` was fast-forwarded to **6071c4f** (fixes 6–9 + Chief of Staff main) and pushed. **Production still runs ecddd446 (code a38e7ed)**, so main ≠ production until a ship passes.
+- `SHIP_IT=1 scripts/ship/deploy-gated.sh main` results:
+
+  | Step | Result |
+  |---|---|
+  | Grader selftest | ok |
+  | Full eval on gate-candidate | 1041/1041 |
+  | Canary | 50/50 |
+  | Page test | 832 pages, 0 fail |
+  | deploy-safe.sh wrangler | repo-local v3.114.17 on node v20.19.2 |
+  | Preview 6ca2317e smoke | **8/9: FAIL "page / (home)" 10,196 ms (budget 6,000)** |
+
+  The gate then stopped with "production was NOT touched".
+- **Diagnosis: preview environment, not code.**
+  - Preview deployments have **no D1 binding**: preview /api/health returns "Database unavailable".
+  - So `fetchHomepageEvents()` skips its D1 fast path and fans out live to 15 ESPN feeds plus The Odds Gap and betbetter.
+  - Warm homepage TTFB on the preview is 3.0–3.5 s and a cold hit took 10 s. The production deployment's own URL (ecddd446.placebetsai.pages.dev, with D1) is 0.7–1.1 s warm.
+  - `lib/fetch-homepage-events.js` is unchanged between a38e7ed and main.
+- **Per Iz's rule ("if any gate fails, stop; don't force it") nothing was retried or overridden.** Options for Iz or Chief of Staff:
+  - (a) Add the D1 bindings (DB, MARKET_DATA_DB) to the Pages **preview** environment so the preview is representative. This is the recommended fix, a project setting change.
+  - (b) Have smoke.mjs warm `/` once before timing it, or give previews a longer home budget. This is a smoke change and needs Chief of Staff's sign-off.
+  - (c) Re-run as-is: warm TTFB is under 6 s, so it may pass, but that is a retry of a failed gate.
+  - ALLOW_KNOWN_FAILS=1 doesn't apply, because production passes the homepage check.
+- **Not done, because the ship is pending:**
+  - Live verification, live screenshots and the post-deploy canary.
+  - The grading dry run. **Do not call `/api/cron/grade-outcomes?dry=1` on production before fix 9 is live:** the live code ignores `dry` and would perform a real grading write.
+  - Search Console sitemap submission. Iz does that in the browser after the ship.
+- Rollback target once shipped: **ecddd446**.
 
 ## 1. Production state
 - Repo placebetsai/Placebetsai, `main` = **a3840b4** (GA4 loader, no-op until the ID is set) on **547c74a** (Chief of Staff: `scripts/deploy-safe.sh` + `scripts/smoke.mjs`) on **f8dd2b1**. Neither 547c74a nor a3840b4 is deployed.
