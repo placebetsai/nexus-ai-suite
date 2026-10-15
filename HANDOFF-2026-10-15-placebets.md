@@ -1,5 +1,42 @@
-# Handoff: placebets.ai, current as of 8:20 AM ET, Thu Oct 15 2026
+# Handoff: placebets.ai, current as of 8:40 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
+
+## 0c. SHIPPED 8:24 AM ET: fixes 6–9 plus main are LIVE (third run, 8:15 AM go-ahead after the provider fix)
+- **Live deployment: 9e4dbe96-eae5-4b6f-a6b8-256a0b9ec0fc** (created 12:24:02Z = 8:24 AM ET; aliases placebets.ai and www). Code: main @ **c21a37b**.
+- **Rollback target: ecddd446-7acf-4fa1-8765-2f92f2cf41ba** (the previous production deployment). Use Pages dashboard → Rollback, or POST .../pages/projects/placebetsai/deployments/ecddd446.../rollback. Only on Iz's say-so.
+- **c21a37b, provider fix:** ESPN returns `provider` as an object, which rendered "[object Object]". The new `lib/provider-name.js` `providerName()` is used in the /api/odds ESPN setter and the light payload, fetch-homepage-events, d1-odds-events, board-normalize, PredictClient and OddsDesk, which also renders `String(pick.provider)`. page-test.mjs now sweeps 13 site pages (/, /parlay, /daily-picks, /receipts, /predict, /bankroll, the calculators, /line-movement, /embed, /widget/odds). It fails on "[object Object]", undefined or NaN, and on any /api/odds `odds.provider` that is not a string. The Chief of Staff's smoke.mjs was not edited.
+- Pre-production screenshot: `/workspace/placebets-preview/fix9-provider-pickcard-espn.png` (an ESPN-fallback Süper Lig card showing "· DraftKings").
+- Gates, from `SHIP_IT=1 scripts/ship/deploy-gated.sh main`:
+
+  | Gate | Result |
+  |---|---|
+  | Grader selftest | ok |
+  | Full eval | 1041/1041 |
+  | Canary | 50/50 |
+  | Page test | 847 pages, 0 fail |
+  | Preview smoke (bc329e82) | 9/9 |
+  | Production smoke | 9/9 |
+
+- Live verification (8:24–8:40 AM ET):
+  - Prod canary: 50/50.
+  - Prod slate eval: 15/15.
+  - `/api/health`: operational, predictions 1209.
+  - `/api/health/data`: stale leagues down from 9 to 3 (BRASILEIRAO, LIGAMX, SUPERLIG).
+  - Chatbot spot checks:
+    - "Who wins tonight's NBA game?" → `board_slate_scoped`, Raptors @ Knicks and Thunder @ Rockets, PICK Knicks −205, "As of" stamp.
+    - "UFC this weekend" → `board_slate_scoped`, 25 fights.
+  - Pages, all 200 with no "[object Object]": /odds game page, /sitemap-index.xml (→ sitemap.xml and sitemap-odds.xml), /bankroll, /ev-calculator, /implied-probability-calculator, /arbitrage-calculator, /line-movement, /embed, /widget/odds (4.6 s).
+  - 301s: /betting-tools → /tools and /bankroll → /bankroll-calculator.
+- Live screenshots (412x915, self-reviewed OK):
+  - `/workspace/placebets-preview/live9-home.png`
+  - `/workspace/placebets-preview/live9-nba-tonight.png`
+- **Grading:**
+  - Dry run (`/api/cron/grade-outcomes?dry=1`, no writes): 216 candidates, 51 scanned, would grade 31 (12 correct, 19 incorrect), 20 still pending. Skipped as unsupported: tennis 143, predict-deep 15, soccer 7.
+  - **Real grading writes already happened on their own after the ship.** The deployed fix unblocked the existing grade-outcomes trigger. prediction_grading_runs shows 12:32:36Z (88 graded) and 12:33:27Z (82 graded), i.e. 8:32–8:33 AM ET. The executor did not trigger them; its only call was the dry run.
+  - The two runs were 51 s apart, which doesn't fit a 15-minute cron cadence. The second trigger is unidentified; check the placebetsai-cron logs.
+  - Outcome totals now (live rows): 372 correct, 218 incorrect, 91 push, 528 pending.
+  - If Iz did not want automatic grading yet, the options are a D1 Time Travel restore of predictions to just before 12:32Z (this also loses picks logged since then) or pausing the cron call. Either one needs Iz's OK.
+- **Search Console:** the sitemap needs to be resubmitted (https://placebets.ai/sitemap-index.xml). Iz does it in the browser.
 
 ## 0b. SHIP RETRY 8:00 AM ET (the one allowed retry, under Iz's 7:44 "ship it"): STOPPED again at the preview smoke. Production NOT changed (still ecddd446).
 - `SHIP_IT=1 scripts/ship/deploy-gated.sh main` @ 6071c4f:
@@ -52,6 +89,7 @@
 - Rollback target once shipped: **ecddd446**.
 
 ## 1. Production state
+- **UPDATE 8:24 AM ET: superseded by 0c.** Live = 9e4dbe96 (main c21a37b); rollback target = ecddd446. The text below describes the state before the ship.
 - Repo placebetsai/Placebetsai, `main` = **a3840b4** (GA4 loader, no-op until the ID is set) on **547c74a** (Chief of Staff: `scripts/deploy-safe.sh` + `scripts/smoke.mjs`) on **f8dd2b1**. Neither 547c74a nor a3840b4 is deployed.
 - Production code = **a38e7ed** (merge of fix 5). Verified 7:30 AM ET via the Pages API: no production deploy since ecddd446 (Oct 14, 2:16 PM ET).
 - Live Cloudflare Pages deployment: **ecddd446** (project `placebetsai`, account 2765cb2786006552f33cc3dfe0b680a1).
@@ -114,6 +152,11 @@ The stack is linear: f8dd2b1 ⊂ fix6 ⊂ fix7 ⊂ fix8 ⊂ fix9. Current main (
 6. **Daily eval workflow:** `scripts/eval/daily-eval.workflow.yml` can't be pushed to .github/workflows with the current GitHub token (no `workflow` scope). Needs a token with workflow scope or Iz adding it via the UI.
 7. **The Odds Gap licensing email** (data use / rate limits; the preview gets 429s): draft for Iz to send; not sent.
 8. **Affiliate applications:** Iz applies personally. NY/NJ/PA require a state affiliate license before those geos can show offers; keep them gated until then.
+10. **Tennis and predict-deep picks are ungradeable** (143 + 15 skipped). They need a tennis results source.
+11. **Duplicate picks under name variants** (e.g. "Atlanta United @ CF Montreal" / "Atlanta United FC @ CF Montréal" each graded separately), which inflates the record. Dedupe by event id.
+12. **/api/cron/grade-outcomes has no auth.** Anyone can trigger a real grading write. Add a CRON_SECRET check (needs Iz's OK and a secret set).
+13. **Stale leagues: BRASILEIRAO, LIGAMX, SUPERLIG** (ESPN fallback only). THE_ODDS_API_KEY would fix them.
+14. **Search Console sitemap resubmit** (Iz).
 9. **SEO for Iz's other sites** handed to the Israel JOFFE SEO bot; not in this bot's scope.
 
 ## 5. Standing rules
