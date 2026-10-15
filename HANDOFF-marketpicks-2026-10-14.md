@@ -238,9 +238,10 @@ Real numbers (GraphQL d1AnalyticsAdaptiveGroups / d1QueriesAdaptiveGroups, 2026-
 - Top writers 12:00Z–01:00Z: quotes upserts 26.4k rows (~70%; 3 rows per write because of 2 secondary indexes, and every run rewrote every quote even when unchanged), news_items 3.9k, politician_trades 2.8k, ipo_calendar 1.3k, earnings 0.6k, cron_runs/cron_health ~0.8k, econ 0.3k.
 Fix (applied directly to marketpicks-db, no Pages/Worker deploy, so other agents' uncommitted work in the live-source worktree was not touched):
 - DROPPED idx_quotes_pct_change, idx_quotes_updated_at (quotes = 995 rows; scans are trivial). Quote writes now 1 row instead of 3.
-- BEFORE UPDATE triggers that RAISE(IGNORE) unchanged rows (0 rows_written, verified): quotes_skip_unchanged (refresh updated_at at most every 2h if price/pct/volume unchanged), news_skip_unchanged (6h), ipo_skip_unchanged (6h), earnings_skip_unchanged (6h), econ_skip_unchanged (2h). SQL in ops/d1/marketpicks-skip-unchanged-triggers.sql.
+- BEFORE UPDATE triggers that RAISE(IGNORE) unchanged rows (0 rows_written, verified): quotes_skip_unchanged (refresh updated_at at most every 2h if price/pct/volume unchanged), news_skip_unchanged (6h), ipo_skip_unchanged (6h), earnings_skip_unchanged (6h), econ_skip_unchanged (2h), pt_skip_unchanged (politician_trades, 24h on fetched_at). SQL in ops/d1/marketpicks-skip-unchanged-triggers.sql.
 - Rollback: DROP TRIGGER quotes_skip_unchanged; (etc.) and
   CREATE INDEX idx_quotes_pct_change ON quotes(ABS(pct_change) DESC); CREATE INDEX idx_quotes_updated_at ON quotes(updated_at DESC);
 - Smoke: marketpicks.ai /, /api/ticker-tape, /api/trending all 200 after the change.
 Follow-up in code (not done, needs the live-source owner): add the same WHERE-changed guard to the upserts in lib/market-data.ts + app/api/cron/quotes/route.ts so the triggers aren't load-bearing; consider quotes every 30 min outside US market hours.
 KV (FASHIONISTAS_CACHE 630 writes on 10-14): all current fashionistas code paths (analyze limiter, try-on tally, fashionistas-api oneclick) already use D1; remaining writes were daytime bursts from preview/e2e runs. No change made.
+Measured after: 00:45Z cron tick wrote 157 quote rows for 191 upserts (was ~3 rows per upsert, ~570/tick). Expected marketpicks-db total ≈ 15–25k rows/day (was ~77k).
