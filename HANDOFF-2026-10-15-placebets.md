@@ -16,7 +16,14 @@
   - 29c3102: desktop full-width CSS (≥1200px), fade-up and hover motion, shimmer loading; futures now tries ESPN season year+1 (the Stanley Cup was "no priced futures" because the 2027 market was never queried).
   - 1d50234: `lib/llm/analyst.js` analyst loop, wired into chatbot() plus a refusal net in POST.
   - ac4212f: eval `analyst` category (15 asks) and `scripts/smoke-analyst.mjs` (separate; the Chief of Staff's smoke.mjs is not edited).
-  - Next: preview check, then deploy-safe.sh to prod.
+  - c65a4d8, 704e725, d8c3a89: futures root cause found. **sports.core.api.espn.com returns HTTP 403 to Cloudflare Workers egress** (200 from the box with any UA), so the worker never priced a title market; the 24 sequential lookups were secondary. Fixes:
+    - one-call team names, next-season market, KV cache `futures:v2:<LEAGUE>`;
+    - `scripts/seed-futures-kv.mjs` seeds NHL, NBA, NFL and MLB from the box (TTL 6h);
+    - refresher loop on the box (`/workspace/placebets-preview/futures-refresh-loop.sh`, every 2h, log futures-refresh.log). **Fragile: if the box loop dies, KV expires in 6h and title asks fall back to standings.** A permanent fix needs a non-Cloudflare fetcher or THE_ODDS_API_KEY.
+    - The futures completeness refusal (chatbot ~L3182) was replaced by an analyst handoff.
+    - The canary pins "Stanley Cup odds" and the Super Bowl ask, with an American-odds check.
+  - Analyst also: ESPN injury tool, edge vs the posted price plus model break-even, fresh headlines only (14 days), hardened plan.
+  - main fast-forwarded to d8c3a89 (9:38 AM ET); `scripts/deploy-safe.sh` running.
 
 ## 0c. SHIPPED 8:24 AM ET: fixes 6–9 plus main are LIVE (third run, 8:15 AM go-ahead after the provider fix)
 - **Live deployment: 9e4dbe96-eae5-4b6f-a6b8-256a0b9ec0fc** (created 12:24:02Z = 8:24 AM ET; aliases placebets.ai and www). Code: main @ **c21a37b**.
