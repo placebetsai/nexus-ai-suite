@@ -36,6 +36,13 @@ Read this first, then the site handoff below. Iz's goal: category-leading, high-
 | israeljoffe.com | this repo `israeljoffe-com/` (laptop) | `bash scripts/deploy-safe-static.sh israeljoffe-com` | `node scripts/smoke/israeljoffe-com.mjs <url>` |
 
 `./deploy.sh pages` now refuses every project above unless called by its gate (`DEPLOY_SAFE=1`).
+
+**Wrangler / Node fallback (placebets, `Placebetsai` 6071c4f on feat/fix9-grounding, approved by Chief of Staff 2026-10-15). Copy it to the other sites' deploy-safe.sh.** wrangler 4 needs Node ≥ 22, but the box runs Node 20.19.2, so the old `wrangler` / `npx wrangler@4` choice died before the preview deploy. `pick_wrangler()` chooses the binary as follows:
+- `USE_NPX_WRANGLER=1` → `npx wrangler@4`.
+- Node < 22 → the repo-local `node_modules/.bin/wrangler` (3.114). If it's missing, the script dies with "run npm ci".
+- Otherwise the global `wrangler`, falling back to `npx wrangler@4`.
+
+Before anything deploys, it prints `wrangler: <binary> (vX.Y.Z) on node vN`. The gate order is unchanged: preview → smoke → prod → smoke. Verified with `PREVIEW_ONLY=1 bash scripts/deploy-safe.sh` on the box (7:47 AM ET): local wrangler v3.114.17 → preview fce7e07a → smoke 9/9 → stopped; production untouched.
 Smoke vs production 2026-10-15 ~7:20 AM ET: placebets **FAIL** (NBA bot invents Lakers–Celtics; UFC bot says "nothing matches" with 25 UFC fights on board) · marketpicks **FAIL** (bot NVDA $221.30 vs quote $217.01, 1.98%; `/insider` intermittently 503 "error code: 1102"; health `grading` status unknown) · ihatecollege PASS (warn: /api/civil-service-data empty) · fashionistas PASS (warn: junk #204 lid / #145 Keurig active in public /w/api/market) · scooter PASS · createstuff PASS · israeljoffe PASS. Full logs: box `/workspace/audits/smoke-2026-10-15/`.
 
 ## Site map

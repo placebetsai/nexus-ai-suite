@@ -16,7 +16,7 @@ The stack is linear: f8dd2b1 ⊂ fix6 ⊂ fix7 ⊂ fix8 ⊂ fix9. Current main (
 |---|---|---|---|---|
 | 6 | feat/fix6-freshness-latency-affiliate | bb006e8 | chatbot-preview-6 (97191583) | passed on preview (see 10-14 handoff) |
 | 7 | feat/fix7-seo-game-pages | 5a33c9d | chatbot-preview-7 (84b41eef, draw-row fix 5a33c9d) | eval 1026/1026, canary 50/50, page test 554/0 fail |
-| 9 | feat/fix9-grounding | aeb47a3 | chatbot-preview-9 (4b3b3157) | selftest ok, eval 1041/1041, canary 50/50, page test 832/0 fail, smoke.mjs 9/9 |
+| 9 | feat/fix9-grounding | 6071c4f | chatbot-preview-9 (4b3b3157) | selftest ok, eval 1041/1041, canary 50/50, page test 832/0 fail, smoke.mjs 9/9 |
 | 8 | feat/seo-8 | 8759bda | chatbot-preview-8 (74f7b7cd @ 54e92c4; 8759bda is tooling-only) | eval 1024/1025 (0 hard), canary 50/50, page test 899/0 fail/0 churn, Lighthouse mobile SEO 100 |
 
 - **Fix 6:** freshness/latency (in-process board, edge cache with stale-while-revalidate), affiliate plumbing.
@@ -33,7 +33,7 @@ The stack is linear: f8dd2b1 ⊂ fix6 ⊂ fix7 ⊂ fix8 ⊂ fix9. Current main (
 **Ship steps (only after Iz says "ship it"):**
 1. Fast-forward main to feat/fix9-grounding. It contains fixes 6–9 and current main. Commit as placebetsai.
 2. `SHIP_IT=1 scripts/ship/deploy-gated.sh main`. Since aeb47a3 this runs build → gate-candidate → grader selftest → full eval (99) → canary 50 → page test, and then `scripts/deploy-safe.sh` with SKIP_BUILD=1 on the same build: preview → smoke → **prod** → smoke, printing a rollback command. deploy-safe.sh is the only sanctioned production path; a raw `wrangler pages deploy --branch=main` is forbidden.
-   - **Blocker:** on the box, deploy-safe.sh calls `wrangler` from /home/box/.local/bin, or `npx wrangler@4` when USE_NPX_WRANGLER=1. Both need Node 22, and the box has Node 20.19.2, so it dies at the preview deploy. The repo's own `npx wrangler` (3.114) works. Fix before shipping: install Node 22 on the box, or have Chief of Staff let deploy-safe use `./node_modules/.bin/wrangler`.
+   - **Node/wrangler blocker: fixed in 6071c4f** (Chief of Staff approved; ships with fix 9). On Node < 22, deploy-safe.sh uses the repo-local `node_modules/.bin/wrangler` (3.114.17) and prints the binary and version first. The box runs Node 20.19.2, and wrangler 4 needs 22. Verified at 7:47 AM ET with `PREVIEW_ONLY=1 bash scripts/deploy-safe.sh`: build → preview fce7e07a (gate-candidate) → smoke 9/9 → stopped. Production untouched (still ecddd446). Recorded in OPENCODE-COORDINATION.md for the other sites.
 3. Live check on placebets.ai:
    - `npm run smoke -- https://placebets.ai`, `npm run canary https://placebets.ai`, `node scripts/seo/page-test.mjs --base https://placebets.ai`.
    - Spot-check /bankroll, /line-movement, /embed, the 301s and /sitemap-index.xml.
