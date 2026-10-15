@@ -1,5 +1,25 @@
-# Handoff: placebets.ai, current as of 8:05 AM ET, Thu Oct 15 2026
+# Handoff: placebets.ai, current as of 8:20 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
+
+## 0b. SHIP RETRY 8:00 AM ET (the one allowed retry, under Iz's 7:44 "ship it"): STOPPED again at the preview smoke. Production NOT changed (still ecddd446).
+- `SHIP_IT=1 scripts/ship/deploy-gated.sh main` @ 6071c4f:
+
+  | Step | Result |
+  |---|---|
+  | Grader selftest | ok |
+  | Full eval | 1041/1041 |
+  | Canary | 50/50 |
+  | Page test | 833 pages, 0 fail |
+  | deploy-safe.sh wrangler | repo-local v3.114.17 |
+  | Preview dd8ab418 smoke | **8/9** |
+
+- **This time the homepage was within its time budget (4,713 ms) but showed "[object Object]"** on a Europa League pick card ("Hapoel Be'er Sheva +650 / AZ Alkmaar -280 · [object Object]").
+- **Root cause: a real bug, already in production's code (a38e7ed), only visible on the ESPN fallback.**
+  - `app/api/odds/route.js` and `lib/fetch-homepage-events.js extractEspnOdds()` set `provider: odds.provider || "espn"`. ESPN's `odds.provider` is an object (`{id:"100", name:"DraftKings", …}`).
+  - `components/OddsDesk.js` (line 227) prints `{pick.provider}` as text.
+  - It shows only when a game's odds come from the ESPN fallback, i.e. on the preview when The Odds Gap returns 429 (that board had 185 events). Production reads D1 and showed 0 occurrences at 8:15 AM, but it can surface there whenever the fallback is used.
+- **Fix (not applied, needs a go):** normalise the provider to a string at the source, `provider: (typeof odds.provider === "object" ? (odds.provider?.displayName || odds.provider?.name) : odds.provider) || "espn"`, in both extractors (and `lib/d1-odds-events.js`, `lib/board-normalize.js` for safety). Render `String(pick.provider)` defensively in OddsDesk. Then re-run the gated ship.
+- Not done (ship pending): live verification, screenshots, the post-deploy canary, and the grading dry run (still unsafe on the old production code, which ignores `?dry=1`). Rollback target once shipped: ecddd446.
 
 ## 0. SHIP ATTEMPT 7:44 AM ET (Iz: "ship it"): STOPPED at the deploy-safe preview smoke. Production NOT changed.
 - `main` was fast-forwarded to **6071c4f** (fixes 6–9 + Chief of Staff main) and pushed. **Production still runs ecddd446 (code a38e7ed)**, so main ≠ production until a ship passes.
