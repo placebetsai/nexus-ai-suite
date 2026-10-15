@@ -31,7 +31,9 @@
   - Desktop: no freeze at 1440/1920 (responsive 15 s after load, ~2,100 DOM nodes, 0 page errors); main 1354px at 1440 and 1760px at 1920 (was capped at 1200).
   - Live analyst smoke (`scripts/smoke-analyst.mjs`): 4/4. Stanley Cup answers with DraftKings 2026-27 prices, whole-market no-vig, fair, hold, source and As-of.
   - Screenshots: `/workspace/placebets-preview/rebuild-desktop-1440(.png|-full.png)`, `rebuild-desktop-1920(.png|-full.png)`, `rebuild-mobile-412.png`, `rebuild-stanleycup-desktop.png`, `rebuild-stanleycup-mobile.png`. Freeze diagnosis: `desktop-diag-rebuild-preview-1440/1920-t0/t15.png`.
+  - **Full eval on prod 0ab8fd7d (10:10 AM ET): 1055/1056 (99.9%).** Only fail: "latest news on the Oilers". The analyst got no facts, so it fell through to the old news path (Bing News RSS), which answered without "As of" or a source line.
   - **Open:**
+    0. The old news path needs an As-of and source line (or the analyst news tool needs a working source from Cloudflare).
     1. Futures depend on the box refresher loop (ESPN core 403s Cloudflare). Permanent fix: a non-Cloudflare fetcher or THE_ODDS_API_KEY.
     2. The hero card is still ~770px wide at 1920, and the rotating headline looks jumbled mid-transition. Needs a design pass.
     3. The analyst LLM writer often fails the number-grounding check, so the deterministic template ships (correct but terse). Tune the prompt.
