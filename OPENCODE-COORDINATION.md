@@ -12,6 +12,7 @@
 Read this first, then the site handoff below. Iz's goal: category-leading, high-traffic sites, free for users, monetized by AdSense + affiliates only.
 
 ## Hard rules
+- **DEPLOY ONLY VIA deploy-safe (2026-10-15, Iz).** Every bot and OpenCode ships production only through the site's smoke gate (table below): preview → deterministic `scripts/smoke.mjs` → production → smoke again → rollback command on red. Raw `wrangler deploy` / `wrangler pages deploy … --branch=main` / `/tmp/mpdeploy.sh main` / bare `./deploy.sh pages <gated project>` to production is **forbidden**. No GitHub Actions, no AI/LLM calls in the gate. Fix a wrong check in `scripts/smoke.mjs` (own commit, with reason); never bypass. `ALLOW_KNOWN_FAILS=1` only lets through failures that also fail on prod right now.
 - Deploy with Wrangler only. Never GitHub Actions, never Telegram.
 - Never print or commit secrets. Never change fashionistas CHANNEL_KEY.
 - Never invent data (odds, prices, tuition, filings, records, listings).
@@ -21,6 +22,21 @@ Read this first, then the site handoff below. Iz's goal: category-leading, high-
 - MarketPicks homepage stays a full finance site (congress is a section/CTA only).
 - One owner per site. Don't touch a site another agent is working on; check its handoff "in progress" first.
 - After every milestone, update that site's HANDOFF file here and push (doc-only commits).
+
+## Deploy gates (added 2026-10-15) — the only sanctioned production path
+| Site | Repo @ branch | Production command | Manual smoke |
+|---|---|---|---|
+| fashionistas.ai | laptop `~/fashionistas-ai` (main + rebuild) | `bash scripts/deploy-safe.sh` (wraps deploy-local.sh; deploy-local now refuses main unless called by the gate) | `npm run smoke -- <url>` |
+| placebets.ai | `Placebetsai` @ main | `bash scripts/deploy-safe.sh` (deploy.sh + deploy-gated.sh main now exec it) | `npm run smoke -- <url>` |
+| marketpicks.ai | `marketpicks-ai` @ live-source (laptop wip branch must merge `4644260`) | `bash scripts/deploy-safe.sh` (`npm run ship` / `pages:deploy` / deploy.sh route to it) | `npm run smoke -- <url>` |
+| ihatecollege.com | `Ihatecollege` @ main | `bash scripts/deploy-safe.sh` — **the GitHub Action `deploy-cf-pages.yml` still auto-deploys main; owner must disable it** | `npm run smoke -- <url>` |
+| scooter.exchange | `scooters-exchange` @ master | `bash scripts/deploy-safe.sh web` / `api` — **deploy-web/api.yml Actions still auto-deploy; disable** | `npm run smoke -- <url>` |
+| app/api.createstuff.ai | `forge` @ main | `bash scripts/deploy-safe.sh app` / `api` — **deploy-*.yml Actions still auto-deploy and hold a plaintext CF token; disable + rotate** | `npm run smoke -- <url>` |
+| createstuff.ai (marketing) | this repo `apps/createstuff-marketing` | `bash scripts/deploy-safe-static.sh createstuff-marketing` | `node scripts/smoke/createstuff-marketing.mjs <url>` |
+| israeljoffe.com | this repo `israeljoffe-com/` (laptop) | `bash scripts/deploy-safe-static.sh israeljoffe-com` | `node scripts/smoke/israeljoffe-com.mjs <url>` |
+
+`./deploy.sh pages` now refuses every project above unless called by its gate (`DEPLOY_SAFE=1`).
+Smoke vs production 2026-10-15 ~7:20 AM ET: placebets **FAIL** (NBA bot invents Lakers–Celtics; UFC bot says "nothing matches" with 25 UFC fights on board) · marketpicks **FAIL** (bot NVDA $221.30 vs quote $217.01, 1.98%; `/insider` intermittently 503 "error code: 1102"; health `grading` status unknown) · ihatecollege PASS (warn: /api/civil-service-data empty) · fashionistas PASS (warn: junk #204 lid / #145 Keurig active in public /w/api/market) · scooter PASS · createstuff PASS · israeljoffe PASS. Full logs: box `/workspace/audits/smoke-2026-10-15/`.
 
 ## Site map
 | Site | Repo / path | Handoff |

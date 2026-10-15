@@ -282,6 +282,15 @@ case "$ACTION" in
     [[ -n "$PROJ" ]] || fail "usage: ./deploy.sh pages <project-name> [dir]"
     DIR="${3:-.}"
     [[ -d "$DIR" ]] || fail "pages source directory not found: $DIR (nothing was sent to wrangler)"
+    # 2026-10-15 HARD RULE (Iz): production only through the deterministic smoke gates.
+    if [[ "${DEPLOY_SAFE:-0}" != 1 ]] && (( ! DRY_RUN )); then
+      case "$PROJ" in
+        israeljoffe-com|createstuff-marketing)
+          fail "'$PROJ' ships only via: bash scripts/deploy-safe-static.sh $PROJ [dir] (preview → smoke → prod → smoke)" ;;
+        fashionistas-ai|marketpicks-ai|placebetsai|ihatecollege|scooters-exchange|createstuff-app)
+          fail "'$PROJ' ships only via its own repo's scripts/deploy-safe.sh (preview → smoke → prod → smoke)" ;;
+      esac
+    fi
     bust_assets "$DIR"
     echo ">> Deploying Pages project '$PROJ' from '$DIR'"
     # Hash of the repo whose bytes are being uploaded — see commit_arg above.
