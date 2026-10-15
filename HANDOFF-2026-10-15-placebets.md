@@ -1,6 +1,17 @@
 # Handoff: placebets.ai, current as of 8:40 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
 
+## REBUILD IN PROGRESS (Oct 15 9:15 AM ET)
+- **Why:** Iz says desktop placebets.ai is broken (blank half-page, breaks after loading, slow, ugly). His new plan replaces the desktop diagnosis task.
+- **Branch:** `feat/analyst-rebuild` (placebetsai/Placebetsai).
+- **Rollback targets:** 9e4dbe96 (current prod, c21a37b), then ecddd446 before that. Only on Iz's say-so.
+- **Plan:**
+  1. Rebuild /api/chatbot as a research-analyst LLM tool loop. Tools: live odds board, futures/outrights (ESPN plus others; Stanley Cup and every major champion), web search plus Wikipedia, team/game stats, line history. Sharp take: no-vig fair, edge vs price, best price, movement, Kelly sizing. Every number comes from a tool with source and "As of"; the invented-number filter and grounding stay. Never "won't invent"; if data is missing, say what's unavailable and still analyze.
+  2. Desktop at 1440/1920: fix blank, broken and slow sections; full-width polished homepage, clean loading states, subtle animation.
+  3. Iz waived the preview gate: deploy via `scripts/deploy-safe.sh` (auto preview, smoke, prod smoke), with the eval as a sanity check. Ship if the smoke passes, even if the eval is below ~95% (report it). Add Stanley Cup, futures and open-ended questions to the eval and smoke.
+  4. Live desktop and mobile check, screenshots `/workspace/placebets-preview/rebuild-*.png`, Stanley Cup live test, handoff, report.
+- **Status:** step 0 (this note) done; starting work.
+
 ## 0c. SHIPPED 8:24 AM ET: fixes 6–9 plus main are LIVE (third run, 8:15 AM go-ahead after the provider fix)
 - **Live deployment: 9e4dbe96-eae5-4b6f-a6b8-256a0b9ec0fc** (created 12:24:02Z = 8:24 AM ET; aliases placebets.ai and www). Code: main @ **c21a37b**.
 - **Rollback target: ecddd446-7acf-4fa1-8765-2f92f2cf41ba** (the previous production deployment). Use Pages dashboard → Rollback, or POST .../pages/projects/placebetsai/deployments/ecddd446.../rollback. Only on Iz's say-so.
