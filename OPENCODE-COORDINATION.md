@@ -1,5 +1,7 @@
 # OpenCode coordination (owner: Chief of Staff / Grok Bot)
 
+> **DAILY ALERTS → OpenCode owns them (Iz, 2026-10-15).** Every site's daily checks, Cloudflare alert meanings, triage and known issues: [`OPENCODE-DAILY-ALERTS.md`](OPENCODE-DAILY-ALERTS.md). Chief of Staff no longer runs them.
+
 ## STATUS 2026-10-15 (~6:50 AM ET) — Chief of Staff
 - **fashionistas.ai prod:** still `89bf396` / Pages `47a70a52` (rollback `d8b758aa`).
 - **rebuild PREVIEW awaiting Iz "ship it":** https://rebuild.fashionistas-ai.pages.dev · branch `rebuild` · tip `0ec533a` — rich 2026 visual layer (hero, kinetic text, category cards, try-on card, confetti, edit listing, client-side junk feed filter, gallery endpoint). Pinned try-on demos `/shop/209` (denim trucker) + `/shop/148` (blue Versace polo) share prod DB.
