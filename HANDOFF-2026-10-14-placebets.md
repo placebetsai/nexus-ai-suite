@@ -293,3 +293,22 @@ Screenshots: /workspace/placebets-preview/preview7-draw.png (Excelsior vs Heeren
 - Gate: run 1 eval 1016/1026 (99.03%, 8 hard fails = parlay legs missing from flapping board; CSS-only diff); rerun eval 1026/1026, canary 50/50, page-test 572 pages / 0 fail / 0 churn. chatbot-preview-7 = c1d3f0a7.
 - Screens: /workspace/placebets-preview/preview7-draw-home.png, preview7-draw-home-2x.png (reviewed: baselines aligned).
 - NOT shipped to production — awaiting Iz "ship it".
+
+## Fix 8: SEO push (2026-10-14 ~9:15 PM ET), PREVIEW ONLY, branch feat/seo-8 (off feat/fix7-seo-game-pages, pushed)
+Preview: chatbot-preview-8 (last gated deploy b39a842e @ b507191). Gate: eval 1021/1025 (99.6%, 0 hard), canary 50/50, page-test 899 pages / 0 fail / 0 churn.
+Done:
+- 404s: middleware 301 map (lib/seo/redirects.js: /tools, /products/*, /tournaments/create, /sitemap, calculator aliases, /games/<non-game>, /blog/<game>, case-normalise); expired markets -> /markets, unknown league -> /odds, unknown /sports/x (was soft-200 NFL dup) -> /sports, game slugs dated >2 days past -> league hub (current-date misses keep 404: board churn). Missing /icon-192.png, /icon-512.png added.
+- Canonicals: crawl of all 1012 sitemap URLs on preview: 0 non-200, 0 canonical mismatches, 0 noindex; fixed doubled "| PlaceBets.ai | PlaceBets.ai" titles (5 pages); /odds deduped. robots.txt now lists only /sitemap-index.xml (static + odds sitemaps; new pages added).
+- /bankroll rebuilt: tabs (Kelly/fractional Kelly, unit size + exact losing-streak risk, EV, odds converter, parlay), H1/title for "bankroll calculator" queries, HowTo+FAQ+WebApplication+Breadcrumb JSON-LD, deep content with tables computed from the same math.
+- New pages: /ev-calculator, /implied-probability-calculator, /arbitrage-calculator (existing kelly/parlay/hedge/no-vig/odds-converter got OG + breadcrumb/app schema).
+- Widgets: /widget/{bankroll,odds-converter,parlay,ev,odds} (frameable, noindex, canonical to the tool, attribution link + UTM); /embed.js script mounts the iframe next to a dofollow anchor; /embed page with copy code. Odds widget = real board, "As of … ET", fail-soft empty state.
+- /line-movement weekly report: real open->now moves (lib/edges.lineMoves), Dataset schema, As-of ET. D1 archive is coded but table is a PROPOSED migration (migrations/proposed/2026-10-14-line-movement-reports.sql), not applied.
+- Internal links: footer "Popular tools" nav; calculator cross-link grid; /calculators lists new tools. Static OG PNGs public/og/*.png (scripts/seo/gen-og.py).
+- CWV: mobile CLS 0.089-0.13 -> 0 (seeded --pb-sticky-h 277px). Lighthouse mobile SEO 100 on 11 key pages (measured via header-stripping proxy: *.pages.dev previews send x-robots-tag: noindex; prod does not). Perf 86-92 on tool/odds pages.
+Remaining / for Iz:
+- Ship needs "ship it" (merge fix7 + seo-8 together). After ship: submit sitemap-index.xml in GSC, request indexing for /bankroll; apply the line-movement migration if wanted.
+- No GSC export of the actual 82 404 URLs was available; the map is inferred from history and site patterns. Paste the GSC 404 list to close the gaps.
+- Homepage perf 46-57 (TTFB 3.4-4.5 s from SSR board build on preview, no D1/cache); not fixed.
+- Line-movement shows a large real move (Alabama @ Tennessee spread +1.5 -> +8) worth a sanity check of the feed.
+- Eval soft fail "Cobwoys vs Pakcers" (typo maps to Pacers), predates this branch.
+Screens: /workspace/placebets-preview/preview8-*.png (bankroll, ev/implied/arb calculators, embed, line-movement, widget-bankroll, widget-odds), reviewed.
