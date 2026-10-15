@@ -10,7 +10,13 @@
   2. Desktop at 1440/1920: fix blank, broken and slow sections; full-width polished homepage, clean loading states, subtle animation.
   3. Iz waived the preview gate: deploy via `scripts/deploy-safe.sh` (auto preview, smoke, prod smoke), with the eval as a sanity check. Ship if the smoke passes, even if the eval is below ~95% (report it). Add Stanley Cup, futures and open-ended questions to the eval and smoke.
   4. Live desktop and mobile check, screenshots `/workspace/placebets-preview/rebuild-*.png`, Stanley Cup live test, handoff, report.
-- **Status:** step 0 (this note) done; starting work.
+- **Diagnosis (9:20 AM ET):** desktop freeze is **pre-existing** (ecddd446 hangs identically at 1440; mobile fine). Root cause: `components/NewsTicker.js` measure() (~L200) and `components/AnimatedWordsMarquee.js` (~L76) divided `track.scrollWidth` by the *requested* copy count while only one copy was rendered, so copies grew without bound and the `rows` useMemo spun the main thread forever (confirmed by pausing the debugger: stack in the NewsTicker useMemo). Plus main capped at 1200px / sections at 960px = the "half-blank" look.
+- **Status (branch feat/analyst-rebuild):**
+  - 8e81fb0: ticker/marquee fix (divide by rendered copies, cap 8). Verified on preview analyst-rebuild at 1440 and 1920: loads, no freeze.
+  - 29c3102: desktop full-width CSS (≥1200px), fade-up and hover motion, shimmer loading; futures now tries ESPN season year+1 (the Stanley Cup was "no priced futures" because the 2027 market was never queried).
+  - 1d50234: `lib/llm/analyst.js` analyst loop, wired into chatbot() plus a refusal net in POST.
+  - ac4212f: eval `analyst` category (15 asks) and `scripts/smoke-analyst.mjs` (separate; the Chief of Staff's smoke.mjs is not edited).
+  - Next: preview check, then deploy-safe.sh to prod.
 
 ## 0c. SHIPPED 8:24 AM ET: fixes 6–9 plus main are LIVE (third run, 8:15 AM go-ahead after the provider fix)
 - **Live deployment: 9e4dbe96-eae5-4b6f-a6b8-256a0b9ec0fc** (created 12:24:02Z = 8:24 AM ET; aliases placebets.ai and www). Code: main @ **c21a37b**.
