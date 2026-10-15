@@ -1,4 +1,4 @@
-# HANDOFF — ihatecollege.com — 2026-10-14
+# HANDOFF — ihatecollege.com — 2026-10-14 (updated 2026-10-15 6:50 AM ET)
 
 Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 
@@ -9,14 +9,15 @@ Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 - Lean D1: `leads` is upserted by email (unique index), fields capped, 5,000-row cap, 365-day prune. `/api/cron/cleanup-d1` cleans up and skips junk tables. Last check had a small `leads_age_error`, which is still open.
 - Pages `_headers` CDN caching (commit `ddc2577`).
 
-## Current commit
-- `placebetsai/Ihatecollege` main @ `4b54203` (2026-10-13, "link the Monday Night Wrestling articles").
-- Recent: `59eb8cf` and `afb20a8` (israel-joffe SEO), `ac99703` (revoked Gemini key script fix), `2dc99c9` (escape `<` in generated JSX so `next build` passes).
+## Current commit (as of 2026-10-15 6:50 AM ET)
+- `placebetsai/Ihatecollege` main @ `353f9d6` (mobile/data sweep). Homepage 200.
+- Oct 14 ships, in order: `48400f3` ROI calculator (`/roi-calculator`, grad rate <50% = Risky), `c062b92` freshness overhaul, `39b390e` chatbot wording, `353f9d6` mobile/data sweep. All deployed by the Action with success.
+- Pre-Oct-14 baseline for rollback comparisons: `4b54203`.
 
 ## Repo / paths
 - GitHub: https://github.com/placebetsai/Ihatecollege
 - Box checkout: `/workspace/tnr/Ihatecollege`
-- Data: `data/colleges.json` (Scorecard, refreshed by `scripts/fetch-colleges.js` in prebuild)
+- Data: `data/colleges.json` (College Scorecard, June 2026 release, rebuilt via `scripts/import-scorecard-csv.js`; `scripts/fetch-colleges.js` needs `COLLEGE_SCORECARD_API_KEY` and skips without it). Campus politics: FIRE 2027 rankings via `scripts/fetch-fire-rankings.py` + `scripts/link-politics-to-scorecard.js`.
 
 ## Deploy
 - Automatic: a push to `main` runs the GitHub Action `.github/workflows/deploy-cf-pages.yml`, which runs `npx @cloudflare/next-on-pages@1`, then `npx wrangler@3 pages deploy .vercel/output/static --project-name=ihatecollege --branch=main`.
@@ -36,17 +37,20 @@ Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 - UI/mobile changes go to a preview with self-reviewed Android screenshots, and wait for Iz's "ship it" before production.
 
 ## In progress
-- None active. Daily content automation and the Twitter workflows keep committing to main.
+- Nothing mid-flight. No open branches awaiting merge.
 
 ## Next steps (priority)
-1. ROI calculator that walks cost, then debt, then earnings, then risk in plain language, built on Scorecard fields (biggest gap vs Niche/Scorecard).
-2. Side-by-side compare of up to 4 schools.
-3. Chatbot grounding: pull the matched school's Scorecard row into the prompt for money questions.
-4. Fix `leads_age_error` in `/api/cron/cleanup-d1`.
+1. Blog pipeline: Railway generator has not posted since Oct 7. Either fix Railway or activate `ops/daily-content.yml` (needs Iz's approval + a token with `workflow` scope).
+2. Thin content: 126 template blog posts + ~14 near-duplicate `-2026` post pairs. Recommend noindex/regenerate (needs Iz's OK).
+3. Hide Google's "Check Loan Rates" auto-ad bar while chat is open (find real selector) or have Iz disable that auto-ad format.
+4. Side-by-side compare of up to 4 schools.
+5. Fix `leads_age_error` in `/api/cron/cleanup-d1`.
+6. Remove the stale Vercel GitHub check (fails on every push; harmless).
 
 ## Blockers / needs from Iz
-- Pick the next priority (ROI calculator is recommended).
-- The IHC Cloudflare token is only on the laptop, not on the box. CI deploys work without it; it's needed only for manual wrangler/D1 work.
+- AdSense: check Reports for the date impressions dropped, and Ads > By site > ihatecollege.com auto-ads settings (see AdSense section below).
+- Approve or reject daily auto-posting; grant `workflow` scope if approved.
+- The IHC Cloudflare token is only on the laptop, not on the box, so there are no Cloudflare preview deploys from the box (previews are local `next start` + screenshots). CI deploys work without it.
 
 ## Freshness overhaul — shipped Oct 14 2026 (~4:30–4:45 PM ET)
 - Merged `feat/freshness-overhaul-2026-10-14` into Ihatecollege `main` as a fast-forward → `c062b92`. Deploy run 38632189085: success.
@@ -63,3 +67,10 @@ Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 - Live checks passed: 10 sample posts and the job board have 0 broken images; `/college/harvard-university` loads adsbygoogle.js exactly once; concrete-finisher shows the new title and figures; `/blog` has no 2024 headings; sitemap-static has 261 campus URLs and 0 `[slug]` entries.
 - Still open: Google's auto-ad "Check Loan Rates" bar sometimes still covers the chat suggestion chips on mobile (seen live). It doesn't match the anchor CSS selector, and it shows up only intermittently. Next step: turn off anchor / search-style auto-ad formats in the AdSense UI, or find the bar's real selector when it appears.
 - Pending, NOT approved: the daily blog workflow is parked at `ops/daily-content.yml` (Groq, 3 posts/day, push to main, then dispatch the deploy). It's inactive because the token lacks the `workflow` scope and the user hasn't approved it. The Railway generator has posted nothing since Oct 7.
+
+## AdSense investigation — Oct 14 2026 (~8:30 PM ET)
+- Iz reports no ads showing although ads showed before. AdSense dashboard (Iz's screenshots, 9:52 PM): ihatecollege.com = **Ready**, ads.txt found with the publisher ID.
+- Regression check vs baseline `4b54203`: no code change broke ads. Only ad-related diffs: `components/AdUnit.js` loads the AdSense script if missing (only matters on edge `/college/[slug]` pages, which previously never loaded AdSense) and `styles/globals.css` hides anchor/side-rail ins only while chat is open. No changes to `_app.js`, `_document.js`, `SEO.js`, `Layout.js`, `ads.txt`, or `_headers`; no CSP header live.
+- Headless test: live made ad requests on all tested pages, 1 filled slot; baseline 0 filled. No push() errors. Most slots unfilled / unfill-optimized (Google-side decision; datacenter IPs get little fill).
+- `/ads.txt`: `google.com, pub-7215975042937417, DIRECT, f08c47fec0942fa0`.
+- Conclusion: cause is account-side (auto-ads settings, serving limits, demand) or client-side (ad blocker). Waiting on Iz for the impressions-drop date to correlate with site changes.
