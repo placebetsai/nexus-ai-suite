@@ -1,5 +1,7 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
+> **SEO 2026-10-15:** `HANDOFF-seo-2026-10-15.md` covers the Israel Joffe image reclaim (israeljoffe.com/israel-joffe-portrait/, israeljoffe.org/israel-joffe-photo-2020/), the 4-site SEO plan (scooter.exchange, wuwonline.com, marketpicks.ai, fashionistas.ai), and the 10-15 production deploys with rollback IDs. It also explains why the uncommitted scooter.exchange Contact page is what's live.
+
 > **Also:** `HANDOFF-2026-10-07.md` is the latest *daily* handoff (accounts, tokens, deploy recipe, open blockers) — but it predates all of §22–§23.11, so **§23.11 below is the newest writing in this repo.** The older `HANDOFF-2026-*.md` files are history.
 **Last updated: 2026-10-13** · Repo: `placebetsai/nexus-ai-suite` (branch `master`)
 **Sections 1–16 are history (2026-09-24 → 2026-10-08). Current truth = §23.11 (the flagship shop walked as a shopper: a $68 listing whose photo was our own `/sample-jacket.jpg`, an `immutable` cache that would have shipped the fix to nobody, a false "Also listed on" claim, and a catalog with **zero** real sellers) + §23 (four claim-vs-behaviour gaps closed, CSP report-only, two chatbots made real, two stalled sites re-deployed) + §22 (try-on unblocked, signing key rotated out of source, deploys gated on tests) + §21 (fashionistas shop rows + hiddencameras AdSense honesty) + §20 (personal Gmail off the contact forms) + §19 (2026-10-11 night) + §18 (try-on) + §17 + `HANDOFF-2026-10-07.md` +
