@@ -1,5 +1,7 @@
 # HANDOFF 2026-10-14 — placebets.ai single deploy source
 
+> **Current state is in HANDOFF-2026-10-15-placebets.md** (this file is the Oct 14 log).
+
 Owner: PlaceBets Bot (sole owner of placebets.ai, per Iz). Verified 2026-10-14 ~07:30 ET via Cloudflare API + gh. No secret values in this file.
 
 ## Canonical source (the ONLY one)
