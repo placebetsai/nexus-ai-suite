@@ -3252,3 +3252,52 @@ would have reverted all three. Links are committed (`3b3b506`) and ship from the
 Still open and unrelated to the above: **scooters.exchange apex has no DNS record** (#108) —
 `scooters-exchange.pages.dev` answers 200, apex is `HTTP 000`. The GitHub Actions re-enable
 advised in #107 is **no longer needed** for these four sites.
+
+## 24. 2026-10-15 — monetization integrity: every fake tag, dead link and false disclosure closed
+
+**What was actually fake.** No Amazon Associates account exists anywhere in the
+federation — `hiddencamerastv-20`, `religiousjews-20` and `wuwonline-20` were all minted
+by a previous agent. Every affiliate link on every site was earning **$0**. On top of
+that hiddencameras carried **164 doubled tags** (`…-20-20`, 58 article files) and **19
+fake `?ref=hiddencameras` params** in `lib/affiliateLinks.js`.
+
+**Fixed, in source, live-verified:**
+
+| site | what | commit / deploy | live proof |
+|---|---|---|---|
+| hiddencameras.tv | 164 doubled tags → `hiddencamerastv-20`; 19 fake ref params stripped; 14+ false earning claims removed (privacy.js, llms.txt, /deals/, articles); 30+ CTAs → "Buy"; 16 broken internal links (9 `/articles/`→`/blog/`, 11 bad slugs, 6 article-JSON `slug` fields ≠ filename); `/editorial-policy` created (was 404) | `77089afad` + `83338c189`, deployed | crawl **281/281 HTTP 200, 0 broken**, 0 doubled tags, 0 on-Amazon CTAs, 0 earning claims, 406 Buy CTAs |
+| religiousjews.com | 7 dead `PLACEHOLDER_ASIN` links unwrapped; Booking `?aid=PLACEHOLDER` stripped; false Associate claims removed (incl. `articles/index.html`) | `6f7c325` (branch `remove-fake-counts`) + `deploy.sh pages` (sha256 verify pass) | live `/` + travel-guide: **claim=0, PLACEHOLDER=0** |
+| spanishtvshows.com | false Associate claim in `app/resources/page.js` removed | `f81eb5d` + `a576949` + `1257064`, deployed from `.vercel/output/static` | live `/resources?cb=`: **claim=0**; `/` `/blog` 200 |
+| wuwonline.com | 5 "Shop on Amazon →" CTAs on `/shop/` → "Buy →" (tagged links kept) | `b949862`, deployed (sha256 verify pass) | live `/shop/`: **0 "Shop on Amazon", 5 Buy**, 11 tagged links |
+| fashionistas.ai | local fast-forwarded 239 commits to origin/main; `$68k` valuation fabrication confirmed gone local+origin+live | — | live 200, 0 fabricated claims — **ready for prime time** |
+| scooters-exchange | 2 unpushed commits rebased onto origin/master + pushed (`cf6b023`); fake "10,000+ trails" badge → "Verified scooter trails" (`0be6e1a`) | pushed | 0 fake stats in app source; D1-backed contact form (`0be6e1a`) shipped |
+| Ihatecollege | bylines fix rebased+pushed (`86ba9b0`); sitemap stash = older timestamps only, dropped | pushed | 0 conflict markers; deploy stays gated on its own `scripts/deploy-safe.sh` |
+
+**Deploy incident (spanishtvshows) — recorded so it is never repeated.** A root-level
+`wrangler pages deploy .` uploaded the *source tree* and took production down (all
+routes 404 at origin; only an edge-cached homepage masked it). Rolled back to
+`b4d0a3dc` via the Pages rollback API within minutes, public window otherwise 200.
+Root cause: this site ships from `.vercel/output/static` (next-on-pages), like
+hiddencameras. Rebuilding needed two fixes: `TMDB_API_KEY` sourced from `cf.env`
+(`STV_TMDB_API_KEY`) as a build env var, and a repo `.npmrc` with
+`legacy-peer-deps=true` because next-on-pages 1.13.16 peer-caps `next<=15.5.2` while
+the repo is on `15.5.14`. Then deployed properly — live claim=0. `.wranglerignore`
+added so `.next/cache` (351 MB) can never enter an upload again.
+
+**What still earns $0 (owner-only, one click each):**
+
+1. **affiliate-program.amazon.com** → sign up (legal name / tax / bank — nobody else
+   can do it) → paste the assigned tag here → it swaps federation-wide in one line and
+   the exact required sentence *"As an Amazon Associate I earn from qualifying
+   purchases."* gets re-added on every page it was removed from.
+2. AdSense numeric slot IDs (only `6600722153` is known).
+3. religiousjews GitHub: `main` (unrelated 39-commit pipeline lineage) vs
+   `remove-fake-counts` (== live lineage, carries `6f7c325`) — owner picks which
+   becomes canonical (#115).
+
+**In flight:** ASIN truth pass on hiddencameras (#114) — background agent is verifying
+all ~32 ASINs against live Amazon. Known already: `B01A7MACL2` is a $23 Faraday bag
+(site says "Dice-Style Covert Nanny Cam $44.99"), `B0CJ9YX7DG` is a WYZE Cam v4
+$44.97 (site says "Mini Palm-Size WiFi Nanny Cam $34.99"), and homepage hero picks
+`B0B8QYZRSC` / `B0C7VN19YS` have zero web references (likely dead ASINs). Product data
+gets rewritten to verified reality, then rebuilt + deployed.
