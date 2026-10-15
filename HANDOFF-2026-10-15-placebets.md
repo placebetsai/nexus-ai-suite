@@ -1,7 +1,7 @@
 # Handoff: placebets.ai, current as of 8:40 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
 
-## REBUILD IN PROGRESS (Oct 15 9:15 AM ET)
+## REBUILD SHIPPED (Oct 15, started 9:15 AM ET, live 10:08 AM ET)
 - **Why:** Iz says desktop placebets.ai is broken (blank half-page, breaks after loading, slow, ugly). His new plan replaces the desktop diagnosis task.
 - **Branch:** `feat/analyst-rebuild` (placebetsai/Placebetsai).
 - **Rollback targets:** 9e4dbe96 (current prod, c21a37b), then ecddd446 before that. Only on Iz's say-so.
@@ -23,7 +23,21 @@
     - The futures completeness refusal (chatbot ~L3182) was replaced by an analyst handoff.
     - The canary pins "Stanley Cup odds" and the Super Bowl ask, with an American-odds check.
   - Analyst also: ESPN injury tool, edge vs the posted price plus model break-even, fresh headlines only (14 days), hardened plan.
-  - main fast-forwarded to d8c3a89 (9:38 AM ET); `scripts/deploy-safe.sh` running.
+  - **LIVE: 0ab8fd7d-f525-465f-8995-2be89caf9825** (main a83d641, 10:08 AM ET). Every ship went via `scripts/deploy-safe.sh` (Iz waived the gated-preview step); preview smoke and prod smoke were 9/9 each time. Prod chain today: ecddd446 → 9e4dbe96 (8:24) → 52e5eac3 (9:46, 10cba7a) → 4334babc (6e107c4) → 9d47ed06 (d92a1bd) → **0ab8fd7d** (a83d641).
+  - **Rollback targets:** 9d47ed06 (previous; has the champion_next and slate-net bugs), **9e4dbe96** (pre-rebuild, has the desktop freeze), ecddd446. Only on Iz's say-so.
+  - Gate runs that stopped before prod (prod untouched each time): preview-propagation 404s on two runs (fixed with the sanctioned `PROPAGATE_S=60–75` knob; the default 12 s is too short); one real bug (the refusal net replaced the honest "No UFC lines" slate answer), fixed in a83d641.
+  - Fixed after the first prod eval (736/1056 = 69.7% on 52e5eac3/4334babc): the refusal net swapped normal game answers that contained benign "not inventing" lines (realline 75/336), and past-champion asks were routed to the analyst (champion 279/329). Fixed in d92a1bd, 4219956 and a83d641. Futures 20/20, analyst 14/15, every other category 100%.
+  - champion_next: the champion route (Wikipedia/Wikidata fact) plus a labeled "Next season (<LEAGUE> futures, <season>, DraftKings via ESPN)" block, live-verified for 2019 NBA and 2021 Stanley Cup.
+  - Desktop: no freeze at 1440/1920 (responsive 15 s after load, ~2,100 DOM nodes, 0 page errors); main 1354px at 1440 and 1760px at 1920 (was capped at 1200).
+  - Live analyst smoke (`scripts/smoke-analyst.mjs`): 4/4. Stanley Cup answers with DraftKings 2026-27 prices, whole-market no-vig, fair, hold, source and As-of.
+  - Screenshots: `/workspace/placebets-preview/rebuild-desktop-1440(.png|-full.png)`, `rebuild-desktop-1920(.png|-full.png)`, `rebuild-mobile-412.png`, `rebuild-stanleycup-desktop.png`, `rebuild-stanleycup-mobile.png`. Freeze diagnosis: `desktop-diag-rebuild-preview-1440/1920-t0/t15.png`.
+  - **Open:**
+    1. Futures depend on the box refresher loop (ESPN core 403s Cloudflare). Permanent fix: a non-Cloudflare fetcher or THE_ODDS_API_KEY.
+    2. The hero card is still ~770px wide at 1920, and the rotating headline looks jumbled mid-transition. Needs a design pass.
+    3. The analyst LLM writer often fails the number-grounding check, so the deterministic template ships (correct but terse). Tune the prompt.
+    4. Google News, injuries and Wikipedia reachability from Cloudflare is untested per source; misses are reported in the `analyst.misses` field.
+    5. `/api/news` returned 500 on previews (no D1); check on prod.
+    6. The homepage on the D1-less preview runs at 4.6–6.6 s against the smoke's 6 s budget, so it's flaky.
 
 ## 0c. SHIPPED 8:24 AM ET: fixes 6–9 plus main are LIVE (third run, 8:15 AM go-ahead after the provider fix)
 - **Live deployment: 9e4dbe96-eae5-4b6f-a6b8-256a0b9ec0fc** (created 12:24:02Z = 8:24 AM ET; aliases placebets.ai and www). Code: main @ **c21a37b**.
