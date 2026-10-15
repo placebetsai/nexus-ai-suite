@@ -312,3 +312,10 @@ Remaining / for Iz:
 - Line-movement shows a large real move (Alabama @ Tennessee spread +1.5 -> +8) worth a sanity check of the feed.
 - Eval soft fail "Cobwoys vs Pakcers" (typo maps to Pacers), predates this branch.
 Screens: /workspace/placebets-preview/preview8-*.png (bankroll, ev/implied/arb calculators, embed, line-movement, widget-bankroll, widget-odds), reviewed.
+
+## /line-movement Alabama @ Tennessee +1.5 -> +8 check (2026-10-14 ~9:25 PM ET), preview-8 only
+- Raw Action Network rows (period=game, main line): Open (book 30) ML TEN +100 / ALA -120, spread TEN +1.5, total 56.5; Consensus ML +260/-330, +8, 51.5. Home = Tennessee in both; spread signs agree with the ML favourite; same market. Our board reproduces the feed exactly, so no team/sign/alt-line bug.
+- But the AN "Open" is an early look-ahead number: other trackers list the open at +5.5/+6.5, with a path +1.5 -> +3 (Oct 6) -> +4 (Oct 11) -> +8. So "open -> now" overstates this week's move.
+- General fix 54e92c4 (lib/edges.lineMoves; also feeds /movers): drop a spread move when either snapshot's spread sign disagrees with its own ML favourite (sign/team swap or alt line); drop 3+ pt spread moves that the ML doesn't confirm (same direction, >=3 prob pts); flag moves with spread >6, total >8 or ML >25 pts as `verify`: still shown with a "pending verification: opener may be an early look-ahead line" note, but score 0 (out of the rankings and the "biggest spread move" headline).
+- Gate: eval 1024/1025, canary 50/50, page test 899 / 0 fail / 0 churn. Preview-8 deploy 74f7b7cd.
+- New headline: Panthers @ Eagles, PHI -4.5 -> +1.5 (6 pts, at the cap, so not flagged). The raw feed agrees, and the ML (-188 -> -104) and total (43.5 -> 39.5) confirm it. Looks like a news-driven move.
