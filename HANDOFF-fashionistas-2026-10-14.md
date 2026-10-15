@@ -1,3 +1,16 @@
+# HANDOFF — fashionistas.ai — 2026-10-15 (~6:50 AM ET)
+
+## STATUS 2026-10-15 — Chief of Staff morning update (docs only)
+- **Production:** still git `89bf396` = Pages deploy `47a70a52`. Rollback `d8b758aa`. Untouched.
+- **rebuild PREVIEW (awaiting Iz "ship it"):** https://rebuild.fashionistas-ai.pages.dev · branch `rebuild` · last deploy tip `0ec533a`.
+  - Rich 2026 visual layer: full-bleed fashion hero, kinetic animated headline text, photo category cards, try-on feature card (scan animation), confetti on post, edit-listing screen, client-side junk feed filter, gallery endpoint (`GET /api/listing-photos/:id`).
+  - Pinned try-on demo items (shared prod D1 — also visible on fashionistas.ai): `/shop/209` (denim trucker jacket) and `/shop/148` (blue Versace polo). Do not delete.
+- **Open items:** SSR SEO lists in `functions/shop` still include junk titles (filter is client-side only); photo column in D1 unverified; final polish pass; real-account extension test (eBay/Poshmark/Depop/Mercari); eBay Partner Network signup blocked on Iz's eBay login; affiliate plan `AFFILIATES-PLAN-2026-10-14.md`.
+- **Note — commit `7a62e0d` (nexus):** accidentally included others' uncommitted work: `NEEDS_ISRAEL.txt`, `scripts/site-blogs.sh`, `apps/createstuff-marketing/index.html`. Not reverted; owners should confirm.
+- **Morning health/traffic audit:** in progress → box `/workspace/audits/health-2026-10-15.md`.
+- **MarketPicks (same CF account, not Fashionistas code):** crawler guard live `280dc36b` (rollback `0cb3f854`); D1 skip-unchanged triggers + dropped 2 quote indexes (`ops/d1/marketpicks-skip-unchanged-triggers.sql`). MarketPicks Bot adding code-level skip + 30-min market-hours quotes and committing live-source. See `HANDOFF-marketpicks-2026-10-14.md` (may have uncommitted Bot updates — leave for that owner).
+
+---
 # HANDOFF — fashionistas.ai — 2026-10-14 (~09:45 ET)
 
 ## UPDATE ~7:50 PM ET — full app rebuild on PREVIEW (branch `rebuild`, not shipped)

@@ -1,5 +1,14 @@
 # OpenCode coordination (owner: Chief of Staff / Grok Bot)
 
+## STATUS 2026-10-15 (~6:50 AM ET) — Chief of Staff
+- **fashionistas.ai prod:** still `89bf396` / Pages `47a70a52` (rollback `d8b758aa`).
+- **rebuild PREVIEW awaiting Iz "ship it":** https://rebuild.fashionistas-ai.pages.dev · branch `rebuild` · tip `0ec533a` — rich 2026 visual layer (hero, kinetic text, category cards, try-on card, confetti, edit listing, client-side junk feed filter, gallery endpoint). Pinned try-on demos `/shop/209` (denim trucker) + `/shop/148` (blue Versace polo) share prod DB.
+- **Open (Fashionistas):** SSR SEO junk titles, photo column unverified, final polish, real-account extension test, EPN blocked on Iz's eBay login, affiliates `AFFILIATES-PLAN-2026-10-14.md`.
+- **marketpicks.ai:** crawler guard `280dc36b` (rollback `0cb3f854`); D1 skip-unchanged triggers + dropped 2 quote indexes (`ops/d1/marketpicks-skip-unchanged-triggers.sql`). MarketPicks Bot: code-level skip + 30-min market-hours quotes; committing live-source. Do not edit their dirty `HANDOFF-marketpicks-2026-10-14.md`.
+- **Note — nexus commit `7a62e0d`:** accidentally swept in others' uncommitted `NEEDS_ISRAEL.txt`, `scripts/site-blogs.sh`, `apps/createstuff-marketing/index.html`. Owners should confirm; not reverted.
+- **Morning health/traffic audit:** in progress → box `/workspace/audits/health-2026-10-15.md`.
+
+---
 Read this first, then the site handoff below. Iz's goal: category-leading, high-traffic sites, free for users, monetized by AdSense + affiliates only.
 
 ## Hard rules
