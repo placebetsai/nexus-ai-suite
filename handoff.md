@@ -3594,3 +3594,50 @@ fetches, two independent channels per verdict) + two apply passes:
    **Still open for the owner:** #129 (both federation waitlist/contact forms
    POST to dead Formspree endpoints — religiousjews' is the literal string
    `PLACEHOLDER`), Associates signup, AdSense checks.
+
+## 29. 2026-10-16 (morning) — image sitemaps shipped ×3 + fashionistas proven usable (seller & buyer)
+
+**Workstream A — image sitemaps (#130).** User asked for image sitemaps on
+mondaynightwrestling.com, wuwonline.com, israeljoffe.com, israeljoffe.org.
+Found: all three CF sites soft-404'd `/sitemap-images.xml` to the homepage
+(200-but-HTML); main sitemaps carried only one hero image per post. Built
+`scripts/gen-image-sitemap.py` (stdlib-only): crawls every main-sitemap URL,
+extracts `<img src>`/srcset/og:image/JSON-LD images, **verifies every image
+URL returns 200 in the same run** — dead URLs and trackers are dropped, never
+written. Results, all live-verified after deploy:
+
+| Site | urls | images | deploy path | live check |
+|---|---|---|---|---|
+| wuwonline.com | 45 | 409 | deploy.sh pages (`333e4c1`, VERIFY sha256 pass) | 200 application/xml, robots + build.py patched |
+| israeljoffe.com | 55 | 219 | deploy-safe-static.sh (smoke **7/7**) | 200 application/xml, robots line live |
+| israeljoffe.org | 17 | 161 | deploy.sh pages | 200 application/xml, robots line live |
+| mondaynightwrestling.com (www) | 33 | 414 | **none possible** — platform-hosted behind CF, no repo (#106) | file at `deliverables/mondaynightwrestling-sitemap-images.xml`, committed `5fc8e5e` |
+
+Notes: wuw robots.txt has a 24h edge cache (`_headers` max-age=86400) — origin
+correct immediately, busted URL already serves the new line, edge self-heals.
+The israeljoffe-com/.org dirs are **unpopulated git submodules** — their
+on-disk bytes are the deploy source and are byte-identical to live (checked
+before deploy); git commits live only in the parent nexus repo for tooling.
+
+**Workstream B — fashionistas.ai "not usable" verdict (#131).** Hive fanout
+(mnemonic seller E2E, vogue buyer E2E) + lead-dev verification. The earlier
+"frontend calls dead routes" read was WRONG: the frontend `api()` prepends
+`/w`, and `functions/w/[[path]].js` proxies to the `fashionistas-api` Worker
+(Bearer auth, `username` login). Proven live:
+
+- **Seller loop PASS:** register 201 → photo upload 201 (`/w/api/images/upload`,
+  returned URL serves 200) → POST/PUT/DELETE listings 201/200/200 → public
+  `/w/api/market` (7 items w/ photos) → AI listing generation 200 (Workers AI,
+  free) → cleanup verified, zero residue.
+- **Buyer loop PASS:** `/shop/` 200 → `/shop/209` item page with "Try it on"
+  CTA → anonymous market + photos 200 → **real try-on: 200 in 27s**
+  (fashn-vton-1.5 via hf, result webp serves 200, cost $0, `entitled_via:
+  "launch"`). The stale `/w/api/tryon/hd` 404 (that Vogue hit) is not the page's
+  route — the page calls same-origin `/api/tryon/hd`, which works.
+- Defects logged #133 (stale Worker tryon route, ghost id on cookie-path
+  generation, token echo in `/w/api/auth/me`, 3 unbounded `.all()`). Owner
+  account gates unchanged: Stripe/eBay/Etsy keys, Shopify pause, Associates.
+
+Both repos pushed: fashionistas `5343f52` (was ahead-1), wuw `333e4c1`, nexus
+(issues #130-#133 + dashboard + this section). **Still open for the owner:**
+#129 forms, #132 MNW upload, Associates signup, AdSense checks, placebets box.
