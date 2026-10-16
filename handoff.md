@@ -3534,3 +3534,63 @@ deploy that died on the wall last night went through on the first try today.
    relaunched after this round's Amazon spot-checks), owner's Associates
    signup + AdSense checks (§25 §7), createstuff direction (§26 #6), box-side
    placebets patch.
+
+## 28. 2026-10-16 (pre-dawn) — religiousjews.com affiliate truth-pass: 27/27 links live-verified, markdown-rendering bug, phantom products removed
+
+**Follow-up to §27.** religiousjews was the next site in the queue with the
+same disease hiddencameras had: dead ASINs, wrong-product links, and a layer
+of copy-pasted garbage. Two verification agents (control-bracketed live
+fetches, two independent channels per verdict) + two apply passes:
+
+1. **Batch 1 (`d842de8`):** all **16 batched ASINs were dead** — replaced with
+   live exact-model listings (cookware ×8, Judaica ×5, phone-lock/Shabbat
+   lamp ×2, Stasher ×1). Along the way found and fixed a **live rendering
+   bug: the articles were full of markdown `[text](url)` links inside HTML**,
+   so users saw literal brackets + URLs as text — **17 links converted to
+   real `<a>` tags**. Sefaria "App" link unlinked (free website, no product).
+   Honesty copy: Tramontina "Tri-Ply Clad"→"Tri-Ply Base" (the verified
+   listing is the impact-bonded Gourmet line), mezuzah "(5-pack)".
+2. **Batch 2 (`e301499`): the shared-ASIN layer.** One dead ASIN
+   (`B07Q6TRGLW`, a Stasher tray) had been **copy-pasted onto 7 different
+   products** (candles, table kit, cleaning cloths, brush, siddur, even
+   "Sefaria App"), and `B001GZ7QXC` onto 3 more; 7 ISBN book links had never
+   been verified. Verdicts: 5 found / 6 dead / **2 live-but-wrong-book** /
+   3 products that don't exist. The live-but-wrong finds are the nastiest
+   class: `1422615243` ("ArtScroll Stone Chumash") is really a *Chinuch
+   Tiferes Micha'el* set, `1422616215` ("ArtScroll Interlinear Siddur") is a
+   **Spanish-language pocket siddur**. Applied:
+   - **10 swaps** to verified live listings (Shabbos Kitchen, OXO dish
+     3Qt=12cup, Tovolo Perfect Cube — text corrected to the real 15-cavity
+     name, both Siddurs, both Stone Chumash editions — full + travel,
+     5 Love Languages, Tech-Wise Family, The Jewish Cookbook).
+   - **"The Jewish Marriage: A Halakhic and Contemporary Guide" exists
+     nowhere** (Amazon + OpenLibrary, exact-title: zero) → relinked the
+     sentence to the verified real classic, Lamm's *The Jewish Way in Love
+     and Marriage* (live, microlink-confirmed).
+   - **Manischewitz "Shabbat Table Setting Kit"**: product exists nowhere
+     (Manischewitz sells candles+food only) → sentence removed, not just
+     unlinked — plain text naming a phantom product is still a lie.
+   - **OXO microfiber cloths + EcoTools "cleaning brush"**: neither brand
+     makes those → brand claims stripped, generic advice kept.
+   - ModernTribe candles → unlinked (real product, just not on Amazon).
+3. **Final audit: 27/27 Amazon links across 31 HTML files are in the
+   verified-live set, 0 dead/unverified ASINs anywhere, all `religiousjews-20`
+   tags intact, 0 markdown leftovers, 0 structural artifacts.**
+4. **Deployed via the sanctioned gate** — `nexus-ai-suite/deploy.sh pages
+   religiousjews "$DIR"` (CF token per its token table; project `religiousjews`):
+   upload + **sha256 byte-exact verify** on `religiousjews.pages.dev`, then
+   **12/12 live checks on the production domain** confirmed every swap, the
+   text corrections, the removed phantom sentence and the bracket-free
+   rendering. Note: this flow deploys straight from this box — the GitHub
+   lineage mess (#115) never enters the path.
+5. **Method notes:** after the agent's ~25 Amazon fetches, r.jina.ai began
+   403-ing (transient throttle) — allorigins raw proxy (502 once, then fine)
+   and the **microlink title API** (returns live page title/author/canonical
+   URL — perfect for a one-shot identity check) both proved out as fallbacks.
+   Amazon search intermittently serves a `bm-verify` challenge; /dp/ pages
+   themselves were clean.
+6. **Artifacts:** `/tmp/rj-fix-map.json` (16), `/tmp/rj-fix-map2.json` (16),
+   `/tmp/rj-pass{1,2}.py`. Repo: `d842de8` + `e301499` on `master`.
+   **Still open for the owner:** #129 (both federation waitlist/contact forms
+   POST to dead Formspree endpoints — religiousjews' is the literal string
+   `PLACEHOLDER`), Associates signup, AdSense checks.
