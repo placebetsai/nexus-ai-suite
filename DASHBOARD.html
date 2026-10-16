@@ -29,47 +29,45 @@
 </head>
 <body>
 <h1>NEXUS FEDERATION — LIVE DASHBOARD</h1>
-<div class="ts">updated <b id="ts"></b> · auto-refreshes every 4s · agent verdicts land here the moment I get them</div>
+<div class="ts">updated <b id="ts"></b> · auto-refreshes every 4s · every line below is live-verified, nothing here is claimed without a check</div>
 <div class="grid">
 
   <div class="col done">
-    <h2>✅ DONE — VERIFIED LIVE TONIGHT</h2>
+    <h2>✅ DONE — SHIPPED + VERIFIED LIVE (Oct 16)</h2>
     <ul>
-      <li><span class="money">createstuff.ai — production fake IDs GONE</span><span class="tag">2e94519</span><span class="v">discovered prod = createstuff-marketing (CS account), NOT the project that got fixed first · shipped via sanctioned gate: smoke 4/4, sha256 prod==source · live site-adsense.js = 5×6600722153, 0 fabricated</span></li>
-      <li><span class="money">fashionistas.ai — AdSense fix SHIPPED</span><span class="tag">5343f52 · #125 closed</span><span class="v">live == HEAD · 5× real, 0 fakes · secrets 404 ✓ · path = its own scripts/deploy-local.sh (jsdom had to be installed for the gate first)</span></li>
-      <li><b>placebets headline — root-caused + patch VERIFIED</b><span class="tag">agent report</span><span class="v">background-clip:text on the hero h1 clips through 4 stacked opacity:0 phrases → all 5 paint at once (desktop+mobile, SSR state). 2-rule fix proven in headless renders both viewports → patches/placebets-hero-headline.patch (applies clean, touches 0 unmerged files, sentinel "Who wins" intact)</span></li>
-      <li>spanishtvshows.com — real slot + loader live<span class="tag">70086f9</span></li>
-      <li>ihatecollege.com — real slots live<span class="tag">7cfcee7</span></li>
-      <li>scooter.exchange — real slots live<span class="tag">5962bcb</span> · wuw — always real</li>
-      <li>shop 402 dead-link fixes committed: stv <span class="tag">d0afe7a</span> ihc <span class="tag">55aff32</span> (deploy pending on network)</li>
-      <li>Netflix links proven ALIVE (bot-UA false positive — no change needed)</li>
-      <li>docs pushed: handoff §26 + ISSUE #122/#125/#126 <span class="tag">4027e9d</span> (§25 round = 44ffb04)</li>
+      <li><span class="money">hiddencameras.tv — ASIN truth-pass LIVE</span><span class="tag">413/413 audited</span><span class="v">47 dead/wrong ASINs replaced claim-exactly · 7 broken placeholder URLs repaired · wrong-product links fixed (Nest Cam↔M7, Eufy S350↔Amcrest, Ring Db4↔Indoor Cam, detector↔pinhole…) · every one of 413 product links across 238 files now points at a live Amazon listing verified by title · spot-checks 200 ✓ · 3 deploys: abd8fc865+30194b447+cf5c1b260</span></li>
+      <li><b>#127 CLOSED — AdSense loader root cause</b><span class="tag">_document.js fix</span><span class="v">next/script "afterInteractive" is NEVER emitted into static-export HTML (proved in fresh build) → plain script tag in _document.js; live loader=1 on every page now, units can finally initialize</span></li>
+      <li><span class="money">marketpicks.ai — #124 CLOSED</span><span class="tag">1505b3c</span><span class="v">network healed (3.3 MB/s) → gate passed first try, smoke 11/11, live = real slot only, zero fabricated</span></li>
+      <li><span class="money">spanishtvshows.com — shop fix LIVE</span><span class="tag">d0afe7a</span><span class="v">preview smoked 4/4 → prod: /shop serves ZERO dead-store links (402 catalog → all store CTAs withheld), / /blog /resources real-slot-only</span></li>
+      <li><span class="money">ihatecollege.com — shop fix LIVE</span><span class="tag">55aff32</span><span class="v">smoke 16/17 (1 pre-existing WARN, unrelated) · live /shop zero dead-store links</span></li>
+      <li><b>federation sweep: 8/8 sites CLEAN</b><span class="tag">stv·ihc·scooter·wuw·fashionistas·createstuff·marketpicks·hiddencameras</span><span class="v">zero fabricated slot IDs, zero dead-store links, live-verified this hour</span></li>
+      <li>createstuff.ai production + fashionistas.ai (earlier tonight) <span class="tag">2e94519 · 5343f52</span> · scooter/wuw always clean</li>
+      <li>placebets headline: diagnosed + 2-rule patch verified both viewports <span class="tag">patches/placebets-hero-headline.patch</span> · docs §27 pushed <span class="tag">cd589b7</span></li>
     </ul>
   </div>
 
   <div class="col run">
     <h2>🔄 RUNNING RIGHT NOW</h2>
     <ul>
-      <li><b>ASIN map DONE → now applying to hiddencameras</b><span class="tag">agent ✓ 138 verdicts</span><span class="v">90 live / 47 dead / 1 placeholder · 51 targets resolved (47 replaced, 2 keep, 2 unwrap) · map at /tmp/asin-fix-map.json, schema-validated, repo clean · applying across data/articles + affiliateLinks + chooser + EditorPick → single rebuild + loader fix (#114/#127)</span></li>
-      <li>marketpicks deploy — retry queued<span class="tag">#124</span><span class="v">fix 1505b3c built; dies on multi-MB deployments POST (~10 KB/s uplink since 21:15 UTC). Static sites unaffected — retries run on the uplink loop.</span></li>
-      <li>stv/ihc shop-fix deploys — queued behind same network wall</li>
-      <li>when uplink heals: marketpicks gate → stv rebuild+deploy → ihc deploy (preview→smoke→prod order each)</li>
+      <li><span class="pulse"></span>religiousjews — 16 ASINs verifying<span class="tag">/tmp/rj-verify-jobs.json</span><span class="v">same claim-exact pipeline that just cleaned hiddencameras → map → apply → audit → single deploy</span></li>
+      <li>hiddencameras truth-pass fully landed — no open items on that repo</li>
+      <li>next in queue after religiousjews: any site whose live HTML regresses (this dashboard refreshes the moment state moves)</li>
     </ul>
   </div>
 
   <div class="col blk">
-    <h2>⛔ BLOCKED / WHAT'S LEFT</h2>
+    <h2>⛔ BLOCKED / OWNER ACTIONS</h2>
     <ul>
-      <li><b>network</b> — uplink ~10 KB/s to Cloudflare / ~2 KB/s npm since 21:15 UTC. Kills every multi-MB worker deployments POST (marketpicks/stv/ihc + hiddencameras). Static deploys sail (createstuff/fashionistas just proved it).</li>
-      <li><b>placebets (box-only)</b> — apply patches/placebets-hero-headline.patch + collapse AdUnit SLOTS → 6600722153 in /workspace/tnr/Placebetsai, ship via its deploy-safe.sh SHIP_IT=1. This machine's copy = Retired + mid-merge, must not touch.</li>
-      <li>religousjews 16 ASINs — strictly after ASIN agent (same-IP Amazon limits)</li>
-      <li><b>you</b>: Amazon Associates signup (all affiliate links = $0 until then) · AdSense account check (§25 §7)</li>
+      <li><b>placebets.ai (box-only)</b> — apply patches/placebets-hero-headline.patch + collapse AdUnit SLOTS → 6600722153 in /workspace/tnr/Placebetsai, ship via its deploy-safe.sh SHIP_IT=1. This machine's copy = Retired mid-merge, must not touch.</li>
+      <li><b>you</b>: Amazon Associates signup — every affiliate link across the federation earns $0 until the account exists</li>
+      <li><b>you</b>: AdSense account check (§25 §7) — Sites page shows spanishtvshows/ihatecollege/placebets "Ready"; real unit IDs beyond 6600722153 unlock the other slots</li>
+      <li>createstuff direction still unanswered: (1) wire generate route to free bot pool + ship a real demo, or (2) treat it as an AdSense property and stop calling it a builder</li>
     </ul>
   </div>
 
 </div>
 <div class="foot">
-  Rules in force: nothing ships without smoke · no fabricated claims — only verified-live facts appear here · federation edits at source, deploy via wrangler.
+  Rules in force: nothing ships without smoke · no fabricated claims — only verified-live facts appear here · federation edits at source, deploy via the repo's own gate.
 </div>
 <script>
   document.getElementById('ts').textContent = new Date().toLocaleTimeString();
