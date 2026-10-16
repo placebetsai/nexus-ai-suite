@@ -3393,3 +3393,78 @@ boxes even on an approved domain. The four fake IDs were found in **8 repos**.
    - **Ad units** → list the real unit IDs. If units exist beyond `6600722153`,
      send the numbers and placements get re-split (hero/sidebar/bottom) instead of
      everything pointing at the one real unit.
+
+## 26. 2026-10-16 (early) — createstuff's real production found + shipped, fashionistas shipped, placebets headline root-caused
+
+**Follow-up to §24–25.** Network note first: since **21:15 UTC 2026-10-15** this
+box's uplink to Cloudflare sits at ~10 KB/s (2 MB/90 s speed test) and npm at
+~2–5 KB/s; small multipart POSTs sail (manual 39 KB manifest → HTTP 200; a
+161 KB JSON body arrives intact), but every wrangler `POST …/deployments`
+carrying a multi-MB `_worker.bundle`/Functions bundle dies (ECONNRESET /
+300 s HeadersTimeout) — that is the whole §25 #124 blocker, not a config bug.
+Static deploys (no bundle) are unaffected.
+
+1. **createstuff.ai — production was a different project entirely.**
+   `createstuff.ai` CNAMEs to `createstuff-marketing.pages.dev` (**CS
+   account**, token `CS_*`; also hosts `placebetsai`, `createstuff-app`,
+   `createstuff-sites`, `purlaw`, `placebets-ai-v2`). The `79c9851` fix had
+   landed on side project `createstuff-ai` (default account, *no domain
+   attached* — harmless but useless). The real source is
+   `nexus-ai-suite/apps/createstuff-marketing/site-adsense.js`, which still
+   mapped `hero→5079047997, inContent→2843751862, sidebar→9124683051,
+   bottom→3357291048` — all four fabricated IDs, live on prod. Collapsed to
+   the one verified unit, committed `2e94519`, shipped through the sanctioned
+   gate `bash scripts/deploy-safe-static.sh createstuff-marketing`
+   (preview → smoke → prod → smoke, **4/4 green**, sha256 prod==source,
+   deployed with the cached wrangler@4 via a `/tmp/bin/wrangler` shim since
+   PATH wrangler 4.138 is the fetch-failing one). **Live verify:
+   `createstuff.ai/site-adsense.js` = 5× `6600722153`, 0 fabricated.**
+   Gotcha learned: `data-ad-slot="hero|inContent|bottom|default"` on page
+   divs are *mount-point markers* the runtime `site-adsense.js` fills — the
+   real slot IDs live only in that JS map. DNS read needs
+   `CF_DNS_TOKEN_CREATESTUFF` (the account token gets 403 on that zone).
+
+2. **fashionistas.ai — #125 CLOSED, shipped.** Real deploy path =
+   the repo's own `scripts/deploy-local.sh` (tests → stage → wrangler →
+   `version.txt == SHA` + secret 404s). Gate first failed because two test
+   files import **jsdom**, undeclared and absent on this box → installed
+   `--no-save` over the ~2 KB/s registry (yarnpkg mirror, 11 min). Attempt 1
+   then succeeded: **live == `5343f52`**, live `site-adsense.js` = 5× real /
+   0 fabricated, `/.env*|/.git/config|/.dev.vars` all 404. Env shim:
+   `/tmp/fash-env.sh` (sources `.secrets/cf.env`, maps `CF_*` →
+   `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID`).
+
+3. **placebets.ai headline — root-caused + patch verified (agent report).**
+   The jumble on desktop *and* mobile is paint, not markup: the generic
+   `main:not(.pb-home) h1` rule (`app/globals.css:3258`) applies
+   `color:transparent;background-clip:text` to the hero h1, and that clip is
+   built from every subtree glyph — including the four stacked
+   `opacity:0 .pb-rot-word` phrases → all five paint at once, already in SSR
+   (also forces 64px over the intended hero size; the homepage `<main>`
+   never carries `.pb-home` — it's on an inner div, other pages put it on
+   `<main>`). Reproduced byte-exact from live HTML+CSS in headless Chrome
+   (both viewports), minimal repro isolates the mechanism, and the 2-rule fix
+   renders clean (`/tmp/opencode/desktop-after.png`, `mobile-after.png`).
+   **Patch: `patches/placebets-hero-headline.patch`** — apply on the box by
+   anchor (after the `.pb-sr`/`@media` block), touches zero of the 4
+   unmerged files, sentinel `Who wins` unaffected. Ship from the box via its
+   `scripts/deploy-safe.sh` + `SHIP_IT=1` (project `placebetsai`). Live
+   slot fakes on placebets remain a box-only edit (#126 part 1).
+
+4. **shop 402 fix + Netflix links (supersedes §25 items 6):** the 2 Netflix
+   `/title/` links are **alive** (301→200 with a browser UA; bot-UA 404 =
+   false positive — control bogus ID → 404), so no change was made; the
+   dead-store CATALOG fix is committed as stv `d0afe7a` + ihc `55aff32`
+   (every outbound storefront CTA gated on `state !== "error"` + honest
+   copy), still undeployable while the worker-bundle POSTs die (network).
+
+5. **Dashboard:** `nexus-ai-suite/DASHBOARD.html` — live state, auto-reloads
+   every 4 s, opened in the Review pane; rewrite it whenever state moves.
+
+6. **Still open / next:** marketpicks `1505b3c` (#124, retry when uplink
+   heals: `SKIP_BUILD=1 USE_NPX_WRANGLER=1 bash scripts/deploy-safe.sh`, or
+   hand-build `_worker.bundle` multipart with a huge `--max-time`), stv
+   `d0afe7a` + ihc `55aff32` deploys, ASIN truth-pass → hiddencameras
+   rebuild+loader (#114/#127), then religiousjews' 16 ASINs, box-side
+   placebets patch + `SLOTS` collapse, owner's Associates signup + AdSense
+   checks (§25 §7 unchanged).

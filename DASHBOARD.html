@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NEXUS FEDERATION — LIVE DASHBOARD</title>
+<style>
+  :root { --ok:#12c46b; --run:#ffb020; --blk:#ff4d4d; --mut:#8b93a7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0b0e14; color:#e8ecf5; font:14px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; padding:18px; }
+  h1 { font-size:17px; letter-spacing:.14em; margin:0 0 4px; }
+  .ts { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .ts b { color:#ffd166; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .col { background:#121722; border:1px solid #1f2636; border-radius:10px; padding:12px; }
+  .col h2 { font-size:13px; letter-spacing:.1em; margin:0 0 10px; padding-bottom:8px; border-bottom:1px solid #1f2636; }
+  .done h2 { color:var(--ok); } .run h2 { color:var(--run); } .blk h2 { color:var(--blk); }
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:7px 8px; border-radius:6px; margin-bottom:6px; background:#0d111b; border-left:3px solid #2a3247; font-size:13px; }
+  .done li { border-left-color:var(--ok); }
+  .run li { border-left-color:var(--run); }
+  .blk li { border-left-color:var(--blk); }
+  li .v { color:var(--mut); font-size:11.5px; display:block; margin-top:2px; }
+  .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:99px; background:#1c2333; color:#9fb0d0; margin-left:6px; vertical-align:1px; }
+  .money { color:#ffd166; }
+  .foot { margin-top:14px; color:var(--mut); font-size:11.5px; border-top:1px solid #1f2636; padding-top:10px; }
+  .pulse { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--run); animation:p 1s infinite; vertical-align:0; margin-right:6px; }
+  @keyframes p { 50% { opacity:.25; } }
+</style>
+</head>
+<body>
+<h1>NEXUS FEDERATION — LIVE DASHBOARD</h1>
+<div class="ts">updated <b id="ts"></b> · auto-refreshes every 4s · agent verdicts land here the moment I get them</div>
+<div class="grid">
+
+  <div class="col done">
+    <h2>✅ DONE — VERIFIED LIVE TONIGHT</h2>
+    <ul>
+      <li><span class="money">createstuff.ai — fake AdSense IDs GONE</span><span class="tag">2e94519</span><span class="v">live site-adsense.js = 5×6600722153, 0 fabricated · gate smoke 4/4 · sha256 prod==source</span></li>
+      <li><span class="money">fashionistas.ai — AdSense fix SHIPPED</span><span class="tag">5343f52</span><span class="v">live == HEAD · slots 5× real, 0 fakes · secrets 404 ✓ · #125 closed</span></li>
+      <li>spanishtvshows.com — real slot + loader live<span class="tag">70086f9</span></li>
+      <li>ihatecollege.com — real slots live<span class="tag">7cfcee7</span></li>
+      <li>scooter.exchange — real slots live<span class="tag">5962bcb</span></li>
+      <li>wuwonline.com — real slots live (always was)</li>
+      <li>createstuff-ai side-project synced (not the domain — domain = createstuff-marketing, fixed above)</li>
+      <li>shop dead-links fixed in source: stv <span class="tag">d0afe7a</span> ihc <span class="tag">55aff32</span> — store 402 → no outbound CTAs when store down</li>
+      <li>Netflix links verified ALIVE (outbound-check was a bot-UA false positive — no change needed)</li>
+      <li>docs: handoff §25 + ISSUE #122–128 pushed <span class="tag">44ffb04</span></li>
+      <li>root cause nailed: 4 of 5 slot IDs were fabricated by a prior agent — all collapsed to 6600722153 federation-wide</li>
+    </ul>
+  </div>
+
+  <div class="col run">
+    <h2>🔄 RUNNING RIGHT NOW</h2>
+    <ul>
+      <li><span class="pulse"></span>placebets headline agent<span class="tag">ses_…WMdRVNO</span><span class="v">desktop+mobile diagnosis of the jumbled headline → patch + ship path · relaunched after net killed 1st attempt</span></li>
+      <li><span class="pulse"></span>ASIN truth agent — hiddencameras<span class="tag">ses_…yIR</span><span class="v">verifies 19 unknown ASINs → /tmp/asin-fix-map.json → then hiddencameras rebuild+deploy</span></li>
+      <li>marketpicks deploy — waiting on network retry<span class="tag">#124</span><span class="v">slot fix 1505b3c built+committed; multi-MB worker POST dies at ~10 KB/s uplink (since 21:15 UTC)</span></li>
+      <li>stv/ihc shop-fix deploys — queued behind same network block (workers = big bundle POST)</li>
+    </ul>
+  </div>
+
+  <div class="col blk">
+    <h2>⛔ BLOCKED / WHAT'S LEFT</h2>
+    <ul>
+      <li><b>network</b> — uplink ~10 KB/s to Cloudflare / ~2 KB/s npm since 21:15 UTC. Kills every multi-MB <i>deployments</i> POST. Static sites sail through (createstuff just did). Retries run automatically.</li>
+      <li>placebets.ai — live still serves 4 fake slot IDs; canonical source on your box (/workspace/tnr/Placebetsai) + headline mess → agent patch first, then box apply</li>
+      <li>marketpicks.ai — live still serves fake 5079047997 (deploy blocked above)</li>
+      <li>religousjews 16 ASINs — strictly after ASIN agent (same-IP Amazon limits)</li>
+      <li><b>you</b>: Amazon Associates signup (all affiliate links = $0 until then) · AdSense account check (#§25 §7)</li>
+    </ul>
+  </div>
+
+</div>
+<div class="foot">
+  Rules in force: nothing ships without smoke · no fabricated claims — only verified-live facts appear here · federation edits at source, deploy via wrangler.
+</div>
+<script>
+  document.getElementById('ts').textContent = new Date().toLocaleTimeString();
+  setTimeout(function(){ location.replace(location.pathname + '?t=' + Date.now()); }, 4000);
+</script>
+</body>
+</html>

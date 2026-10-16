@@ -1,0 +1,23 @@
+# placebets.ai homepage hero garble — apply on the BOX (/workspace/tnr/Placebetsai)
+# Target file: app/globals.css
+# Apply BY ANCHOR (line numbers may shift): append the + lines AFTER this block:
+#
+#   .pb-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#   @media (max-width: 520px) { .pb-hero-title .pb-hero-line { white-space: normal; } .pb-hero-title { font-size: clamp(28px, 8.4vw, 40px) !important; } }
+#   @media (prefers-reduced-motion: reduce) { .pb-rot-word { transition: none; } }
+#
+# Root cause: generic `main:not(.pb-home) h1` rule (~line 3258) sets color:transparent +
+# background-clip:text on the hero h1; the clip is built from the subtree's glyphs, so the
+# gradient paints through the four stacked opacity:0 .pb-rot-word phrases -> all five
+# phrases visible at once on desktop AND mobile. Homepage <main> never carries .pb-home
+# (it's on an inner <div>), so the rule always hits. Verified fixed in headless renders
+# (desktop-after.png / mobile-after.png); sentinel "Who wins" stays in the DOM; no copy
+# changes; touches ZERO of the 4 unmerged files.
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -12562,3 +12562,9 @@
+ .pb-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+ @media (max-width: 520px) { .pb-hero-title .pb-hero-line { white-space: normal; } .pb-hero-title { font-size: clamp(28px, 8.4vw, 40px) !important; } }
+ @media (prefers-reduced-motion: reduce) { .pb-rot-word { transition: none; } }
++.pb-hero-title { color: #fff !important; background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; }
++.pb-hero-title .pb-rot-word:not(.is-on) { visibility: hidden; }
