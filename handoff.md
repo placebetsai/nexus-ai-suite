@@ -3641,3 +3641,50 @@ before deploy); git commits live only in the parent nexus repo for tooling.
 Both repos pushed: fashionistas `5343f52` (was ahead-1), wuw `333e4c1`, nexus
 (issues #130-#133 + dashboard + this section). **Still open for the owner:**
 #129 forms, #132 MNW upload, Associates signup, AdSense checks, placebets box.
+
+## 30. 2026-10-16 (night) — fashionistas UX click-through: the seller flow walked with a mouse, 5 defects found and fixed
+
+User called the UX out ("the UX sucks", "how does a seller list") — fair: every
+prior proof was curl. This round was a real browser walkthrough, account
+created through the form, no API shortcuts.
+
+**Seller flow, LIVE end-to-end (all in-browser):** drop a real photo → wizard
+opens → AI reads it ("Women › Tops · sells for $10–$30 · 80% sure") and fills
+title/price → List while signed out → toast "Sign in first — your draft is
+saved." → Create account via the UI → **draft restored intact** (photo +
+AI fields) → List → "Creating your listing…" → LISTED! → cross-post screen
+(Depop/Poshmark/Mercari/eBay copy-and-open) → View listing → **`/shop/218`
+live; anon `/w/api/market` shows 8 items**. The test listing stays in the shop
+as the receipt.
+
+**Defects the walkthrough exposed — all fixed live, every deploy through the
+`npm test` gate (434+/436, 0 fail), each fix re-tested in the browser (#134):**
+- "See it on you" CTA rendered as a vertical one-word-per-line pill over the
+  description → `ux-pass.css` `.ux-try .btn{flex:1}` was the squeeze; now
+  `nowrap` + wrap. Live: horizontal red button beside the note.
+- Seller-coach panel covered the item page's Message button (z-index 75 over
+  the sticky buy bar) → hidden when a buy bar exists (same as the existing
+  mobile rule). Live: Message + Buy now fully visible.
+- `/sell` was a hard 404 (direct visit / middle-click) → `_redirects /sell / 200`
+  + `routePath()` branch. Two traps on the way: app.js runs before
+  `listing-wizard.js` (both defer) so boot-time `window.LW` is undefined and
+  renders the pre-LW fallback (calculator/chooser); and `readyState` is already
+  "interactive" during defer execution, so the first guard never registered.
+  Final: gate on `LW` itself + re-render at `DOMContentLoaded`. Live: `/sell`
+  → title "Sell an item", full photo wizard.
+- Nav Sell click never changed the URL (stale `/shop/<id>` stayed in the bar →
+  after sign-up `resumeAfterAuth()` dropped sellers on a stale item page). The
+  nav calls `go('sell')` — **not** `snap` — and both views delegate to
+  `LW.mount` (the calculator is only the pre-LW fallback). Both now push
+  `/sell`; resume returns to the wizard. Live: click Sell from `/shop/209` →
+  URL `/sell` + wizard.
+- `/assets/app.*` ships `immutable` ×1y → the bundle is re-hashed every
+  iteration (… → `107a2871bd89`) with `index.html` +
+  `tests/security-gates.test.mjs` updated, so browsers actually get fixes.
+
+**Logged, not changed (owner call):** role defaults to "shopping" for new
+accounts (the Selling/Shopping toggle on the Sell page shows Shopping active);
+header ghost-text during view transitions (cosmetic).
+
+Latest fashionistas deploy `4d82b4ff`, version.txt verified live == commit.
+Nexus: ISSUE_LOG #134 + dashboard updated.
