@@ -3468,3 +3468,69 @@ Static deploys (no bundle) are unaffected.
    rebuild+loader (#114/#127), then religiousjews' 16 ASINs, box-side
    placebets patch + `SLOTS` collapse, owner's Associates signup + AdSense
    checks (§25 §7 unchanged).
+
+## 27. 2026-10-16 (night) — the network healed, everything shipped: hiddencameras truth-pass, marketpicks, stv+ihc shop fixes, #127's real root cause
+
+**Follow-up to §26.** Uplink retested at **3.3 MB/s** (was ~10 KB/s) — every
+deploy that died on the wall last night went through on the first try today.
+
+1. **hiddencameras.tv — #114 CLOSED, three commits live** (`abd8fc865`,
+   `30194b447`, `cf5c1b260`), deployed via the repo's own `scripts/deploy.sh`
+   (project `hiddencameras` — note: NOT `hiddencameras-tv`, which is the dead
+   old project; the script's comment explains the mixup and it verifies
+   homepage=200 + `/api/chatbot`=405 on the live hostname).
+   - **Truth-pass (4 passes over `/tmp/asin-fix-map.json`,138 live verdicts +
+     205 claim targets):** 47 dead/wrong ASINs replaced; dead-doorbell links
+     and generic `security system` body-copy links unwrapped; wrong-product
+     links fixed claim-exactly (Nest Cam entity had the M7-doorbell ASIN →
+     `B0FN7GF1ZC`; Eufy S350 had an Amcrest ASIN → `B0CD7F1M9R`; Ring Doorbell
+     4 had the Indoor Cam ASIN → `B08JNR77QY`; the JMDHKK detector had a
+     pinhole-cam ASIN → `B0F5W6W848`; Nest Doorbell (Wired) had the Nest Cam
+     ASIN → `B0BBSLG6PC`); 7 literal `B0C...?` placeholder URLs repaired
+     (→`B0B5Z3FV7F` et al.); the camera-finder tool config links gained
+     `?tag=hiddencamerastv-20` (they had none).
+   - **The asin-level map lies for shared ASINs — claim-level always won.**
+     `resolved_asin_targets` said "keep Wyze v4" for a palm-nanny-cam claim
+     whose `name_targets` entry was `exact_model` → a different live listing.
+     Final rule applied everywhere: `name_targets` (per-claim, exact_model)
+     overrides `resolved_asin_targets` (per-old-ASIN) when both cover a site;
+     slug/handle maps were claim-keyed by normalizing the slug; rows
+     (`{"n":…,"a":…}`), JSON-LD (`"name":…dp/…`) and JS objects
+     (`name:…asin:…`) were each swept with their own anchored pattern.
+   - **Final audit (the gate):** 413 ASIN tokens across 238 shipped files →
+     100% in the live-verified set, 0 placeholders, 0 claim mismatches, all
+     `data/articles/*.json` valid. Scripts + `public/tools` included so a
+     future `npm run gen:*` can't re-inject dead ASINs (generators' comment
+     labels restored per-label after a first pass over-collapsed them).
+   - **#127 CLOSED — the loader was never a stale-build problem.** The
+     `<Script strategy="afterInteractive">` in `pages/_app.js` **is never
+     emitted into `output:"export"` HTML** (beforeInteractive inline lands,
+     afterInteractive doesn't — reproduced in a fresh build). Fix: plain
+     `<script async>` in `pages/_document.js` `<Head>`; built pages now carry
+     loader=1 NPA=1; live verified on both hostnames.
+   - Two leftover claim variants got their own verification pass (jina
+     reader + translate proxy, control bracketing): Ring Spotlight Cam Plus →
+     `B09JZ5BG26`, Eufy E220 → `B0856W45VL`, shipped `cf5c1b260`.
+2. **marketpicks.ai — #124 CLOSED.** `1505b3c` deployed through its gate on
+   the first try: smoke **11/11** (incl. bot-answer-vs-quote 0% drift);
+   live = real slot `6600722153` only, zero fabricated.
+3. **spanishtvshows.com — `d0afe7a` live.** Rebuild via the documented path
+   (`npx @cloudflare/next-on-pages@latest` with `npm_config_legacy_peer_deps`
+   → `wrangler pages deploy .vercel/output/static --project-name=
+   spanishtvshows-site`, preview branch `shopfix` smoked 4/4 → main).
+   The next-on-pages dist is stored **gzip/binary — grep over it lies**;
+   verification = the deployed HTML itself: `/shop` serves **zero**
+   `js0hy0-ux.myshopify.com` links (catalog fetch 402 → error state → every
+   store CTA withheld), `/`,`/blog`,`/resources` real-slot-only.
+4. **ihatecollege.com — `55aff32` live.** Own `scripts/deploy-safe.sh`:
+   smoke **16/17** (the 1 WARN = pre-existing empty civil-service dataset),
+   live `/shop` zero dead-store links, real slot only.
+5. **Federation slot sweep after all deploys:** spanishtvshows, ihatecollege,
+   scooter.exchange, wuwonline, fashionistas, createstuff, marketpicks,
+   hiddencameras — **8/8 zero fabricated slot IDs, zero dead-store links.**
+   placebets remains the only box-only edit (#126: `patches/
+   placebets-hero-headline.patch` + `SLOTS` collapse).
+6. **Still open:** religiousjews' 16 ASINs (`/tmp/rj-verify-jobs.json`,
+   relaunched after this round's Amazon spot-checks), owner's Associates
+   signup + AdSense checks (§25 §7), createstuff direction (§26 #6), box-side
+   placebets patch.

@@ -35,38 +35,35 @@
   <div class="col done">
     <h2>✅ DONE — VERIFIED LIVE TONIGHT</h2>
     <ul>
-      <li><span class="money">createstuff.ai — fake AdSense IDs GONE</span><span class="tag">2e94519</span><span class="v">live site-adsense.js = 5×6600722153, 0 fabricated · gate smoke 4/4 · sha256 prod==source</span></li>
-      <li><span class="money">fashionistas.ai — AdSense fix SHIPPED</span><span class="tag">5343f52</span><span class="v">live == HEAD · slots 5× real, 0 fakes · secrets 404 ✓ · #125 closed</span></li>
+      <li><span class="money">createstuff.ai — production fake IDs GONE</span><span class="tag">2e94519</span><span class="v">discovered prod = createstuff-marketing (CS account), NOT the project that got fixed first · shipped via sanctioned gate: smoke 4/4, sha256 prod==source · live site-adsense.js = 5×6600722153, 0 fabricated</span></li>
+      <li><span class="money">fashionistas.ai — AdSense fix SHIPPED</span><span class="tag">5343f52 · #125 closed</span><span class="v">live == HEAD · 5× real, 0 fakes · secrets 404 ✓ · path = its own scripts/deploy-local.sh (jsdom had to be installed for the gate first)</span></li>
+      <li><b>placebets headline — root-caused + patch VERIFIED</b><span class="tag">agent report</span><span class="v">background-clip:text on the hero h1 clips through 4 stacked opacity:0 phrases → all 5 paint at once (desktop+mobile, SSR state). 2-rule fix proven in headless renders both viewports → patches/placebets-hero-headline.patch (applies clean, touches 0 unmerged files, sentinel "Who wins" intact)</span></li>
       <li>spanishtvshows.com — real slot + loader live<span class="tag">70086f9</span></li>
       <li>ihatecollege.com — real slots live<span class="tag">7cfcee7</span></li>
-      <li>scooter.exchange — real slots live<span class="tag">5962bcb</span></li>
-      <li>wuwonline.com — real slots live (always was)</li>
-      <li>createstuff-ai side-project synced (not the domain — domain = createstuff-marketing, fixed above)</li>
-      <li>shop dead-links fixed in source: stv <span class="tag">d0afe7a</span> ihc <span class="tag">55aff32</span> — store 402 → no outbound CTAs when store down</li>
-      <li>Netflix links verified ALIVE (outbound-check was a bot-UA false positive — no change needed)</li>
-      <li>docs: handoff §25 + ISSUE #122–128 pushed <span class="tag">44ffb04</span></li>
-      <li>root cause nailed: 4 of 5 slot IDs were fabricated by a prior agent — all collapsed to 6600722153 federation-wide</li>
+      <li>scooter.exchange — real slots live<span class="tag">5962bcb</span> · wuw — always real</li>
+      <li>shop 402 dead-link fixes committed: stv <span class="tag">d0afe7a</span> ihc <span class="tag">55aff32</span> (deploy pending on network)</li>
+      <li>Netflix links proven ALIVE (bot-UA false positive — no change needed)</li>
+      <li>docs pushed: handoff §26 + ISSUE #122/#125/#126 <span class="tag">4027e9d</span> (§25 round = 44ffb04)</li>
     </ul>
   </div>
 
   <div class="col run">
     <h2>🔄 RUNNING RIGHT NOW</h2>
     <ul>
-      <li><span class="pulse"></span>placebets headline agent<span class="tag">ses_…WMdRVNO</span><span class="v">desktop+mobile diagnosis of the jumbled headline → patch + ship path · relaunched after net killed 1st attempt</span></li>
-      <li><span class="pulse"></span>ASIN truth agent — hiddencameras<span class="tag">ses_…yIR</span><span class="v">verifies 19 unknown ASINs → /tmp/asin-fix-map.json → then hiddencameras rebuild+deploy</span></li>
-      <li>marketpicks deploy — waiting on network retry<span class="tag">#124</span><span class="v">slot fix 1505b3c built+committed; multi-MB worker POST dies at ~10 KB/s uplink (since 21:15 UTC)</span></li>
-      <li>stv/ihc shop-fix deploys — queued behind same network block (workers = big bundle POST)</li>
+      <li><b>ASIN map DONE → now applying to hiddencameras</b><span class="tag">agent ✓ 138 verdicts</span><span class="v">90 live / 47 dead / 1 placeholder · 51 targets resolved (47 replaced, 2 keep, 2 unwrap) · map at /tmp/asin-fix-map.json, schema-validated, repo clean · applying across data/articles + affiliateLinks + chooser + EditorPick → single rebuild + loader fix (#114/#127)</span></li>
+      <li>marketpicks deploy — retry queued<span class="tag">#124</span><span class="v">fix 1505b3c built; dies on multi-MB deployments POST (~10 KB/s uplink since 21:15 UTC). Static sites unaffected — retries run on the uplink loop.</span></li>
+      <li>stv/ihc shop-fix deploys — queued behind same network wall</li>
+      <li>when uplink heals: marketpicks gate → stv rebuild+deploy → ihc deploy (preview→smoke→prod order each)</li>
     </ul>
   </div>
 
   <div class="col blk">
     <h2>⛔ BLOCKED / WHAT'S LEFT</h2>
     <ul>
-      <li><b>network</b> — uplink ~10 KB/s to Cloudflare / ~2 KB/s npm since 21:15 UTC. Kills every multi-MB <i>deployments</i> POST. Static sites sail through (createstuff just did). Retries run automatically.</li>
-      <li>placebets.ai — live still serves 4 fake slot IDs; canonical source on your box (/workspace/tnr/Placebetsai) + headline mess → agent patch first, then box apply</li>
-      <li>marketpicks.ai — live still serves fake 5079047997 (deploy blocked above)</li>
+      <li><b>network</b> — uplink ~10 KB/s to Cloudflare / ~2 KB/s npm since 21:15 UTC. Kills every multi-MB worker deployments POST (marketpicks/stv/ihc + hiddencameras). Static deploys sail (createstuff/fashionistas just proved it).</li>
+      <li><b>placebets (box-only)</b> — apply patches/placebets-hero-headline.patch + collapse AdUnit SLOTS → 6600722153 in /workspace/tnr/Placebetsai, ship via its deploy-safe.sh SHIP_IT=1. This machine's copy = Retired + mid-merge, must not touch.</li>
       <li>religousjews 16 ASINs — strictly after ASIN agent (same-IP Amazon limits)</li>
-      <li><b>you</b>: Amazon Associates signup (all affiliate links = $0 until then) · AdSense account check (#§25 §7)</li>
+      <li><b>you</b>: Amazon Associates signup (all affiliate links = $0 until then) · AdSense account check (§25 §7)</li>
     </ul>
   </div>
 
