@@ -8,6 +8,7 @@ import {
   disconnectChannel, CALLBACK_PATH, channelReady, saveChannelKeys,
 } from "./channels.js";
 import { handleOneClick } from "./oneclick.js";
+import { handleJobs } from "./jobs.js";
 
 // Session signing key. It used to be a Uint8Array.from([...]) byte array spelled
 // out on this line, which meant the secret was committed to a public repository
@@ -1356,6 +1357,18 @@ async function dispatch(request, env) {
 
       if (path.startsWith("/api/auth/passkey/") || path.startsWith("/api/auth/magic/") || path === "/api/auth/config" || path === "/api/auth/google/onetap") {
         const r = await handleOneClick(path, method, request, env, { json, err, readJson, signToken, requireUser, SESSION_MS, rateLimit });
+        if (r) return r;
+      }
+      // Cross-listing pipeline (jobs / sessions / device pairing / sales
+      // events) — delegated exactly like oneclick: the module answers only
+      // its own /api/{jobs,sessions,devices,sales,delist*} paths and returns
+      // null for everything else, so it can never shadow a route below.
+      // Its specification is the WIRE CONTRACT comment at the top of
+      // fashionistas-ai/apps/extension/queue.js — the other half.
+      if (path.startsWith("/api/jobs") || path.startsWith("/api/sessions") ||
+          path.startsWith("/api/devices") || path === "/api/sales" ||
+          path === "/api/delist" || path.startsWith("/api/sales/")) {
+        const r = await handleJobs(path, method, request, env, { json, err, readJson, requireUser, rateLimit });
         if (r) return r;
       }
       if (path === "/api/auth/register" && method === "POST") {

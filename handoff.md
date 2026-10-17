@@ -3850,3 +3850,18 @@ sequenced behind placebets.
 deploy (UI+extension go live; owner reloads the dev extension) → commits of all four dirty
 trees. Owner gates unchanged (Associates, AdSense, Stripe/eBay/Etsy/Google env, MNW
 sitemap, Formspree, GSC CSV).
+
+## 34. 2026-10-17 (morning) — fashionistas pairing UX: the code step killed, one button shipped and proven
+
+**Complaint (user):** why should a seller go find a key and put it in a slot on our own site — sign up, hit one button, "yes it listed". They were right, and the sting is that **the code was never needed on the same browser**: the extension already answers the page's `status` call with its install id over the existing `externally_connectable` bridge, and the Worker's `POST /api/devices/pair {install_id}` binds it under the seller's own Bearer session. The big 6-char code box was rendered unconditionally anyway — an architecture detail leaking into the product.
+
+**Shipped (`fashionistas-ai` `7e7d7a4`, asset `app.a00330ec3670.js`, Pages live):**
+- Shops screen leads with one **Connect this browser** button → `xlPairThisBrowser()` → existing `xlPair(install_id)`. In-flight shows "Connecting this browser…", success toast: "Connected. Every save now posts to your shops by itself."
+- No extension reachable → honest line: "Install the Crosslister extension on this browser and reload this page — the button appears here, still one click."
+- Code + device list survive only as a collapsed `Having trouble, or connecting from a different browser?` fallback.
+- Copy swept: pair card, feed button ("Connect this browser to post everything"), save-time nudge.
+- **Zero server / extension changes.** Asset renamed to the new md5-12 content hash (immutable 1y cache-control, no purge permission — same rule as every content change).
+
+**Proof:** suite 453/453; deploy gate re-ran it; `version.txt == 7e7d7a4…` live; index.html serves the new asset (HTTP 200, 351KB); "Connect this browser" ×5 in the live bundle; browser walkthrough on prod (demo-seller login): (1) no-extension state, (2) one-button state, (3) click exercised with the POST stubbed → recorded `POST /api/devices/pair {install_id:"simulated-install-9f3a"}` → probe → PAIRED chip + success toast + feed button enabled ("Post all existing items"). The real POST path is server-proven from the earlier raw end-to-end run (register→heartbeat→pair→enqueue→report posted→re-enqueue=0); the stub was only used to avoid writing junk device rows under the public demo account.
+
+**Owner step (unchanged):** reload the unpacked extension once — after that, Shops → Connect this browser → done, and every save posts on its own.

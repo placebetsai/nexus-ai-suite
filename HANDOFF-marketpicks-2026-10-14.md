@@ -245,3 +245,43 @@ Fix (applied directly to marketpicks-db, no Pages/Worker deploy, so other agents
 Follow-up in code (not done, needs the live-source owner): add the same WHERE-changed guard to the upserts in lib/market-data.ts + app/api/cron/quotes/route.ts so the triggers aren't load-bearing; consider quotes every 30 min outside US market hours.
 KV (FASHIONISTAS_CACHE 630 writes on 10-14): all current fashionistas code paths (analyze limiter, try-on tally, fashionistas-api oneclick) already use D1; remaining writes were daytime bursts from preview/e2e runs. No change made.
 Measured after: 00:45Z cron tick wrote 157 quote rows for 191 upserts (was ~3 rows per upsert, ~570/tick). Expected marketpicks-db total ≈ 15–25k rows/day (was ~77k).
+
+## 2026-10-14 ~9:40 PM ET — Chatbot rework ("trader desk") — PREVIEW ONLY + D1 code diet
+
+### Bot (preview, NOT production — needs Iz "ship it")
+- Preview: https://2a78ee76.marketpicks-ai.pages.dev (alias preview-fresh-data; same bot as eval build 3c893d3a + the D1 app changes below). Production still runs the old bot.
+- New `lib/trader-desk.ts` (Yahoo 1y chart → price/vol/returns/52w/SMA20-50-200/ATR/swing levels + a "read" line; score → BULLISH/BEARISH/WAIT plan with entry/stop/target/timeframe; persona; number-grounding check).
+- `app/api/chatbot/route.ts`: traderDesk path before thread context; Groq (120b → 20b → 8b) → Workers AI fallback kept; answer cache key now `chat-answer/v5`; code forces "The call:" to match the computed plan; comparisons open "X over Y."; rates questions lead with the 10y.
+- Eval: 12 prompts, before/after with grades in box file `/workspace/marketpicks-bot-before-after.md`; Pixel 7 screenshot `/workspace/marketpicks-bot-pixel7.png`. Backup of old route: `~/chatbot.route.pre-financebro.2026.bak`.
+- Known soft spots: occasional odd phrase ("tape's quiet" on a 3% drop), gold answer wording.
+- Ship = `bash /tmp/mpdeploy.sh main` from the same build (also ships the D1 app changes below).
+
+### Git (local only, nothing pushed)
+- Branch `wip/local-2026-10-14` in the marketpicks-ai tree (was live-source @ ee9304f): 04c6f6d = snapshot of the ~45 uncommitted files; 40c1fe5 = D1 diet + bot tweaks. Left uncommitted on purpose: tsconfig.tsbuildinfo, _t2.mjs, __pycache__.
+
+### D1 rows_written diet (code)
+- Quote upserts skip unchanged rows: `lib/market-data.ts` upsertQuote (used by every scrape-*/crypto/commodity/sports writer) and `app/api/cron/quotes/route.ts` batch now end in `WHERE price/pct_change/week_change/volume IS NOT excluded.*`. Tested in sqlite: identical row → 0 rows written. (App code → goes out with the preview ship.) CoS's DB triggers left in place.
+- Worker `cron/worker.ts` — DEPLOYED to production as version 36d7680f (9:31 PM ET): /api/cron/quotes + scrape-stocks-tradingview + scrape-etf-tradingview only every 30 min Mon-Fri 09:30-16:15 New York, plus one 08:00 and one 17:00 run; nothing on weekends. Crypto scraper every 30 min (24/7). Commodity quotes every 30 min weekdays only. News/ipo/econ/earnings unchanged.
+- Fetched_at bug fixed (the politician_trades skip-unchanged trigger freezes fetched_at): worker watchdog, /api/health congress block and the loader's generatedAt now use the newer of MAX(fetched_at) and cron_health `congress_cloud_official.last_success`. Worker part is live; health/loader parts ship with the preview.
+- Health: quotes freshness uses a 66h gate outside market hours (preview). UNTIL the preview ships, production /api/health will show quotes "degraded/down" overnight and on weekends — expected, not an outage.
+
+### nexus-ai-suite commit 7a62e0d (report only, nothing touched)
+- That commit (CoS's "politician_trades skip-unchanged trigger") also swept in 3 unrelated files, none from the marketpicks bot:
+  - NEEDS_ISRAEL.txt — hiddencameras.tv credentials re-check notes (dated 2026-10-10).
+  - scripts/site-blogs.sh — ihatecollege/spanishtvshows daily-blog script now exits non-zero on failed pull/push.
+  - apps/createstuff-marketing/index.html — app.js cache-buster bump only.
+  They look like other bots' uncommitted work captured by a `commit -a`. Owners should confirm; not reverted.
+
+### Verification (9:49 PM ET)
+- Worker 36d7680f: the 9:45 PM ET tick ran news/ipo/econ/earnings (01:45Z) and did NOT post /api/cron/quotes (last quotes run still 9:00 PM ET, before the deploy). Next quote run: Thu 08:00 ET, then every 30 min from 09:30 ET.
+- D1 rows_written (GraphQL analytics, per UTC hour): 1.8k–6.2k/h through the day; the 01:00Z hour (9–10 PM ET, mostly after the deploy) = 301 so far.
+- Preview 2a78ee76 /api/health: congress cloud_ingest.last_fetch now reads cron_health (01:18Z, 0.5h) instead of the frozen fetched_at (was 8.3h on production).
+- Nothing half-finished: no builds or wrangler jobs running.
+
+## SHIPPED 2026-10-14 ~9:52 PM ET — trader bot + quote skip-unchanged + health/freshness fixes (Iz: "Goooo")
+- Pages production deployment **99118312** (https://99118312.marketpicks-ai.pages.dev), source commit 40c1fe5 on local branch wip/local-2026-10-14 (nothing pushed). Same build output as preview 2a78ee76. (The deploy log printed a stale "74c26c55" line; `wrangler pages deployment list` confirms 99118312.)
+- Rollback target: previous production 280dc36b (`wrangler pages deployment list --project-name=marketpicks-ai`, then roll back in the dashboard or redeploy that build).
+- Worker unchanged since 36d7680f (deployed 9:31 PM ET).
+- Verified live: 11 key URLs 200 (/, /congress/today, /congress/nancy-pelosi, /congress/ticker/NVDA, /stock/NVDA, /trending, /politician-tracker, both sitemaps, feed, robots). /api/health: status operational, ok true; all sources ok; congress ok (cloud last_fetch from cron_health, 0.6h); bot providers groq + workers_ai ok. Quotes use the 66h off-hours gate (it will read ok overnight even though quotes stop until 8:00 AM ET).
+- Live chat: NVDA, NVDA vs AMD, AAPL earnings and a bad ticker (ZZZQX) all answer in the new trader style with real numbers and a call (box: /workspace/bot_live_ship.json). Pixel 7 screenshot: box /workspace/marketpicks-bot-pixel7-live.png.
+- Mobile Lighthouse, live home: 75 / 86 / 88 (median 86; first run had TBT 620ms noise). No regression vs ~85. CLS 0.141 on all three runs (not compared against the earlier runs; worth a look later).

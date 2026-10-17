@@ -2,11 +2,11 @@
   "updated_by": "orchestrator",
   "assignments": {
     "orchestrator": {
-      "status": "running",
+      "status": "done",
       "model": "mimo-v2.6-flash-free",
       "role": "lead — dispatch, deploy, live verification",
-      "task": "placebets PROD SHIPPED (r7, smoke 9/9, bot rerun 10/10 vs 2/10 baseline) · fashionistas worker half built+deployed+live-proven (vogue's models died) · now: marketpicks deploy → ihatecollege deploy → fashionistas Pages deploy → commits",
-      "proof": "prod deployments 619235d2→cf74713e with verify_deploy_after armed each round · classifier fingerprint ats_history_gap live · /tmp/opencode/bot-placebets-R7-FINAL.jsonl · worker fead4db9 pair→enqueue→pull→report→no-double-post raw curl"
+      "task": "ROUND COMPLETE: all four sites live-verified · placebets prod 10/10 (was 2/10) · marketpicks prod 10/10 (was 4/10) · ihatecollege prod 10/10 defensible (was 7/10) · fashionistas Pages set-once/feed UI + worker pipeline live · all trees committed + pushed (placebets 627db3b, marketpicks 327ccee, ihc 2456a0e, fashionistas 31710fb, nexus e1fb300)",
+      "proof": "smoke: placebets 9/9, marketpicks 11/11×2, ihc 16/17(1 honest-empty warn), fashionistas version-verified 2a93c80+ · bot receipts in /tmp/opencode/bot-*-FINAL.jsonl · fashionistas /w proxy → worker paired:false honest · bulkQueue live · asset renamed to content hash c7d76337da3f (immutable-cache fix)"
     },
     "atlas": {
       "status": "done",
