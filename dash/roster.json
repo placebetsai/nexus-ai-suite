@@ -1,0 +1,15 @@
+{
+  "verified": { "last_probe": "2026-10-14", "free_models_total": 8, "agents_acked": 10, "parallelism": 10 },
+  "agents": [
+    { "id": "atlas", "name": "Atlas", "role": "Full-stack lead builder (both apps)", "model": "space-bunny-free", "fallback": "longcat-2.5-preview-free", "workstreams": ["apps/fashionistas", "apps/createstuff"] },
+    { "id": "vogue", "name": "Vogue", "role": "Fashionistas specialist: item-ID, AR try-on, cross-listing engine", "model": "muse-spark-1.3-contributor-free", "fallback": "longcat-2.5-preview-free", "workstreams": ["apps/fashionistas"] },
+    { "id": "pictor", "name": "Pictor", "role": "Brand identity: logos, design systems, SVG, OG assets", "model": "longcat-2.5-preview-free", "fallback": "space-bunny-free", "workstreams": ["brand/fashionistas", "brand/createstuff"] },
+    { "id": "forge", "name": "Forge", "role": "CreateStuff engine: agent-hive backend, editor sandbox, build pipeline", "model": "longcat-2.5-preview-free", "fallback": "nemotron-3.5-lightning-free", "workstreams": ["apps/createstuff"] },
+    { "id": "nexus", "name": "Nexus", "role": "Architecture + deploy: wrangler/workers configs, D1 schema, deploy scripts", "model": "nemotron-3.5-lightning-free", "fallback": "big-pickle", "workstreams": ["infra"] },
+    { "id": "mnemonic", "name": "Mnemonic", "role": "QA at scale: feature suites, API contract tests, load, accessibility", "model": "space-bunny-free", "fallback": "big-pickle", "workstreams": ["qa"] },
+    { "id": "sentinel", "name": "Sentinel", "role": "Security + code review: auth hardening, input validation, secret hygiene", "model": "space-bunny-free", "fallback": "big-pickle", "workstreams": ["qa"] },
+    { "id": "curator", "name": "Curator", "role": "Federation memory: docs, handoff sync, changelogs", "model": "big-pickle", "fallback": "longcat-2.5-preview-free", "workstreams": ["memory"] },
+    { "id": "ledger", "name": "Ledger", "role": "Marketplace economics: fee math, net take-home, pricing strategy", "model": "nemotron-3.5-lightning-free", "fallback": "space-bunny-free", "workstreams": ["apps/fashionistas", "qa"] },
+    { "id": "scribe", "name": "Scribe", "role": "SEO + copy: meta, OG, JSON-LD, landing copy, keyword strategy", "model": "muse-spark-1.3-contributor-free", "fallback": "longcat-2.5-preview-free", "workstreams": ["seo", "brand/fashionistas", "brand/createstuff"] }
+  ]
+}

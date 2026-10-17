@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NEXUS FEDERATION — LIVE DASHBOARD</title>
+<style>
+  :root { --ok:#12c46b; --run:#ffb020; --blk:#ff4d4d; --mut:#8b93a7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0b0e14; color:#e8ecf5; font:14px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace; padding:18px; }
+  h1 { font-size:17px; letter-spacing:.14em; margin:0 0 4px; }
+  .ts { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .ts b { color:#ffd166; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:12px; }
+  .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+  .col { background:#121722; border:1px solid #1f2636; border-radius:10px; padding:12px; }
+  .col h2 { font-size:13px; letter-spacing:.1em; margin:0 0 10px; padding-bottom:8px; border-bottom:1px solid #1f2636; }
+  .done h2 { color:var(--ok); } .run h2 { color:var(--run); } .blk h2 { color:var(--blk); }
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:7px 8px; border-radius:6px; margin-bottom:6px; background:#0d111b; border-left:3px solid #2a3247; font-size:13px; }
+  .done li { border-left-color:var(--ok); }
+  .run li { border-left-color:var(--run); }
+  .blk li { border-left-color:var(--blk); }
+  li .v { color:var(--mut); font-size:11.5px; display:block; margin-top:2px; }
+  .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:99px; background:#1c2333; color:#9fb0d0; margin-left:6px; vertical-align:1px; }
+  .money { color:#ffd166; }
+  .foot { margin-top:14px; color:var(--mut); font-size:11.5px; border-top:1px solid #1f2636; padding-top:10px; }
+  .pulse { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--run); animation:p 1s infinite; vertical-align:0; margin-right:6px; }
+  @keyframes p { 50% { opacity:.25; } }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { text-align:left; color:var(--mut); font-weight:400; font-size:10.5px; letter-spacing:.08em; padding:3px 8px 6px; border-bottom:1px solid #1f2636; }
+  td { padding:6px 8px; border-bottom:1px solid #161c2a; vertical-align:top; }
+  td .v { color:var(--mut); font-size:11px; }
+  .st { display:inline-block; font-size:10px; padding:1px 7px; border-radius:99px; }
+  .st-done { background:#0d3323; color:#3ddb8a; } .st-running { background:#3a2c0d; color:#ffc24d; }
+  .st-failed { background:#3a1414; color:#ff7a7a; } .st-idle { background:#1c2333; color:#8b93a7; }
+</style>
+</head>
+<body>
+<h1>NEXUS FEDERATION — LIVE DASHBOARD</h1>
+<div class="ts">updated <b>{{TS}}</b> · regenerates every 3s from live process/state sources · agents + sidecars below are read from the machine, not typed in</div>
+<div class="grid">
+
+  <div class="col done">
+    <h2>✅ DONE — SHIPPED + VERIFIED LIVE</h2>
+    <ul>
+      <li><span class="money">fashionistas cross-listing: "set it up once, then it auto-posts" — SERVER HALF LIVE</span><span class="tag">worker fead4db9</span><span class="v">/api/jobs /api/sessions /api/devices /api/sales + D1 schema deployed on fashionistas-api · full loop proven live with raw curl: heartbeat→sessions/list→pair→enqueue(depop)→extension pull {paired:true, job}→report posted→re-enqueue=0 (no double-post) · src/jobs.js 13/13 tests · identity = X-Install-Id pairing (cookies never cross origins; unpaired gets honest empty + backoff)</span></li>
+      <li><span class="money">fashionistas cross-listing: UI + EXTENSION HALF DONE</span><span class="tag">atlas · 19/19 tests</span><span class="v">per-item confirm/copy-post buttons REMOVED · Shops screen: master auto-post switch, pair-this-browser 6-char code, devices list, one "Post all existing items" feed button · every new save auto-enqueues to connected shops · extension carries X-Install-Id, treats unpaired as backoff not error · CAPTCHA/needs-review = only remaining human moment (honest)</span></li>
+      <li><b>try-on menu FIXED</b> — "Try it on" removed from the global menu (now just Shop | Sell); appears only INSIDE an item (both buyer and seller item bars get a compact Try-it-on button)</li>
+      <li><b>ihatecollege build READY</b> <span class="tag">1.82s local</span> — next-on-pages zombie (2.5h npx network hang) killed, rebuilt from local binary: worker bundle + 1084 static assets at .vercel/output/static — queued behind placebets deploy</li>
+      <li>image sitemaps LIVE — wuwonline + israeljoffe.com/.org <span class="tag">409 · 219 · 161 imgs</span> · MNW file ready (414 imgs), needs owner upload</li>
+      <li><b>fashionistas.ai — seller AND buyer user stories proven end-to-end</b><span class="tag">hive E2E</span><span class="v">register → photo upload 201 → listing CRUD → public market → AI listing gen · buyer try-on 27s real (fashn-vton-1.5, $0)</span></li>
+      <li><span class="money">hiddencameras.tv — ASIN truth-pass LIVE</span><span class="tag">413/413</span><span class="v">47 dead/wrong ASINs replaced · 3 deploys</span></li>
+      <li><b>#127 CLOSED — AdSense loader root cause</b><span class="tag">_document.js</span><span class="v">afterInteractive never emitted in static export → plain script tag; loader=1 live on every page</span></li>
+      <li><span class="money">marketpicks.ai — #124 CLOSED</span><span class="tag">1505b3c</span><span class="v">gate passed, smoke 11/11, live = real slot only</span></li>
+      <li>spanishtvshows.com + ihatecollege.com shop fixes LIVE <span class="tag">d0afe7a · 55aff32</span> — zero dead-store links</li>
+      <li>federation sweep: 8/8 sites CLEAN (zero fabricated slot IDs)</li>
+      <li><span class="money">religiousjews.com — truth-pass COMPLETE</span><span class="tag">d842de8</span><span class="v">27/27 Amazon links verified · raw-bracket render bug fixed · deployed + 12/12 checks</span></li>
+      <li>placebets headline patch verified both viewports <span class="tag">patches/placebets-hero-headline.patch</span> (ships after bot round)</li>
+    </ul>
+  </div>
+
+  <div class="col run">
+    <h2>🔄 RUNNING RIGHT NOW</h2>
+    <ul>
+      <li><b>placebets bot-fix PROD deploy — running by hand on a hot uplink window</b><span class="pulse"></span><span class="v">uplink measured 360–622KB/s UP (down was never the problem — the killed watcher v2 only sampled downspeed, 17–41KB/s, which is why it sat 66min without firing) · chain: up-pb.mjs asset upload → deploy-safe.sh DIRECT → rc=124 gate (verify_deploy_after) → preview+prod smoke · then 10-question rerun vs baseline 2/10</span></li>
+      <li><b>deploy-gate integrity fix in force</b> — rc=124 timeout-kill no longer counts as success: a deployment must postdate the run start (Deployments API check per phase) or the gate dies; this is what let three earlier "successful" deploys silently test yesterday's code</li>
+      <li><b>5 deploy root causes killed tonight:</b> conflict markers · wrong CF account (placebets=2765cb+CS_API_TOKEN) · stale wrangler account cache · upload throttle (size-scaled 120–300s timeouts, one-file uploader) · rc=124-stale-deploy lie</li>
+      <li>fashionistas #133 CLOSED <span class="tag">51abdfc</span> — token echo fixed live · UX click-through shipped <span class="tag">4d82b4ff</span></li>
+      <li>marketpicks deploy + ihatecollege deploy queued behind placebets (builds ready, sequenced to avoid link contention)</li>
+    </ul>
+  </div>
+
+  <div class="col blk">
+    <h2>⛔ BLOCKED / OWNER ACTIONS</h2>
+    <ul>
+      <li><b>you:</b> Amazon Associates signup — every affiliate link across the federation earns $0 until the account exists</li>
+      <li><b>you:</b> AdSense account check — real unit IDs beyond 6600722153 unlock the other slots</li>
+      <li><b>fashionistas launch gates (#24–#26):</b> Stripe keys · eBay/Etsy/Google env vars · GPU provider — until then API marketplaces stay honestly "not connected" (the extension shops don't need any of these)</li>
+      <li>createstuff direction unanswered: (1) wire generate route to free bot pool + ship demo, or (2) treat as AdSense property</li>
+      <li><b>#129 both waitlist/contact forms dead</b> — formspree placeholder IDs; Formspree signup needs your email confirm</li>
+      <li>mondaynightwrestling image sitemap — one upload away (platform-hosted, file ready)</li>
+      <li>GSC affiliate analysis — needs the CSV drop in .secrets/</li>
+    </ul>
+  </div>
+
+</div>
+<div class="grid2">
+  <div class="col">
+    <h2>🤖 AGENTS — ASSIGNMENTS (live from dash/assignments.json)</h2>
+    {{AGENTS}}
+  </div>
+  <div class="col">
+    <h2>🔌 SIDECARS — LIVE PROCESSES + ATTACHMENTS (read from the machine)</h2>
+    {{SIDECARS}}
+  </div>
+</div>
+<div class="foot">
+  Rules in force: nothing ships without smoke · no fabricated claims — every cell above comes from a file, a test, or a live check · federation edits at source, deploy via the repo's own gate.
+</div>
+<script>
+  setTimeout(function(){ location.replace(location.pathname + '?t=' + Date.now()); }, 4000);
+</script>
+</body>
+</html>

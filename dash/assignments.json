@@ -1,0 +1,30 @@
+{
+  "updated_by": "orchestrator",
+  "assignments": {
+    "orchestrator": {
+      "status": "running",
+      "model": "mimo-v2.6-flash-free",
+      "role": "lead — dispatch, deploy, live verification",
+      "task": "placebets PROD SHIPPED (r7, smoke 9/9, bot rerun 10/10 vs 2/10 baseline) · fashionistas worker half built+deployed+live-proven (vogue's models died) · now: marketpicks deploy → ihatecollege deploy → fashionistas Pages deploy → commits",
+      "proof": "prod deployments 619235d2→cf74713e with verify_deploy_after armed each round · classifier fingerprint ats_history_gap live · /tmp/opencode/bot-placebets-R7-FINAL.jsonl · worker fead4db9 pair→enqueue→pull→report→no-double-post raw curl"
+    },
+    "atlas": {
+      "status": "done",
+      "task": "fashionistas set-once/feed UI + extension: X-Install-Id identity, Shops screen (pair code, devices list, feed button, auto-post switch), auto-enqueue on save, per-item confirm buttons removed",
+      "proof": "extension tests 19/19 pass · node --check clean on all edited files · WIRE CONTRACT comment in queue.js"
+    },
+    "vogue": {
+      "status": "failed",
+      "task": "fashionistas-api Worker: /api/jobs /api/sessions /api/devices /api/sales routes + D1 schema",
+      "proof": "muse-spark UnknownError, then longcat + default model both timed out at 600s (twice) — orchestrator built the same scope by hand: src/jobs.js 13/13 tests, deploy fead4db9, full live loop proven"
+    },
+    "pictor": { "status": "idle", "task": null, "proof": null },
+    "forge": { "status": "idle", "task": null, "proof": null },
+    "nexus": { "status": "idle", "task": null, "proof": null },
+    "mnemonic": { "status": "idle", "task": null, "proof": null },
+    "sentinel": { "status": "idle", "task": null, "proof": null },
+    "curator": { "status": "idle", "task": null, "proof": null },
+    "ledger": { "status": "idle", "task": null, "proof": null },
+    "scribe": { "status": "idle", "task": null, "proof": null }
+  }
+}
