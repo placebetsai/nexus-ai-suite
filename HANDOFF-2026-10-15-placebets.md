@@ -1,4 +1,8 @@
 # Handoff: placebets.ai, current as of 8:40 AM ET, Thu Oct 15 2026
+
+> **SUPERSEDED 2026-10-18.** This file is the Oct 15 record. The current placebets.ai handoff is
+> **`Placebetsai-src/HANDOFF.md`** — read "SESSION 2026-10-18 (c) — VIGIL" first, then OPEN ITEMS
+> (which now carries the GA4 per-site ID table for all 16 sites).
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
 
 > **Newer: see HANDOFF-2026-10-21-placebets.md** (Oct 21: rebuild live as 6e2eefbe; edge fix + Catalyst v2 committed and preview-verified; laptop sync tarball).

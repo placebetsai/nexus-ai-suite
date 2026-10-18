@@ -1,5 +1,14 @@
 # 🐝 NEXUS-AI-SUITE — HANDOFF FOR AGENTS
 
+> **placebets.ai 2026-10-18 — VIGIL is live.** The market terminal the owner asked for (a Bloomberg-shaped
+> desk for gambling, with an event file per game) ships at **placebets.ai/terminal**, homepage front door on
+> `/`, and the site's GA4 stream **`G-64KRH6T0X9` is transmitting** (`g/collect?v=2&tid=G-64KRH6T0X9`,
+> consent denied by default in EEA/UK/CH, Google signals + ad personalisation off). Session log, the
+> production-only HTML-entity bug, the two screenshot traps that cost time here, and the deploy/rollback IDs:
+> **`Placebetsai-src/HANDOFF.md` → "SESSION 2026-10-18 (c) — VIGIL"**. GA4 status across all **16** sites:
+> **`HANDOFF-scooter-perf-ga4-2026-10-15.md` §B**. NFL W6→W7 watcher re-armed:
+> **`NFL-SEASON-2026/OPENCODE_HANDOFF_20261018.md` §5**.
+
 > **SEO 2026-10-15:** `HANDOFF-seo-2026-10-15.md` covers the Israel Joffe image reclaim (israeljoffe.com/israel-joffe-portrait/, israeljoffe.org/israel-joffe-photo-2020/), the 4-site SEO plan (scooter.exchange, wuwonline.com, marketpicks.ai, fashionistas.ai), and the 10-15 production deploys with rollback IDs. It also explains why the uncommitted scooter.exchange Contact page is what's live.
 
 > **Also:** `HANDOFF-2026-10-07.md` is the latest *daily* handoff (accounts, tokens, deploy recipe, open blockers) — but it predates all of §22–§23.11, so **§23.11 below is the newest writing in this repo.** The older `HANDOFF-2026-*.md` files are history.
