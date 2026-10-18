@@ -55,6 +55,12 @@ Repo `placebetsai/scooters-exchange`. Branch `fix/api-504-perf-2026-10-15`; API 
 
 ## B. GA4: loaders added, all no-ops until a Measurement ID is set
 
+**Status 2026-10-18: 1 of 16 live.** placebets.ai is shipped and transmitting. There are **16** sites, not the
+7 listed below — the owner added spanishtvshows.com, wuwonline.com/.org, religiousjews.com, diamonds.forsale,
+hiddencameras.tv and mondaynightwrestling.com, and all 16 properties/streams now exist with IDs (the full
+ID-per-site table is in `Placebetsai-src/HANDOFF.md` → OPEN ITEMS → GA4). Every site deploys through its own
+sanctioned gate — never raw `wrangler pages deploy --branch=main`.
+
 Loader (same everywhere): async and loads after window load + idle. It skips visitors with Global Privacy Control or DNT. Consent Mode sets
 `analytics_storage` to denied by default in EEA/UK/CH only. Google signals and ad personalisation are off, and it **never touches AdSense consent**.
 With an empty ID nothing renders (Next sites, Pages middleware) or the 0.9 KB inline stub returns immediately (static sites).
@@ -63,7 +69,7 @@ Tested in headless Chromium with a fake ID (G-TEST1234): gtag.js loads and a `g/
 | Site | Code (repo @ branch → commit) | Where the ID goes |
 |---|---|---|
 | fashionistas.ai | fashionistas-ai @ `main` 6b9a615 and `rebuild` 611d6db: `functions/_lib/ga4.js` + `functions/_middleware.js` (HTMLRewriter appends to `<head>`) | **Pages env var `GA_MEASUREMENT_ID`** on project `fashionistas-ai` (Fashionistas1979 account), Production (and Preview if wanted), then redeploy. No code change. Verified with `wrangler pages dev`: injected with the var, byte-identical HTML without it. |
-| placebets.ai | Placebetsai @ `main` a3840b4: `components/GoogleAnalytics.js`, used in `app/layout.js` | Paste into `""` in `components/GoogleAnalytics.js`, or `NEXT_PUBLIC_GA_MEASUREMENT_ID` at build. Merge into the branch you deploy from (active work is on feat/fix9-grounding). |
+| placebets.ai | Placebetsai @ `main` `86eaddc`: `components/GoogleAnalytics.js`, used in `app/layout.js` | **DONE 2026-10-18.** `G-64KRH6T0X9` (property 559449573) is the **built-in default** in `GA_MEASUREMENT_ID` so every deploy path ships it, including the Pages build where no `NEXT_PUBLIC_` env is set; the env var still wins. Live-verified after `bash scripts/deploy-safe.sh`: `google-analytics.com/g/collect?v=2&tid=G-64KRH6T0X9`, `analytics_storage` denied by default in EEA/UK/CH, Google signals and ad personalisation off. |
 | marketpicks.ai | marketpicks-ai @ `live-source` 01823a4: `components/GoogleAnalytics.tsx`, used in `app/layout.tsx` | Same, `NEXT_PUBLIC_GA_MEASUREMENT_ID` or paste. (`main` on GitHub is a 6-file stub; `live-source` is the real app.) |
 | ihatecollege.com | Ihatecollege @ `main` 351f718: `components/GoogleAnalytics.js`, used in `pages/_app.js` | Same. `next build` passes, and the ID is inlined in the `_app` chunk. |
 | scooter.exchange | scooters-exchange @ `fix/api-504-perf-2026-10-15` f9f0446: `apps/web/app/components/Analytics.tsx` | `NEXT_PUBLIC_GA_MEASUREMENT_ID` (old `NEXT_PUBLIC_GA_ID` also accepted) or paste. Static export builds and was browser-tested. Ships with the next web deploy (see the A "Not done" note). |
