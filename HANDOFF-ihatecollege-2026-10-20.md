@@ -8,7 +8,7 @@ Supersedes `HANDOFF-ihatecollege-2026-10-14.md`. That file still says
 ## TL;DR
 
 The ihatecollege stack runs on the **Free** Workers/Pages/D1/KV tiers. No
-Workers Paid, no Supabase, no API keys for jobs or photos. (The account does
+Workers Paid, no Supabase, no API keys for jobs, photos, or the chatbot. (The account does
 carry an unrelated R2 Paid subscription with one bucket,
 `scooters-exchange-photos`; this site does not use R2.)
 
@@ -16,21 +16,21 @@ carry an unrelated R2 Paid subscription with one bucket,
 - News is a KV aggregate refreshed by a `*/15` cron, not per-request RSS.
 - Job board, ratings, leads, cron audit all live in D1.
 - Jobs are ingested from 3 keyless public APIs; photos come from Wikimedia
-  Commons (also keyless).
+  Commons (also keyless). The chatbot runs on the Workers AI `AI` binding.
 - Smoke gate: **19/19 passed, 0 failed, 0 warnings** on preview + production.
 
-## Live production (verified 2026-10-20 ~09:50Z)
+## Live production (verified 2026-10-20 ~10:10Z)
 
 | Item | Value |
 |---|---|
 | Site | https://ihatecollege.com 200 |
-| Production deployment | `669be96f-…` (2026-10-20T09:47:55Z) |
-| Previous production (rollback target) | `ff246ae1-…` |
+| Production deployment | `5a321428-…` (2026-10-20T10:07:01Z) |
+| Previous production (rollback target) | `669be96f-…` |
 | `/api/jobs/list` | `configured:true`, `source:"d1"`, **40 jobs** |
 | `/api/civil-service-data` | 7 Wikimedia photos, 0 live matches, X-Data-Status: ok |
-| Cron worker | `ihatecollege-cron` deployment `190448ef` (08:59:58Z), last tick 09:45 ok |
-| Cron history | **82/82 runs ok** |
-| D1 | `job_posts` 40 · `leads` 7 · `school_ratings` 0 · `cron_runs` 82 |
+| Cron worker | `ihatecollege-cron` deployment `190448ef` (08:59:58Z), last tick 10:00 ok |
+| Cron history | **83/83 runs ok** |
+| D1 | `job_posts` 40 · `leads` 7 · `school_ratings` 0 · `cron_runs` 83 |
 
 Job mix: Business 23, Tech 15, Healthcare 2 (sources: Himalayas 19, Jobicy 14, Remotive 7).
 The board only contains roles that pass the no-degree gate below.
@@ -99,29 +99,40 @@ guarantee.
 The old fake "N open positions" line is now an honest live-match line with the
 official apply links always present.
 
-**Chatbot (Professor Debt).** The bot was not "unfriendly" — it was falling
-back to a canned data line on most requests. Two provider bugs: the Groq backup
-`llama-3.3-70b-versatile` is 404 in this org, and Groq Free is **8,000
-tokens/min per model**, so the primary 429'd and every reply fell through to the
-template. Fixes:
+**Chatbot (Professor Debt) — now keyless.** The old bot fell back to a canned
+data line because Groq's backup model `llama-3.3-70b-versatile` was 404 in this
+org and Groq Free is **8,000 tokens/min per model**, so the primary 429'd. It
+now runs on Workers AI through the `AI` binding:
 
-- Rotate `openai/gpt-oss-120b` → `qwen/qwen3.8-27b` → `openai/gpt-oss-20b` →
-  OpenRouter `nvidia/nemotron-3.5-lightning:free`; cap output at 500–700 tokens.
-- Do not inject six web sources into school/major answers; Scorecard + field
-  data is enough. Web search only for news or when local data has nothing.
-- Resolve follow-ups against the last 3 user turns, so NYU survives
-  "what about the debt?" → "and nursing?".
-- Keep institution-wide and national-major figures separate; never call the
-  national major figure "NYU nursing", and never invent a cause for "why".
-- Client sends prior turns only (no duplicated question, no `__SOURCES__` /
-  `__FOLLOWUPS__` control strings), adds a New chat button, and ignores stale
-  responses after reset.
-- Fallback is question-aware (debt vs earnings vs cost) and still answers from
-  published data if every provider is down.
+- `@cf/openai/gpt-oss-120b` primary; `@cf/meta/llama-3.3-70b-instruct-fp8-fast`
+  backup. No Groq/OpenRouter keys and no external TPM ceiling.
+- `wrangler.toml` is now the Pages source of truth: `pages_build_output_dir`,
+  the `AI` binding, `NEWS_CACHE` KV, and `DB` D1. Production and preview env
+  now contain only `SITE_URL`.
+- Answers are shorter and lead with a verdict ("yes / only if / no"), not
+  "it depends". Follow-ups resolve across the last 3 user turns; institution-
+  wide and national-major figures stay labeled and separate; "why" says the
+  data does not establish a cause.
+- "What majors pay best at X?" is deterministic. The public extract has no
+  school-by-major earnings, so the bot says that, then gives the top national
+  fields (Electrical Engineering $97,841; Mechanical Engineering $90,072;
+  Computer Science $88,916) plus X's all-major median.
+- Requests to label a university antisemitic/racist are refused. The bot says
+  it has no incident data, offers FIRE speech-climate grades, and points to
+  ADL / Hillel / Department of Education. Plain definitions are answered
+  normally.
+- UI: prior turns only (no duplicated question or control messages), a New
+  chat button, and stale-response protection after reset.
 
-Verified live: greeting, NYU → debt → nursing → why, UCLA topic shift,
-major-only, and "jobs without a degree". Replies now ask one useful follow-up
-instead of reciting every field.
+Verified live: greeting; NYU → debt → nursing → why; majors-at-NYU; UCLA topic
+shift; antisemitism label refusal; definition; jobs without a degree.
+Smoke gate remains 19/19.
+
+**Key cleanup.** While migrating, `wrangler pages download config` printed the
+old `GROQ_API_KEY` / `OPENROUTER_API_KEY` values to a local terminal. The
+generated file was overwritten and never committed, and both secrets were
+removed from Pages. Revoke those two keys at Groq/OpenRouter if they still exist
+in those accounts.
 
 ## Cloudflare resources
 
@@ -152,7 +163,7 @@ Migrations: `migrations/0003_cron_runs.sql`, `0004_job_posts.sql`,
 ## Repo / deploy state
 
 ```
-local main        b8752ea  (5 commits ahead of origin)
+local main        5803973  (6 commits ahead of origin)
 origin/main       3271efc  (pushed 2026-10-19)
 backup-before-rewrite        4307dce
 pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
@@ -160,8 +171,9 @@ pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
 
 Local commits not pushed: `70009ae` (D1 job board/ratings, auth removal),
 `a0d08a8` (docs), `62228da` (keyless feeds + Wikimedia), `4e94009` (no-degree
-gate + keyword fix), `b8752ea` (conversational chatbot). **Do not push without
-approval.** GitHub is not the deploy path.
+gate + keyword fix), `b8752ea` (conversational chatbot), `5803973` (keyless
+Workers AI chatbot). **Do not push without approval.** GitHub is not the deploy
+path.
 
 `.github/workflows/deploy-cf-pages.yml` is `disabled_manually`. Pushing cannot
 trigger a deploy today. The parked branch would make that explicit if a token
@@ -207,7 +219,7 @@ The cron worker also accepts `?source=remotive|jobicy|himalayas|all`.
 
 ## Known gaps / next steps
 
-1. **5 commits unpushed.** Push only with approval.
+1. **6 commits unpushed.** Push only with approval.
 2. **No keyless federal feed found yet.** Tested USAJOBS RSS (404) and JSON
    (404 without a key), governmentjobs.com (no job data in HTML), and three
    guessed apprenticeship.gov endpoints (404). That is not proof none exists;
@@ -228,10 +240,10 @@ The cron worker also accepts `?source=remotive|jobicy|himalayas|all`.
 8. **Edge caching** on `/api/civil-service-data` is one hour. If a photo query
    changes, cache-bust with `?cb=<random>` or wait for the TTL.
 
-9. **Chatbot provider ceiling.** Groq Free is 8k tokens/min per model; the bot
-   rotates three models and has an OpenRouter last resort. Under heavy
-   concurrent use it can still fall back to a data-only answer. Workers AI
-   (keyless binding) is the next step if that becomes common.
+9. **Chatbot free allocation.** Workers AI has a free daily neuron allocation
+   (10k/day on Free). If it is exhausted, the bot falls back to the deterministic
+   data-only answer. There is no keyed fallback by design; watch AI usage in the
+   Cloudflare dashboard and only add capacity if it becomes a regular limit.
 
 ## File map
 
