@@ -7,8 +7,10 @@ Supersedes `HANDOFF-ihatecollege-2026-10-14.md`. That file still says
 
 ## TL;DR
 
-Everything runs on **Cloudflare Free**. No Workers Paid, no Supabase, no
-API keys for jobs or photos.
+The ihatecollege stack runs on the **Free** Workers/Pages/D1/KV tiers. No
+Workers Paid, no Supabase, no API keys for jobs or photos. (The account does
+carry an unrelated R2 Paid subscription with one bucket,
+`scooters-exchange-photos`; this site does not use R2.)
 
 - College pages are static (6,163 URLs). Only `/api/*` reaches a Function.
 - News is a KV aggregate refreshed by a `*/15` cron, not per-request RSS.
@@ -17,21 +19,21 @@ API keys for jobs or photos.
   Commons (also keyless).
 - Smoke gate: **19/19 passed, 0 failed, 0 warnings** on preview + production.
 
-## Live production (verified 2026-10-20 ~08:45Z)
+## Live production (verified 2026-10-20 ~09:05Z)
 
 | Item | Value |
 |---|---|
 | Site | https://ihatecollege.com 200 |
-| Production deployment | `4090cd16-…` (2026-10-20T08:33:47Z) |
-| Previous production (rollback target) | `1812e973-…` |
-| `/api/jobs/list` | `configured:true`, `source:"d1"`, **61 jobs** |
-| `/api/civil-service-data` | 7 Wikimedia photos, 1 live match, X-Data-Status: ok |
-| Cron worker | `ihatecollege-cron` v`3db3f73e`, last tick 08:45 ok |
-| Cron history | **75/75 runs ok** |
-| D1 | `job_posts` 61 · `leads` 7 · `school_ratings` 0 · `cron_runs` 75 |
+| Production deployment | `06886983-…` (2026-10-20T09:02:07Z) |
+| Previous production (rollback target) | `4090cd16-…` |
+| `/api/jobs/list` | `configured:true`, `source:"d1"`, **30 jobs** |
+| `/api/civil-service-data` | 7 Wikimedia photos, 0 live matches, X-Data-Status: ok |
+| Cron worker | `ihatecollege-cron` deployment `190448ef` (08:59:58Z), last tick 09:00 ok |
+| Cron history | **79/79 runs ok** |
+| D1 | `job_posts` 30 · `leads` 7 · `school_ratings` 0 · `cron_runs` 79 |
 
-Job mix: Business 29, Tech 26, Healthcare 5, Government 1
-(sources: Himalayas 26, Jobicy 25, Remotive 10).
+Job mix: Business 16, Tech 14 (sources: Himalayas 9, Jobicy 14, Remotive 7).
+The board only contains roles that pass the no-degree gate below.
 
 ## What changed since 2026-10-14
 
@@ -75,6 +77,21 @@ rows expire after 30 days and are refreshed on every poll. A US/remote
 location filter drops single-country non-US listings. Human submissions have
 `source = NULL` and are never touched by ingestion.
 
+**No-degree gate.** The board promises roles that do not require a degree, and
+the raw feeds do not honour that. Ingestion now drops a listing when:
+
+- the title is senior/managerial (`director`, `VP`, `chief`, `head of`,
+  `principal`, `manager`, `senior`, `architect`, `tech lead`), or
+- the text requires a credential (`NP/PA`, `RN`, physician assistant,
+  attorney, CPA, architect, psychologist), or
+- the text requires a clearance (`TS/SCI`, top secret, public trust, MBI), or
+- the text requires a degree (`bachelor`/`master`/`PhD`/`4-year degree`)
+  unless the same sentence says "or equivalent experience".
+
+That removed Nurse Practitioner, Senior Systems Engineer (TS/SCI), and the
+director/manager rows. The live board went from 61 to 30 listings. It is a
+conservative editorial gate, not a legal guarantee.
+
 **Civil-service page.** One request per page load (was 14), returning
 `{jobs, photos}`. Jobs are D1 keyword matches; photos are Wikimedia Commons
 (lookups run in parallel, then the whole response is edge-cached for an hour).
@@ -110,15 +127,16 @@ Migrations: `migrations/0003_cron_runs.sql`, `0004_job_posts.sql`,
 ## Repo / deploy state
 
 ```
-local main        62228da  (3 commits ahead of origin)
+local main        4e94009  (4 commits ahead of origin)
 origin/main       3271efc  (pushed 2026-10-19)
 backup-before-rewrite        4307dce
 pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
 ```
 
 Local commits not pushed: `70009ae` (D1 job board/ratings, auth removal),
-`a0d08a8` (docs), `62228da` (keyless feeds + Wikimedia). **Do not push without
-approval.** GitHub is not the deploy path.
+`a0d08a8` (docs), `62228da` (keyless feeds + Wikimedia), `4e94009` (no-degree
+gate + keyword fix). **Do not push without approval.** GitHub is not the
+deploy path.
 
 `.github/workflows/deploy-cf-pages.yml` is `disabled_manually`. Pushing cannot
 trigger a deploy today. The parked branch would make that explicit if a token
@@ -164,12 +182,13 @@ The cron worker also accepts `?source=remotive|jobicy|himalayas|all`.
 
 ## Known gaps / next steps
 
-1. **3 commits unpushed.** Push only with approval.
-2. **No keyless federal/civil-service feed exists.** USAJOBS killed its RSS
-   (404) and its JSON API 404s without a key; governmentjobs.com and state
-   portals are JS-rendered. The page keeps official links and shows live D1
-   matches when a keyword hits. Adding `USAJOBS_API_KEY` + `USAJOBS_EMAIL`
-   later is optional, not required.
+1. **4 commits unpushed.** Push only with approval.
+2. **No keyless federal feed found yet.** Tested USAJOBS RSS (404) and JSON
+   (404 without a key), governmentjobs.com (no job data in HTML), and three
+   guessed apprenticeship.gov endpoints (404). That is not proof none exists;
+   it is what was tested. The page keeps official links and shows live D1
+   matches when a keyword hits. `USAJOBS_API_KEY` + `USAJOBS_EMAIL` remains
+   an optional fallback.
 3. **No Trades volume.** The three feeds skew remote tech/business. There is
    no keyless US trades API found yet (apprenticeship.gov has no public JSON).
 4. **Job moderation.** Both ingested and human rows use `is_approved = 1`.
