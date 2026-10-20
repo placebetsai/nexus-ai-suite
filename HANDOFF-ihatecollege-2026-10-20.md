@@ -19,20 +19,20 @@ carry an unrelated R2 Paid subscription with one bucket,
   Commons (also keyless).
 - Smoke gate: **19/19 passed, 0 failed, 0 warnings** on preview + production.
 
-## Live production (verified 2026-10-20 ~09:05Z)
+## Live production (verified 2026-10-20 ~09:50Z)
 
 | Item | Value |
 |---|---|
 | Site | https://ihatecollege.com 200 |
-| Production deployment | `06886983-…` (2026-10-20T09:02:07Z) |
-| Previous production (rollback target) | `4090cd16-…` |
-| `/api/jobs/list` | `configured:true`, `source:"d1"`, **30 jobs** |
+| Production deployment | `669be96f-…` (2026-10-20T09:47:55Z) |
+| Previous production (rollback target) | `ff246ae1-…` |
+| `/api/jobs/list` | `configured:true`, `source:"d1"`, **40 jobs** |
 | `/api/civil-service-data` | 7 Wikimedia photos, 0 live matches, X-Data-Status: ok |
-| Cron worker | `ihatecollege-cron` deployment `190448ef` (08:59:58Z), last tick 09:00 ok |
-| Cron history | **79/79 runs ok** |
-| D1 | `job_posts` 30 · `leads` 7 · `school_ratings` 0 · `cron_runs` 79 |
+| Cron worker | `ihatecollege-cron` deployment `190448ef` (08:59:58Z), last tick 09:45 ok |
+| Cron history | **82/82 runs ok** |
+| D1 | `job_posts` 40 · `leads` 7 · `school_ratings` 0 · `cron_runs` 82 |
 
-Job mix: Business 16, Tech 14 (sources: Himalayas 9, Jobicy 14, Remotive 7).
+Job mix: Business 23, Tech 15, Healthcare 2 (sources: Himalayas 19, Jobicy 14, Remotive 7).
 The board only contains roles that pass the no-degree gate below.
 
 ## What changed since 2026-10-14
@@ -89,14 +89,39 @@ the raw feeds do not honour that. Ingestion now drops a listing when:
   unless the same sentence says "or equivalent experience".
 
 That removed Nurse Practitioner, Senior Systems Engineer (TS/SCI), and the
-director/manager rows. The live board went from 61 to 30 listings. It is a
-conservative editorial gate, not a legal guarantee.
+director/manager rows. The board dropped from 61 to 30 on reseed and is 40 now
+as the feeds refresh. It is a conservative editorial gate, not a legal
+guarantee.
 
 **Civil-service page.** One request per page load (was 14), returning
 `{jobs, photos}`. Jobs are D1 keyword matches; photos are Wikimedia Commons
 (lookups run in parallel, then the whole response is edge-cached for an hour).
 The old fake "N open positions" line is now an honest live-match line with the
 official apply links always present.
+
+**Chatbot (Professor Debt).** The bot was not "unfriendly" — it was falling
+back to a canned data line on most requests. Two provider bugs: the Groq backup
+`llama-3.3-70b-versatile` is 404 in this org, and Groq Free is **8,000
+tokens/min per model**, so the primary 429'd and every reply fell through to the
+template. Fixes:
+
+- Rotate `openai/gpt-oss-120b` → `qwen/qwen3.8-27b` → `openai/gpt-oss-20b` →
+  OpenRouter `nvidia/nemotron-3.5-lightning:free`; cap output at 500–700 tokens.
+- Do not inject six web sources into school/major answers; Scorecard + field
+  data is enough. Web search only for news or when local data has nothing.
+- Resolve follow-ups against the last 3 user turns, so NYU survives
+  "what about the debt?" → "and nursing?".
+- Keep institution-wide and national-major figures separate; never call the
+  national major figure "NYU nursing", and never invent a cause for "why".
+- Client sends prior turns only (no duplicated question, no `__SOURCES__` /
+  `__FOLLOWUPS__` control strings), adds a New chat button, and ignores stale
+  responses after reset.
+- Fallback is question-aware (debt vs earnings vs cost) and still answers from
+  published data if every provider is down.
+
+Verified live: greeting, NYU → debt → nursing → why, UCLA topic shift,
+major-only, and "jobs without a degree". Replies now ask one useful follow-up
+instead of reciting every field.
 
 ## Cloudflare resources
 
@@ -127,7 +152,7 @@ Migrations: `migrations/0003_cron_runs.sql`, `0004_job_posts.sql`,
 ## Repo / deploy state
 
 ```
-local main        4e94009  (4 commits ahead of origin)
+local main        b8752ea  (5 commits ahead of origin)
 origin/main       3271efc  (pushed 2026-10-19)
 backup-before-rewrite        4307dce
 pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
@@ -135,8 +160,8 @@ pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
 
 Local commits not pushed: `70009ae` (D1 job board/ratings, auth removal),
 `a0d08a8` (docs), `62228da` (keyless feeds + Wikimedia), `4e94009` (no-degree
-gate + keyword fix). **Do not push without approval.** GitHub is not the
-deploy path.
+gate + keyword fix), `b8752ea` (conversational chatbot). **Do not push without
+approval.** GitHub is not the deploy path.
 
 `.github/workflows/deploy-cf-pages.yml` is `disabled_manually`. Pushing cannot
 trigger a deploy today. The parked branch would make that explicit if a token
@@ -182,7 +207,7 @@ The cron worker also accepts `?source=remotive|jobicy|himalayas|all`.
 
 ## Known gaps / next steps
 
-1. **4 commits unpushed.** Push only with approval.
+1. **5 commits unpushed.** Push only with approval.
 2. **No keyless federal feed found yet.** Tested USAJOBS RSS (404) and JSON
    (404 without a key), governmentjobs.com (no job data in HTML), and three
    guessed apprenticeship.gov endpoints (404). That is not proof none exists;
@@ -202,6 +227,11 @@ The cron worker also accepts `?source=remotive|jobicy|himalayas|all`.
    `/api/cron/cleanup-d1` was open on 2026-10-14.
 8. **Edge caching** on `/api/civil-service-data` is one hour. If a photo query
    changes, cache-bust with `?cb=<random>` or wait for the TTL.
+
+9. **Chatbot provider ceiling.** Groq Free is 8k tokens/min per model; the bot
+   rotates three models and has an OpenRouter last resort. Under heavy
+   concurrent use it can still fall back to a data-only answer. Workers AI
+   (keyless binding) is the next step if that becomes common.
 
 ## File map
 
