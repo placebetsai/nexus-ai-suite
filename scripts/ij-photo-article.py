@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
-"""Build the standalone Israel Joffe 2020 photo articles on israeljoffe.com and .org (2026-10-14)."""
+"""Build the standalone Israel Joffe portrait articles on israeljoffe.com and .org (2026-10-20)."""
 import json, re, html, os
 ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PERSON={"@id":"https://israeljoffe.com/#person"}
 SITES={
- "com":dict(dir="israeljoffe-com",base="https://israeljoffe.com",slug="israel-joffe-portrait",img="israel-joffe-portrait-2020.jpg",tpl="publications/index.html",
-   title="Israel Joffe — Portrait, 2020",
-   desc="Portrait of Israel Joffe, PMP and PMI-CPMAI certified Senior Project Portfolio Manager at the U.S. International Development Finance Corporation, from his own 2020 post.",
-   caption="Israel Joffe, 2020. Photo and post by Israel Joffe.",
-   body=["This portrait comes from a post shared on his own account in October 2020. It is published here, on his official site, as the original source of the image.",
-     "He is a PMP and PMI-CPMAI certified project manager and a Senior Project Portfolio Manager at the U.S. International Development Finance Corporation (DFC), where his work centers on portfolio delivery and AI-driven projects.",
-     "Before the DFC, he served the federal government as a Program Specialist at the FDIC and as a Senior Advisor and Senior Project Manager at the FDA. Earlier he worked in media, IT and web production for Fox 5 News, ABC News and Fox News.",
-     "Outside the office, he holds a 2nd-degree black belt in Brazilian Jiu-Jitsu, earned under UFC Hall of Famer Matt Serra."],
-   links=[("/about/","About Israel Joffe"),("/publications/","Publications &amp; press"),("/photos/","Photo gallery"),("/certifications/","Certifications")],
-   other=("https://israeljoffe.org/israel-joffe-photo-2020/","The same 2020 photo on israeljoffe.org, with the story of service behind it")),
- "org":dict(dir="israeljoffe-org",base="https://israeljoffe.org",slug="israel-joffe-photo-2020",img="israel-joffe-2020.jpg",tpl="writing/index.html",
-   title="Israel Joffe — A 2020 Photo and a Life of Service",
-   desc="A 2020 photo of Israel Joffe, former Lawrence-Cedarhurst firefighter during Hurricane Sandy, public servant at the FDA, FDIC and DFC, and Brazilian Jiu-Jitsu black belt.",
-   caption="Israel Joffe, 2020. From his own post.",
-   body=["This photo was shared on his own account in October 2020, and it lives here as part of the personal record kept on israeljoffe.org.",
-     "The thread through his life has been service. He grew up in New York and the Five Towns and answered calls with the Lawrence-Cedarhurst Fire Department during Hurricane Sandy, a commitment rooted in a family story of refugees and Holocaust survivors who rebuilt their lives in America.",
+ "com":dict(dir="israeljoffe-com",base="https://israeljoffe.com",slug="israel-joffe-portrait",img="israel-joffe-portrait.jpg",tpl="publications/index.html",
+   title="Israel Joffe — Portrait",
+   desc="Portrait of Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear, with the public-service record behind the photo.",
+   caption="Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear.",
+   body=["This portrait shows Israel Joffe in the gear of the Lawrence-Cedarhurst Fire Department (LCFD), the volunteer department that serves the Five Towns on Long Island's South Shore. He answered calls with LCFD through Hurricane Sandy.",
+     "The firehouse was one part of a life built around public service. Joffe later worked at the FDA, the FDIC, and the U.S. International Development Finance Corporation (DFC), where he is a senior project portfolio manager.",
+     "He is a PMP and PMI-CPMAI certified project leader. Earlier he worked in media, IT and web production for Fox 5 News, ABC News and Fox News.",
+     "Outside the office, he holds a 2nd-degree black belt in Brazilian Jiu-Jitsu, earned under UFC Hall of Famer Matt Serra. He also trained for years with WWE Hall of Famer Johnny Rodz at World of Unpredictable Wrestling in Brooklyn."],
+   links=[("/about/","About Israel Joffe"),("/publications/","Publications &amp; press"),("/photos/","Photo gallery"),("/certifications/","Certifications"),("/israel-joffe-firefighter/","Firefighter and public service"),("/israel-joffe-profiles/","Publisher pages")],
+   other=("https://israeljoffe.org/israel-joffe-photo-2020/","The portrait and public-service story on israeljoffe.org")),
+ "org":dict(dir="israeljoffe-org",base="https://israeljoffe.org",slug="israel-joffe-photo-2020",img="israel-joffe-portrait.jpg",tpl="writing/index.html",
+   title="Israel Joffe — Portrait and Public Service",
+   desc="A portrait of Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear, with the public-service record behind the photo.",
+   caption="Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear.",
+   body=["This portrait shows Israel Joffe in the gear of the Lawrence-Cedarhurst Fire Department (LCFD), the volunteer department that serves the Five Towns on Long Island's South Shore. He answered calls with LCFD through Hurricane Sandy.",
+     "The thread through his life has been service. He grew up in New York and the Five Towns, and the firehouse was one part of a commitment rooted in a family story of refugees and Holocaust survivors who rebuilt their lives in America.",
      "That sense of duty carried into public-sector work at the FDA, the FDIC and today the U.S. International Development Finance Corporation, where he is a PMP and PMI-CPMAI certified project leader.",
      "On the mat, he is a 2nd-degree Brazilian Jiu-Jitsu black belt under Matt Serra, and he trained for years with WWE Hall of Famer Johnny Rodz at World of Unpredictable Wrestling in Brooklyn."],
-   links=[("/about/","About Israel Joffe"),("/story/","The story"),("/writing/","Writing &amp; essays"),("/photos/","Photo gallery")],
-   other=("https://israeljoffe.com/israel-joffe-portrait/","The same 2020 portrait on israeljoffe.com, with his professional background")),
+   links=[("/about/","About Israel Joffe"),("/story/","The story"),("/writing/","Writing &amp; essays"),("/photos/","Photo gallery"),("https://israeljoffe.com/israel-joffe-firefighter/","Firefighter and public service"),("https://israeljoffe.com/israel-joffe-profiles/","Publisher pages")],
+   other=("https://israeljoffe.com/israel-joffe-portrait/","The portrait and professional background on israeljoffe.com")),
 }
 BANNED=re.compile(r"trump|hotel|maga|washington|\bdc\b|politic",re.I)
 def build(k):
@@ -40,16 +40,16 @@ def build(k):
     # OG/twitter image -> the photo
     head=re.sub(r'<meta property="og:image(?::[a-z_]+)?" content="[^"]*" />\n','',head)
     og=(f'<meta property="og:image" content="{iu}" />\n<meta property="og:image:secure_url" content="{iu}" />\n<meta property="og:image:type" content="image/jpeg" />\n'
-        f'<meta property="og:image:width" content="1358" />\n<meta property="og:image:height" content="1530" />\n<meta property="og:image:alt" content="Israel Joffe" />\n')
+        f'<meta property="og:image:width" content="1080" />\n<meta property="og:image:height" content="1283" />\n<meta property="og:image:alt" content="Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear" />\n')
     head=head.replace('<meta name="twitter:card"',og+'<meta name="twitter:card"',1)
     head=re.sub(r'(<meta name="twitter:image" content=")[^"]*"',lambda m:m.group(1)+iu+'"',head)
     head=re.sub(r'(<meta name="twitter:image:alt" content=")[^"]*"',lambda m:m.group(1)+'Israel Joffe"',head)
     # replace CollectionPage ld with Article+ImageObject
-    img={"@type":"ImageObject","@id":iu+"#image","contentUrl":iu,"url":iu,"name":"Israel Joffe","caption":c["caption"],"description":"Israel Joffe","width":1358,"height":1530,
-         "encodingFormat":"image/jpeg","dateCreated":"2020-10-17","datePublished":"2020-10-17","creator":PERSON,"copyrightHolder":PERSON,"author":PERSON,"about":PERSON,
-         "creditText":"Israel Joffe","copyrightNotice":"© 2020 Israel Joffe","license":c["base"]+"/contact/","acquireLicensePage":c["base"]+"/contact/","representativeOfPage":True}
+    img={"@type":"ImageObject","@id":iu+"#image","contentUrl":iu,"url":iu,"name":"Israel Joffe","caption":c["caption"],"description":"Israel Joffe","width":1080,"height":1283,
+         "encodingFormat":"image/jpeg","dateCreated":"2023-08-14","datePublished":"2023-08-14","creator":PERSON,"copyrightHolder":PERSON,"author":PERSON,"about":PERSON,
+         "creditText":"Israel Joffe","copyrightNotice":"© 2023 Israel Joffe","license":c["base"]+"/contact/","acquireLicensePage":c["base"]+"/contact/","representativeOfPage":True}
     art={"@type":"Article","@id":url+"#article","headline":c["title"],"description":c["desc"],"url":url,"mainEntityOfPage":url,"image":{"@id":iu+"#image"},
-         "author":PERSON,"publisher":PERSON,"about":PERSON,"datePublished":"2026-10-14","dateModified":"2026-10-14","inLanguage":"en-US"}
+         "author":PERSON,"publisher":PERSON,"about":PERSON,"datePublished":"2026-10-20","dateModified":"2026-10-20","inLanguage":"en-US"}
     crumbs={"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":c["base"]+"/"},{"@type":"ListItem","position":2,"name":"About","item":c["base"]+"/about/"},{"@type":"ListItem","position":3,"name":c["title"],"item":url}]}
     ld='<script type="application/ld+json">'+json.dumps({"@context":"https://schema.org","@graph":[art,img,crumbs]},ensure_ascii=False)+'</script>'
     head=re.sub(r'<script type="application/ld\+json">\{"@context":"https://schema.org","@type":"CollectionPage".*?</script>',lambda m:ld,head,flags=re.S)
@@ -60,7 +60,7 @@ def build(k):
     main=(f'<main class="page ij-page"><div class="ij-hdr-spacer" style="height:96px" aria-hidden="true"></div>'
       f'<article class="page-frame ij-body" style="padding:0 16px;max-width:820px;margin:0 auto"><header class="page-head"><h1 class="section-title page-h">{T}</h1>'
       f'<p class="page-lede">{D}</p></header>'
-      f'<figure style="margin:1.5rem 0"><img src="/img/{c["img"]}" alt="Israel Joffe" width="1358" height="1530" fetchpriority="high" style="width:100%;height:auto;display:block;border-radius:6px" />'
+      f'<figure style="margin:1.5rem 0"><img src="/img/{c["img"]}" alt="Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear" width="1080" height="1283" fetchpriority="high" style="width:100%;height:auto;display:block;border-radius:6px" />'
       f'<figcaption style="font-size:.9rem;opacity:.75;margin-top:.5rem">{html.escape(c["caption"])}</figcaption></figure>'
       f'<div class="ij-article-body" style="line-height:1.7">{paras}</div>'
       f'<section class="ij-refs"><h2>More</h2><p>{lk}</p><p><a href="{c["other"][0]}">{c["other"][1]}</a></p></section></article>\n</main>')
@@ -71,12 +71,12 @@ def build(k):
     open(os.path.join(d,c["slug"],"index.html"),"w").write(out)
     # sitemap
     sp=os.path.join(d,"sitemap.xml"); s=open(sp).read()
-    if url not in s:
-        e=f'  <url><loc>{url}</loc><lastmod>2026-10-14</lastmod><changefreq>monthly</changefreq><priority>0.9</priority><image:image><image:loc>{iu}</image:loc><image:title>Israel Joffe</image:title><image:caption>{html.escape(c["caption"])}</image:caption></image:image></url>\n'
-        s=s.replace("</urlset>",e+"</urlset>"); open(sp,"w").write(s)
+    s=re.sub(r'<url><loc>'+re.escape(url)+r'</loc>.*?</url>\s*','',s,count=1,flags=re.S)
+    e=f'  <url><loc>{url}</loc><lastmod>2026-10-20</lastmod><changefreq>monthly</changefreq><priority>0.9</priority><image:image><image:loc>{iu}</image:loc><image:title>Israel Joffe — Portrait</image:title><image:caption>{html.escape(c["caption"])}</image:caption></image:image></url>\n'
+    s=s.replace("</urlset>",e+"</urlset>"); open(sp,"w").write(s)
     # internal links (not homepage)
-    blk=(f'<section class="ij-feature-photo" style="padding:0 16px;max-width:1000px;margin:1.5rem auto"><h2>Israel Joffe — 2020 photo</h2>'
-         f'<p><a href="/{c["slug"]}/"><img src="/img/{c["img"]}" alt="Israel Joffe" width="1358" height="1530" loading="lazy" style="max-width:260px;width:100%;height:auto;display:block" /></a></p>'
+    blk=(f'<section class="ij-feature-photo" style="padding:0 16px;max-width:1000px;margin:1.5rem auto"><h2>Israel Joffe — Portrait</h2>'
+         f'<p><a href="/{c["slug"]}/"><img src="/img/{c["img"]}" alt="Israel Joffe in Lawrence-Cedarhurst Fire Department firefighter gear" width="1080" height="1283" loading="lazy" style="max-width:260px;width:100%;height:auto;display:block" /></a></p>'
          f'<p><a href="/{c["slug"]}/">{T}</a></p></section>')
     for p in ["about/index.html","photos/index.html",c["tpl"]]:
         fp=os.path.join(d,p); s=open(fp,encoding="utf-8-sig").read(); bom=open(fp,"rb").read(3)==b"\xef\xbb\xbf"

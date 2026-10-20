@@ -193,7 +193,7 @@ def main():
         ("placebets", "PlaceBets.ai", "https://placebets.ai/israel-joffe/", "Founder page covering federal service and the Johnny Rodz/WUW years.", "israeljoffe-placebets.jpg"),
     ]
     srcs = {
-        "israeljoffe-com": os.path.join(COM, "img", "israel-joffe-portrait-2020.jpg"),
+        "israeljoffe-com": os.path.join(COM, "img", "israel-joffe-portrait.jpg"),
         "israeljoffe-org": os.path.join(ORG, "img", "israel-joffe-johnny-rodz-training.jpg"),
         "wuw": os.path.join(PARENT, "wuwonline-com", "img", "israel-joffe-johnny-rodz-wuw.jpg"),
         "religiousjews": os.path.join(PARENT, "religiousjews-com", "israel-joffe", "7054d-screenshot_20221223_110241_instagram.jpg"),

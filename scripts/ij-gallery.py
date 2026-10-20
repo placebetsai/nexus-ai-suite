@@ -2,6 +2,7 @@ import os,re,json,hashlib,html as H,shutil
 from PIL import Image,ImageOps
 SITES={'israeljoffe-com':'israeljoffe.com','israeljoffe-org':'israeljoffe.org','wuwonline-com':'wuwonline.com'}
 SKIP=re.compile(r'^(og-|favicon|logo|apple-touch|icon|hero)',re.I)
+BLOCK=re.compile(r'(fb-img-1604720478848|well-its-election-day-again-meme|img-20201017-152536-1|screenshot-20201105-064044|portrait-2020|israel-joffe-2020)',re.I)
 # 1 context map: image filename -> (title,date,site)
 ctx={}
 for root,dom in SITES.items():
@@ -35,6 +36,7 @@ srcs=[('israeljoffe-com',f) for f in sorted(os.listdir('israeljoffe-com/img'))]+
 for root,f in srcs:
   p=f'{root}/img/{f}'
   if not os.path.isfile(p) or SKIP.match(f) or not f.lower().endswith(('.jpg','.jpeg','.png','.webp')): continue
+  if root == 'israeljoffe-org' and BLOCK.search(f): continue
   try: im=Image.open(p); im=ImageOps.exif_transpose(im)
   except Exception: continue
   if min(im.size)<300: continue
