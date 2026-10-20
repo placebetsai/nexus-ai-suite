@@ -163,7 +163,7 @@ Migrations: `migrations/0003_cron_runs.sql`, `0004_job_posts.sql`,
 ## Repo / deploy state
 
 ```
-local main        5803973  (6 commits ahead of origin)
+local main        e97a6ce  (6 commits ahead of origin)
 origin/main       3271efc  (pushed 2026-10-19)
 backup-before-rewrite        4307dce
 pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
@@ -171,7 +171,7 @@ pending/workflow-manual-only 9941f11  (needs `workflow` token scope)
 
 Local commits not pushed: `70009ae` (D1 job board/ratings, auth removal),
 `a0d08a8` (docs), `62228da` (keyless feeds + Wikimedia), `4e94009` (no-degree
-gate + keyword fix), `b8752ea` (conversational chatbot), `5803973` (keyless
+gate + keyword fix), `b8752ea` (conversational chatbot), `e97a6ce` (keyless
 Workers AI chatbot). **Do not push without approval.** GitHub is not the deploy
 path.
 
