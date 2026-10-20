@@ -1,5 +1,12 @@
 # HANDOFF — ihatecollege.com — 2026-10-14 (updated 2026-10-15 6:50 AM ET)
 
+> **SUPERSEDED 2026-10-20** by `HANDOFF-ihatecollege-2026-10-20.md`.
+> Since this file was written: Supabase is gone (both refs NXDOMAIN); D1
+> backs jobs, ratings, leads and cron; college pages are fully static;
+> news is a KV aggregate; the job board is fed by keyless public APIs; and
+> `main` is no longer auto-deployed by the GitHub Action (it is
+> `disabled_manually`).
+
 Owner: IHateCollege Bot (sole owner of this site). No secrets in this file.
 
 ## What's live (verified 2026-10-14 ~1:14 PM ET)
