@@ -140,6 +140,14 @@ const BASE = (POSITIONAL[0] || process.env.SMOKE_BASE || DEFAULT_BASE).replace(/
 let urls = [];
 await check('page /', () => page(BASE, '/', { markers: ['Israel Joffe'], budgetMs: 4000 }).then(() => true));
 for (const p of ['/about/', '/publications/', '/contact/']) await check(`page ${p}`, () => page(BASE, p, { markers: ['Israel Joffe'], budgetMs: 4000 }).then(() => true));
+await check('page /israel-joffe-2020-facebook-post/', () => page(BASE, '/israel-joffe-2020-facebook-post/', { markers: ['2020 Facebook Post on Trump Hotel DC', 'Trump Hotel DC'], budgetMs: 4000 }).then(() => true));
+await check('image /img/g/israel-joffe-2020-facebook-post.jpg', async () => {
+  const { res } = await fetchRetry(`${BASE}/img/g/israel-joffe-2020-facebook-post.jpg`, {}, 15000);
+  if (res.status !== 200) fail(`HTTP ${res.status}`);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.startsWith('image/')) fail(`content-type ${ct}`);
+  return ct;
+});
 await check('sitemap.xml valid, >50 URLs', async () => {
   const { res, body } = await fetchRetry(`${BASE}/sitemap.xml`, {}, 15000);
   if (res.status !== 200 || !body.includes('<urlset')) fail(`HTTP ${res.status}`);
