@@ -19,7 +19,19 @@ for s in $SITES; do
   if [ -n "$deep" ]; then dc=$(code "https://$s$deep"); else dc="-"; fi
   ad=$(code "https://$s/ads.txt")
   html=$(curl -sS --max-time 20 "https://$s/" 2>/dev/null | head -c 200000)
-  if echo "$html" | grep -qiE 'fundingchoices|googlefc|cmp|consent'; then cmp="yes"; else cmp="no"; fi
+  # CMP / consent marker. A consent banner can be SERVER-rendered (in the HTML)
+  # or CLIENT-rendered (a client component mounts after hydration), so the HTML
+  # alone is not a reliable signal — the page's own JS bundles are checked too.
+  if echo "$html" | grep -qiE 'fundingchoices|googlefc|consent|ad and analytics choices|limited ads'; then
+    cmp="yes"
+  else
+    cmp="no"
+    for js in $(echo "$html" | grep -oE 'src="[^"]+\.js"' | sed 's/src="//;s/"$//' | head -8); do
+      case "$js" in http*) u="$js";; /*) u="https://$s$js";; *) u="https://$s/$js";; esac
+      body=$(curl -sS --max-time 12 "$u" 2>/dev/null | head -c 400000)
+      if echo "$body" | grep -qiE 'Ad and analytics choices|limited ads|fundingchoices|googlefc'; then cmp="yes"; break; fi
+    done
+  fi
   if echo "$html" | grep -qiE 'font-size:[[:space:]]*(9|10|11)px'; then f12="LOW"; else f12="ok"; fi
   printf "%-28s %-6s %-5s %-5s %-5s %-8s %-4s %-6s %-4s\n" "$s" "$h" "$title" "$rb" "$sm" "$dc" "$ad" "$cmp" "$f12"
 done
