@@ -94,6 +94,7 @@ it; concurrency exposed it.
 | `mondaynightwrestling.com` | **NO** (apex) | apex HTTPS dead, `www` = 200. The zone is in another account, so this one cannot be fixed from here. |
 | `marketpicks.ai` | YES | ours; robots.txt lists both sitemaps ✓; `/sitemap.xml` answered **503 once then 200** — a cold-start render, so a crawler hitting a cold edge can get a 503. Worth prebuilding/caching. |
 
+## Hive/infra findings (same session)
 
 7. **Only 3 of 10 rostered free models actually serve today.** Sequential probe
    (`~/.local/bin/hive-probe-models.sh`, receipts in `~/.local/hive-model-probe.json`):
