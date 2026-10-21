@@ -1,0 +1,205 @@
+{
+ "startedAt": "2026-10-21T20:18:29.227Z",
+ "wall_ms": 669982,
+ "parallel": 3,
+ "results": [
+  {
+   "agent": "atlas",
+   "name": "Atlas",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 35065,
+   "output": "marketpicks.ai | home 200 | title MarketPicks.ai — AI Market Workstation | robots 200 (allows; Sitemap present) | sitemap 200 (~177 loc) | deep /politician-tracker 503 | ads.txt 200 | cmp no | font<12px no\nVERDICT: marketpicks.ai=DEGRADED\nFIX: /politician-tracker returns 503 — restore that route.",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 35065
+    }
+   ]
+  },
+  {
+   "agent": "vogue",
+   "name": "Vogue",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 26187,
+   "output": "placebets.ai | home 200 | title PlaceBets.ai — Live Odds, Parlays, and Sports Research | robots 200 (Allow:/, Sitemap present) | sitemap 200 (~124 <loc>) | deep /terminal 200 | ads.txt 200 | cmp yes | font<12px yes | viewport yes\n\nVERDICT: placebets.ai=OK\n\nMost important fix: raise the 10px/11px font-size declarations to ≥12px for readability/accessibility. (Note: homepage HTML embeds a Next.js \"404: This page could not be found.\" not-found template, but the route itself returns 200.)",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 26187
+    }
+   ]
+  },
+  {
+   "agent": "pictor",
+   "name": "Pictor",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 24667,
+   "output": "ihatecollege.com | home 200 | title IHateCollege.com — College Is A Scam. We Have The Receipts. | robots 200 | sitemap 200 (3 <loc>) | deep /liberal-vs-conservative 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: ihatecollege.com=OK\nMost important fix: add a consent/CMP banner (ads.txt is live but no CMP marker found).",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 24667
+    }
+   ]
+  },
+  {
+   "agent": "forge",
+   "name": "Forge",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 34632,
+   "output": "createstuff.ai | home 200 | title CreateStuff — Free AI App Builder for Phone & Desktop | robots 200 | sitemap 200 | deep https://createstuff.ai/israel-joffe/ 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: createstuff.ai=DEGRADED\nFIX: add a consent/CMP banner — ads.txt is present but no consent mechanism exists in homepage HTML",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 34632
+    }
+   ]
+  },
+  {
+   "agent": "nexus",
+   "name": "Nexus",
+   "ok": true,
+   "model": "opencode/nemotron-3.5-lightning-free",
+   "requested": "opencode/nemotron-3.5-lightning-free",
+   "degraded": false,
+   "local": false,
+   "ms": 68827,
+   "output": "fashionistas.ai | home 200 | title fashionistas.ai -- Photograph Your Closet, Sell It Everywhere | robots 200 | sitemap 200 | deep https://fashionistas.ai/#main 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: fashionistas.ai=OK\nMost important fix: Add consent/CMP cookie banner for GDPR/privacy compliance",
+   "attempts": [
+    {
+     "model": "opencode/nemotron-3.5-lightning-free",
+     "ok": true,
+     "ms": 68827
+    }
+   ]
+  },
+  {
+   "agent": "mnemonic",
+   "name": "Mnemonic",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 23678,
+   "output": "hiddencameras.tv | home 200 | title HiddenCameras.tv — Security Camera Reviews | robots 200 | sitemap 200 (206 locs) | deep /live/ 200 | ads.txt 200 | cmp no | font<12px yes\nscooter.exchange | home 200 | title scooter.exchange — Find, Buy, Sell Scooters, Bikes & E-Bikes | robots 200 | sitemap 200 (267 locs) | deep /map 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: hiddencameras.tv=OK\nVERDICT: scooter.exchange=OK\nMOST IMPORTANT FIX: add a consent/CMP banner (no CMP marker on either homepage).",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 23678
+    }
+   ]
+  },
+  {
+   "agent": "sentinel",
+   "name": "Sentinel",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 32310,
+   "output": "diamonds.forsale | home 200 | title diamonds.forsale — find out what your diamond is really worth | robots 200 | sitemap 200 (62 locs) | deep https://diamonds.forsale/price-calculator 200 | ads.txt 200 | cmp no | font<12px yes\nisraeljoffe.com | home 200 | title Israel Joffe -- PMP Certified - PMI-CPMAI Certified in AI Management - Senior Executive in Finance & Fintech | robots 200 | sitemap 200 (75 locs) | deep https://israeljoffe.com/about/ 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: diamonds.forsale=OK\nVERDICT: israeljoffe.com=DEGRADED\nFIX: israeljoffe.com/ads.txt returns the homepage HTML (soft 404) — serve a real ads.txt or a 404.",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 32310
+    }
+   ]
+  },
+  {
+   "agent": "curator",
+   "name": "Curator",
+   "ok": true,
+   "model": "opencode/beam-free",
+   "requested": "opencode/beam-free",
+   "degraded": false,
+   "local": false,
+   "ms": 19131,
+   "output": "spanishtvshows.com | home 200 | title SpanishTVShows.com - Best Spanish TV Shows Ranked (2026) | robots 200 | sitemap 200 | deep https://spanishtvshows.com/trending 200 | ads.txt 200 | cmp no | font<12px yes\nVERDICT: spanishtvshows.com=DEGRADED\nMOST IMPORTANT FIX: add a consent/CMP banner (no cookie/consent marker detected in homepage HTML).",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": true,
+     "ms": 19131
+    }
+   ]
+  },
+  {
+   "agent": "ledger",
+   "name": "Ledger",
+   "ok": true,
+   "model": "opencode/nemotron-3.5-lightning-free",
+   "requested": "opencode/nemotron-3.5-lightning-free",
+   "degraded": false,
+   "local": false,
+   "ms": 41412,
+   "output": "wuwonline.com | home 200 | title WUW · Train with Johnny Rodz — WWE Hall of Famer · Brooklyn | robots 200 | sitemap 200 | deep /johnny-rodz/ 200 | ads.txt 200 | cmp no | font<12px yes  \nVERDICT: wuwonline.com=OK  \nFix: add consent/CMP marker to homepage for privacy compliance",
+   "attempts": [
+    {
+     "model": "opencode/nemotron-3.5-lightning-free",
+     "ok": true,
+     "ms": 41412
+    }
+   ]
+  },
+  {
+   "agent": "scribe",
+   "name": "Scribe",
+   "ok": true,
+   "model": "ollama/qwen2.5:3b",
+   "requested": "opencode/beam-free",
+   "degraded": true,
+   "local": true,
+   "ms": 128814,
+   "output": "I was unable to fetch the content within the allowed time. Let's try again or provide the content directly. What would you like to do next?",
+   "attempts": [
+    {
+     "model": "opencode/beam-free",
+     "ok": false,
+     "ms": 150002,
+     "error": "timeout"
+    },
+    {
+     "model": "opencode/nemotron-3.5-lightning-free",
+     "ok": false,
+     "ms": 150009,
+     "error": "timeout"
+    },
+    {
+     "model": "ollama/qwen2.5:7b",
+     "ok": false,
+     "ms": 150102,
+     "error": "timeout"
+    },
+    {
+     "model": "ollama/qwen2.5:3b",
+     "ok": true,
+     "ms": 128814
+    }
+   ]
+  }
+ ]
+}
