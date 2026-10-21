@@ -76,14 +76,23 @@ live deployment is the one carrying real crawler/user traffic; the idle preview 
 the whole time, which is why the first A/B looked like a code difference. Sequential retries hid
 it; concurrency exposed it.
 
-**Fix shipped (`9f3d901`):**
+**Fix shipped (`9f3d901` + `a396f6e`):**
 1. `lib/politician-trades-loader.ts` — the newest-first sort now computes its keys **once per
    row** (a comparator that called `Date.parse` on every comparison cost ~130k parses on a
    5.2k-row merge) and **maps only the rows the caller asked for** (the API serves ≤500 of
    ~5.2k merged rows). Totals still count every row, so "4,993 trades · 102 members" stays true.
-2. `next.config.mjs` — a **60s CDN window** (`s-maxage=60, stale-while-revalidate=300`) on the
-   three heavy routes, so repeat visitors are served from the edge instead of re-running the
-   function. The browser still revalidates (`max-age=0`).
+2. `next.config.mjs` — a 60s `Cache-Control` on the three heavy routes.
+
+**Verified after deploy (`a396f6e`):** the same 8-way concurrent test that failed **1-of-8**
+on each route now passes **8/8** on all three; the sitemaps answer 200/8; and the data is still
+correct (`rows[0]` = 2026-10-19, totals 4,993 trades / 102 members, NINTENDO → NTDOY).
+
+**Honest caveat on the cache header:** the edge still answers `cf-cache-status: DYNAMIC` for
+these pages — a Pages *page*'s response headers are applied after Cloudflare's cache decision, so
+a page can't be CDN-cached this way (a *route* can: `/api/politician-trades` sets the same
+header at route level and answers `HIT`). The 503 fix came from the CPU work, not the header.
+Real CDN caching for these pages would mean converting them to routes or ISR — a deliberate,
+separate change, not a one-liner.
 
 ## Domain ownership receipts (who can actually be fixed by us)
 
