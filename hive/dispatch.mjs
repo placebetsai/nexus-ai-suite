@@ -20,7 +20,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { loadHive, freeModelIds, modelsForAgent, cleanOutput } from './models.mjs';
+import { loadHive, freeModelIds, modelsForAgent, withModelPrefix, cleanOutput } from './models.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -71,10 +71,17 @@ export function runModel(fullModelId, prompt, timeoutMs, cwd = ROOT) {
   });
 }
 
-/** Dispatch one agent: primary model → fallback → default. Always reports the truth. */
+/** Dispatch one agent: primary model → fallback → LOCAL backends → default. Always reports the truth. */
 async function dispatchOne(agent, prompt, timeoutMs) {
   const { primary, fallback } = modelsForAgent(agent);
-  const chain = [...new Set([primary, fallback, 'default'])];
+  // LOCAL backends (hive.json local_fallbacks, e.g. ollama/qwen2.5:3b) sit
+  // between the cloud fallback and 'default': the free cloud tiers 403/429/hang
+  // under load (measured 2026-10-21: readiness acked 3/10 in a 442s wall), and
+  // 'default' inherits the ORCHESTRATOR model, which the 2026-10-06 RCA says
+  // background agents must never use. A local model is neither rate-limited
+  // nor quota-bound, so it is the floor that keeps the board alive.
+  const local = (HIVE.local_fallbacks || []).map(withModelPrefix).filter(Boolean);
+  const chain = [...new Set([primary, fallback, ...local, 'default'])];
   const attempts = [];
   for (const model of chain) {
     const r = await runModel(model, prompt, timeoutMs);
@@ -98,7 +105,7 @@ async function dispatchOne(agent, prompt, timeoutMs) {
 }
 
 /** Bounded concurrency so we don't fork-bomb the box. */
-async function mapPool(items, limit, fn) {
+export async function mapPool(items, limit, fn) {
   const results = new Array(items.length);
   let i = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {

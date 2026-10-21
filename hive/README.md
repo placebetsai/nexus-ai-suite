@@ -1,6 +1,34 @@
 # 🐝 Nexus MCP Hive — parallel work across ALL free OpenCode models
 
-**Status:** v3.0.0 · verified 2026-09-24 · 10/10 agents · 8/8 free models · **32/32 tests pass**
+**Status:** v3.0.0 · roster **re-verified 2026-10-21** · **3 free models actually serve today**
+(`nemotron-3.5-lightning-free`, `beam-free`, `nemotron-3-ultra`) + a **local Ollama floor**
+(`ollama/qwen2.5:7b`, `ollama/qwen2.5:3b`) · 10/10 agents · parallelism **3**
+
+> **The free roster rotates.** On 2026-10-21 seven of the ten rostered ids were gone upstream
+> (`space-bunny-free`, `muse-spark-1.3-contributor-free`, `ling-3.1-flash-free` …) and returned
+> `UnknownError` instantly, so the board acked **3/10 in a 537s wall** while looking configured.
+> A stale id fails in milliseconds — it never times out — so "the hive is broken" usually means
+> **the roster is stale**, not the harness. Re-verify with the tooling below; do not hand-edit
+> `hive.json` from memory.
+
+**Tooling (all receipt-producing):**
+
+| tool | what it does |
+|---|---|
+| `~/.local/bin/hive-probe-models.sh <ids…>` | Probes each model id SEQUENTIALLY (parallel probing is what overloads the free tiers) → `~/.local/hive-model-probe.json` |
+| `node hive/hive-rebuild-roster.mjs` | Rewrites `hive.json` from the probe receipts: dead ids removed, agents re-pointed at models that actually answer, local floor applied. Refuses to write if nothing verified. |
+| `node hive/local-pool.mjs --jobs <json>` | Bounded pool that **re-reads the roster on every run** (the MCP server caches it at module load, so config edits need its restart). Writes `hive/output/pool-latest.json` with per-agent model + attempts. |
+| `hive/tasks/federation-audit.sh` | Read-only 12-site federation sweep (curl only) — the ground truth the agent audit is compared against. |
+| `hive/tasks/federation-audit.json` | The same checklist as 10 agent jobs for the board. |
+
+**Local model floor:** Ollama is installed rootless (`~/.local/bin/ollama`, models
+`qwen2.5:3b` + `qwen2.5:7b`) and wired into `~/.config/opencode/opencode.jsonc` as the
+`ollama` provider (OpenAI-compatible `/v1`). It sits in the fallback chain **after** the cloud
+fallback and **before** `default` — `default` inherits the orchestrator model, which the
+2026-10-06 RCA bans for background agents. A local model cannot 403 and cannot hit a quota, so
+a tier-wide outage still leaves the board usable. Note the 3B model is weak with the agent
+harness (it flailed on a one-line instruction) — use 7B for agentic work, or call Ollama's
+HTTP API directly for mechanical tasks.
 
 A real [Model Context Protocol](https://modelcontextprotocol.io) server that fans work out
 across a swarm of agents, each backed by a **$0.00 OpenCode model**. Every call forks a real

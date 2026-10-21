@@ -25,10 +25,24 @@ export function freeModelIds(hive = loadHive()) {
   return hive.free_models.map((m) => m.id);
 }
 
+/**
+ * Resolve a model id to a full CLI id.
+ * Bare ids get the opencode/ prefix ("space-bunny-free" -> "opencode/space-bunny-free").
+ * Ids that ALREADY carry a provider prefix are left alone, so a LOCAL backend
+ * can be mixed in: "ollama/qwen2.5:3b" -> "ollama/qwen2.5:3b" (opencode's built-in
+ * ollama provider talks to the local server on 127.0.0.1:11434).
+ * Before this, a local model could not be named at all — the prefix was forced.
+ */
+export function withModelPrefix(id) {
+  const s = String(id || '').trim();
+  if (!s) return '';
+  return s.includes('/') ? s : MODEL_PREFIX + s;
+}
+
 /** Resolve an agent's primary + fallback model ids to full CLI ids. */
 export function modelsForAgent(agent) {
-  const primary = MODEL_PREFIX + agent.model;
-  const fallback = agent.fallback ? MODEL_PREFIX + agent.fallback : 'default';
+  const primary = withModelPrefix(agent.model);
+  const fallback = agent.fallback ? withModelPrefix(agent.fallback) : 'default';
   return { primary, fallback };
 }
 
