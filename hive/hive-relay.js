@@ -28,17 +28,18 @@ const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const OPENCODE = process.env.OPENCODE_BIN || "/home/billionaremaker/.opencode/bin/opencode";
 
 // Order matters: fast/direct first, CLI-backed models after.
-// Roster corrected 2026-09-29: muse-spark-1.2 was dropped by opencode (dead),
-// ling-3.0-flash-fin answers "Endpoint is unavailable" — both replaced/removed
-// so callers never land on a model that cannot serve them.
+// Roster verified live 2026-10-21 (opencode.ai/zen/v1/models). Dead ids
+// removed: space-bunny-free (410), muse-spark-1.3 (410).
 export const FREE_MODELS = [
-  "space-bunny-free",
   "mimo-v2.6-flash-free",
   "nemotron-3.5-lightning-free",
   "nemotron-3-ultra-free",
   "longcat-2.5-preview-free",
-  "muse-spark-1.3-contributor-free",
   "big-pickle",
+  "ling-3.1-flash-free",
+  "glm-5.3-flash-free",
+  "deepseek-v4.1-flash-free",
+  "minimax-m3.1-flash-free",
 ];
 
 const ok = (v) => typeof v === "string" && v.trim().length > 0;
@@ -148,7 +149,11 @@ async function run(model, messages, maxTokens, allowCli = false, deadline = Date
   // allowed to burn 240s and take the whole build down with it.
   const backends = allowCli ? [viaHttp, viaCli] : [viaHttp];
   for (const fn of backends) {
-    if (fn === viaCli && Date.now() + 150_000 > deadline) {
+    // Chat-bot turns budget ~2min total: allow the CLI whenever at least
+    // 90s remain (measured: small conversational prompts answer in 5-15s
+    // through the CLI). The old 150s reserve made the CLI unreachable with
+    // every default deadline the callers send.
+    if (fn === viaCli && Date.now() + 90_000 > deadline) {
       errors.push("cli skipped (would exceed the build deadline)");
       continue;
     }
@@ -260,7 +265,7 @@ const server = http.createServer(async (req, res) => {
       const failures = [];
       const t0 = Date.now();
       const deadline = t0 + Math.min(Number(body.deadline_ms) || 140_000, 170_000);
-      const allowCli = body.cli === true;
+      const allowCli = body.cli !== false;
       const secs = () => ((Date.now() - t0) / 1000).toFixed(1) + "s";
       for (const m of order) {
         if (Date.now() > deadline) { failures.push("deadline reached at " + secs()); break; }

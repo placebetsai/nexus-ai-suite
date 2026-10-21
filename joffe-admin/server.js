@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import crypto from "node:crypto";
@@ -10,6 +9,7 @@ import {
   addNavLink,
   appendParagraph,
   applyBacklinks,
+  absoluteImage,
   ensureMentions,
   flatSibling,
   insertImage,
@@ -21,18 +21,30 @@ import {
   relToUrl,
   renameNavLink,
   removeSitemap,
+  removeSitemapImages,
   upsertSitemap,
+  upsertSitemapImages,
   urlToRel,
   writeFooter,
   writeIcons,
   writePage,
   pageShell,
 } from "./lib/edit.js";
+import { imageSize, humanBytes } from "./lib/images.js";
+import { createGovernance, sha256 } from "./lib/governance.js";
+import { auditSite } from "./lib/seo.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const NEXUS = path.resolve(ROOT, "..");
-const PASSWORD_FILE = path.join(NEXUS, ".secrets", "joffe-admin.password");
+const PASSWORD_FILE = process.env.JOFFE_ADMIN_PASSWORD_FILE || path.join(NEXUS, ".secrets", "joffe-admin.password");
 const PUBLIC = path.join(ROOT, "public");
+const STATE_DIR = process.env.JOFFE_ADMIN_STATE || path.join(ROOT, ".state");
+const governance = createGovernance({ stateDir: STATE_DIR });
+const seoCache = new Map();
+const loginAttempts = new Map();
+const SESSION_MS = 1000 * 60 * 60 * 12;
+const CSRF_COOKIE = "joffe_admin_csrf";
+const CSRF_HEADER = "x-joffe-csrf";
 
 // Every federation property, minus ketiservice.com (owner: leave alone).
 //
@@ -45,12 +57,15 @@ const BUILD_NOTE = "Generated output — publish right after editing; the next b
 const PROJECTS_ROOT = path.resolve(NEXUS, "..");
 
 const SITES = [
-  { id: "com", host: "israeljoffe.com", label: "israeljoffe.com", dir: path.join(NEXUS, "israeljoffe-com"), project: "israeljoffe-com", eyebrow: "Israel Joffe", mode: "static" },
+  { id: "com", host: "israeljoffe.com", label: "israeljoffe.com", dir: path.join(NEXUS, "israeljoffe-com"), project: "israeljoffe-com", eyebrow: "Israel Joffe", mode: "static", safeDeploy: ["israeljoffe-com"] },
   { id: "org", host: "israeljoffe.org", label: "israeljoffe.org", dir: path.join(NEXUS, "israeljoffe-org"), project: "israeljoffe-org", eyebrow: "Israel Joffe", mode: "static" },
   { id: "wuw", host: "wuwonline.com", label: "wuwonline.com", dir: path.join(PROJECTS_ROOT, "wuwonline-com"), project: "wuwonline-com", eyebrow: "WUW", mode: "static" },
   { id: "rjw", host: "religiousjews.com", label: "religiousjews.com", dir: path.join(PROJECTS_ROOT, "religiousjews-com"), project: "religiousjews", eyebrow: "Religious Jews", mode: "static" },
-  { id: "fash", host: "fashionistas.ai", label: "fashionistas.ai", dir: path.join(os.homedir(), "fashionistas-ai"), project: "fashionistas-ai", eyebrow: "Fashionistas", mode: "static" },
-  { id: "cs", host: "createstuff.ai", label: "createstuff.ai", dir: path.join(NEXUS, "apps", "createstuff-marketing"), project: "createstuff-marketing", eyebrow: "CreateStuff", mode: "static" },
+  // The live fashionistas.ai source is the project copy. A stale copy in the
+  // home directory was silently being edited instead, so menu and SEO saves
+  // never reached the site people actually see.
+  { id: "fash", host: "fashionistas.ai", label: "fashionistas.ai", dir: path.join(PROJECTS_ROOT, "fashionistas-ai"), project: "fashionistas-ai", eyebrow: "Fashionistas", mode: "static" },
+  { id: "cs", host: "createstuff.ai", label: "createstuff.ai", dir: path.join(NEXUS, "apps", "createstuff-marketing"), project: "createstuff-marketing", eyebrow: "CreateStuff", mode: "static", safeDeploy: ["createstuff-marketing", "apps/createstuff-marketing"] },
 
   { id: "hid", host: "hiddencameras.tv", label: "hiddencameras.tv", dir: path.join(PROJECTS_ROOT, "hiddencameras-tv", "out"), project: "hiddencameras", eyebrow: "HiddenCameras", mode: "build", note: BUILD_NOTE },
   { id: "stv", host: "spanishtvshows.com", label: "spanishtvshows.com", dir: path.join(PROJECTS_ROOT, "Spanishtvshows.com", ".vercel", "output", "static"), project: "spanishtvshows-site", eyebrow: "Spanish TV Shows", mode: "build", note: BUILD_NOTE },
@@ -94,6 +109,115 @@ function inside(site, rel) {
   return file;
 }
 
+const IMAGE_REL = /^img\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/;
+
+function noteOf(body) {
+  return String(body?.note || "").trim().slice(0, 500);
+}
+
+function clearSeo(site) {
+  seoCache.delete(site.id);
+}
+
+function writeAudited(site, rel, next, { action = "save", note = "", actionId } = {}) {
+  const file = inside(site, rel);
+  const result = governance.write({ file, site: site.id, rel, next, action, note, actionId });
+  if (result.changed) clearSeo(site);
+  return result;
+}
+
+function deleteAudited(site, rel, note = "") {
+  const file = inside(site, rel);
+  const result = governance.remove({ file, site: site.id, rel, note });
+  if (result.changed) clearSeo(site);
+  return result;
+}
+
+function revisionOf(file) {
+  if (!fs.existsSync(file)) return "";
+  return sha256(fs.readFileSync(file));
+}
+
+function assertRevision(site, rel, revision, { required = false } = {}) {
+  if (!revision) {
+    if (required) {
+      throw Object.assign(new Error("Reload this page before saving — the editor needs its current revision."), { status: 428 });
+    }
+    return;
+  }
+  const current = revisionOf(inside(site, rel));
+  if (current !== revision) {
+    throw Object.assign(new Error("This page changed on disk since you opened it. Reload the page and reapply your edit."), { status: 409 });
+  }
+}
+
+function imageSitemapPathOf(site) {
+  return path.join(site.dir, "sitemap-images.xml");
+}
+
+function imagesForSitemap(site, html) {
+  const page = readPage(html);
+  const origin = `https://${site.host}/`;
+  const images = [];
+  for (const image of page.images) {
+    const src = image.src || "";
+    if (!src || /^data:/i.test(src)) continue;
+    images.push({
+      src: absoluteImage(src, origin),
+      title: page.title || "",
+      caption: image.alt || "",
+    });
+  }
+  if (page.socialImage) {
+    images.unshift({
+      src: absoluteImage(page.socialImage, origin),
+      title: page.title || "",
+      caption: page.socialAlt || "",
+    });
+  }
+  const seen = new Set();
+  return images.filter((image) => {
+    if (!image.src || seen.has(image.src)) return false;
+    seen.add(image.src);
+    return true;
+  }).slice(0, 30);
+}
+
+function withImageDimensions(site, page) {
+  for (const image of page.images) {
+    if (Number(image.width) > 0 && Number(image.height) > 0) continue;
+    const src = String(image.src || "").split("?")[0];
+    if (!src || /^(?:[a-z]+:)?\/\//i.test(src) || src.startsWith("data:")) continue;
+    try {
+      const rel = decodeURIComponent(src.replace(/^\/+/, ""));
+      if (!rel || rel.includes("..")) continue;
+      const file = path.join(site.dir, rel);
+      if (!fs.existsSync(file)) continue;
+      const size = imageSize(fs.readFileSync(file));
+      if (size) {
+        image.width = size.width;
+        image.height = size.height;
+      }
+    } catch {
+      // Leave a broken or non-image reference alone; the audit will flag it.
+    }
+  }
+  return page;
+}
+
+function syncImageSitemap(site, urlPath, html, include = true) {
+  const file = imageSitemapPathOf(site);
+  if (!fs.existsSync(file)) return { updated: false, reason: "no image sitemap" };
+  const loc = pageLoc(site, urlPath);
+  const xml = fs.readFileSync(file, "utf8");
+  const next = include
+    ? upsertSitemapImages(xml, loc, imagesForSitemap(site, html))
+    : removeSitemapImages(xml, loc);
+  if (next === xml) return { updated: false };
+  writeAudited(site, "sitemap-images.xml", next, { action: include ? "image-sitemap" : "image-sitemap-remove", note: urlPath });
+  return { updated: true };
+}
+
 function walkPages(dir, root, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "img" || entry.name === "functions") continue;
@@ -104,6 +228,19 @@ function walkPages(dir, root, out) {
     // `blog/post.html` etc. Restricting .html to the root folder hid 208 of
     // ihatecollege's 254 pages and 243 of scooter.exchange's 265 from here.
     else if (entry.isFile() && entry.name.endsWith(".html")) {
+      out.push(path.relative(root, full).split(path.sep).join("/"));
+    }
+  }
+  return out;
+}
+
+function walkImages(dir, root, out, depth = 0) {
+  if (depth > 4 || !fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkImages(full, root, out, depth + 1);
+    else if (entry.isFile() && IMAGE_TYPES[path.extname(entry.name).toLowerCase()] && path.extname(entry.name).toLowerCase() !== ".svg") {
       out.push(path.relative(root, full).split(path.sep).join("/"));
     }
   }
@@ -143,6 +280,7 @@ function mentionReport(site) {
 
 function applyMentions(site) {
   let changed = 0;
+  const actionId = crypto.randomUUID();
   for (const rel of pagesOf(site)) {
     const file = inside(site, rel);
     const html = fs.readFileSync(file, "utf8");
@@ -151,7 +289,7 @@ function applyMentions(site) {
       origin: `https://${site.host}/`,
     });
     if (next !== html) {
-      fs.writeFileSync(file, next);
+      writeAudited(site, rel, next, { action: "mentions", note: "Added Israel Joffe profile links", actionId });
       changed += 1;
     }
   }
@@ -164,6 +302,12 @@ function send(res, status, body, headers = {}) {
     "Content-Type": typeof body === "string" ? "text/html; charset=utf-8" : "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Content-Security-Policy":
+      "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     ...headers,
   });
   res.end(payload);
@@ -252,6 +396,14 @@ function parseMultipart(buffer, contentType) {
   return parts;
 }
 
+function partValue(parts, name) {
+  return (parts.find((part) => part.name === name)?.body.toString("utf8") || "").trim();
+}
+
+function bodyRevision(req, parts) {
+  return partValue(parts, "revision");
+}
+
 function sniffImage(buf) {
   if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ".jpg";
   if (buf.length > 8 && buf[0] === 0x89 && buf.toString("ascii", 1, 4) === "PNG") return ".png";
@@ -328,9 +480,14 @@ function cleanFooterGroups(groups) {
 
 function writeFooterLinks(site, groups) {
   const clean = cleanFooterGroups(groups);
+  const actionId = crypto.randomUUID();
   const back = clean.find((group) => group.id === "backlinks");
   if (back) {
-    fs.writeFileSync(adminFile(site), `${JSON.stringify({ backlinks: back.links }, null, 2)}\n`);
+    writeAudited(site, "admin.json", `${JSON.stringify({ backlinks: back.links }, null, 2)}\n`, {
+      action: "footer-config",
+      note: "Saved footer backlinks",
+      actionId,
+    });
   }
   let updated = 0;
   for (const rel of pagesOf(site)) {
@@ -338,7 +495,7 @@ function writeFooterLinks(site, groups) {
     const html = fs.readFileSync(file, "utf8");
     const next = writeFooter(html, clean);
     if (next !== html) {
-      fs.writeFileSync(file, next);
+      writeAudited(site, rel, next, { action: "footer", note: "Updated footer links", actionId });
       updated += 1;
     }
   }
@@ -348,14 +505,19 @@ function writeFooterLinks(site, groups) {
 function writeBacklinks(site, links) {
   const previous = currentBacklinks(site).map((link) => link.href);
   const clean = cleanBacklinks(links);
-  fs.writeFileSync(adminFile(site), `${JSON.stringify({ backlinks: clean }, null, 2)}\n`);
+  const actionId = crypto.randomUUID();
+  writeAudited(site, "admin.json", `${JSON.stringify({ backlinks: clean }, null, 2)}\n`, {
+    action: "backlinks-config",
+    note: "Saved extra footer links",
+    actionId,
+  });
   let updated = 0;
   for (const rel of pagesOf(site)) {
     const file = inside(site, rel);
     const html = fs.readFileSync(file, "utf8");
     const next = applyBacklinks(html, clean, previous);
     if (next !== html) {
-      fs.writeFileSync(file, next);
+      writeAudited(site, rel, next, { action: "backlinks", note: "Updated extra footer links", actionId });
       updated += 1;
     }
   }
@@ -397,7 +559,7 @@ function siteNavAndSitemap(site) {
   return { navHrefs, sitemap, sitemapPath, sitemapLocs };
 }
 
-function setInSitemap(site, urlPath, include) {
+function setInSitemap(site, urlPath, include, html = "") {
   const sitemapPath = sitemapPathOf(site);
   const loc = pageLoc(site, urlPath);
   if (!fs.existsSync(sitemapPath)) {
@@ -409,8 +571,15 @@ function setInSitemap(site, urlPath, include) {
     );
   }
   const xml = fs.readFileSync(sitemapPath, "utf8");
-  const next = include ? upsertSitemap(xml, loc) : removeSitemap(xml, loc);
-  if (next !== xml) fs.writeFileSync(sitemapPath, next);
+  let next = include ? upsertSitemap(xml, loc) : removeSitemap(xml, loc);
+  if (include && html) next = upsertSitemapImages(next, loc, imagesForSitemap(site, html));
+  if (next !== xml) {
+    writeAudited(site, site.sitemap || "sitemap.xml", next, {
+      action: include ? "sitemap-add" : "sitemap-remove",
+      note: urlPath,
+    });
+  }
+  syncImageSitemap(site, urlPath, html, include);
 }
 
 function setInNav(site, urlPath, label, include) {
@@ -439,23 +608,81 @@ function setInNav(site, urlPath, label, include) {
   // model loses structure on the way in — on religiousjews.com that flattened
   // three <nav-group> blocks out of 31 files from a single menu save.
   let updated = 0;
+  const actionId = crypto.randomUUID();
   for (const rel of pagesOf(site)) {
     const file = inside(site, rel);
     const html = fs.readFileSync(file, "utf8");
     if (!html.includes('class="primary"')) continue;
     const next = change(html);
     if (next !== html) {
-      fs.writeFileSync(file, next);
+      writeAudited(site, rel, next, { action: "nav", note: urlPath, actionId });
       updated += 1;
     }
   }
   return updated;
 }
 
-function cookieToken(req) {
+function cookieValue(req, name) {
   const header = req.headers.cookie || "";
-  const match = header.match(/(?:^|;\s*)joffe_admin=([^;]+)/);
+  const match = header.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : "";
+}
+
+function cookieToken(req) {
+  return cookieValue(req, "joffe_admin");
+}
+
+function csrfToken(req) {
+  return cookieValue(req, CSRF_COOKIE);
+}
+
+function secureCookies(req) {
+  return Boolean(req.socket.encrypted) || String(req.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket.remoteAddress || "local";
+}
+
+function loginAllowed(ip) {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry) return true;
+  if (entry.blockedUntil && entry.blockedUntil > now) return false;
+  if (entry.reset < now) {
+    loginAttempts.delete(ip);
+    return true;
+  }
+  return entry.count < 5;
+}
+
+function noteLoginFailure(ip) {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip) || { count: 0, reset: now + 10 * 60 * 1000, blockedUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= 5) entry.blockedUntil = now + 10 * 60 * 1000;
+  loginAttempts.set(ip, entry);
+}
+
+function sameToken(a, b) {
+  const left = Buffer.from(String(a || ""));
+  const right = Buffer.from(String(b || ""));
+  return left.length === right.length && left.length > 0 && crypto.timingSafeEqual(left, right);
+}
+
+function checkCsrf(req, url) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method) || url.pathname === "/api/login") return null;
+  const origin = String(req.headers.origin || "");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== String(req.headers.host || "")) return "Cross-site request blocked";
+    } catch {
+      return "Cross-site request blocked";
+    }
+  }
+  if (!sameToken(csrfToken(req), req.headers[CSRF_HEADER])) return "Missing or stale security token — reload the admin";
+  return null;
 }
 
 function authed(req) {
@@ -470,8 +697,25 @@ function authed(req) {
 
 function startPublish(site) {
   if (publishJob.running) throw Object.assign(new Error("A publish is already running"), { status: 409 });
-  publishJob = { running: true, log: `Publishing ${site.host}…\n`, code: null, host: site.host };
-  const child = spawn("./deploy.sh", ["pages", site.project, site.dir], { cwd: NEXUS });
+  const viaGate = Boolean(site.safeDeploy);
+  const command = viaGate ? "bash" : "./deploy.sh";
+  const args = viaGate
+    ? ["scripts/deploy-safe-static.sh", ...site.safeDeploy]
+    : ["pages", site.project, site.dir];
+  publishJob = {
+    running: true,
+    log: `Publishing ${site.host}${viaGate ? " through the preview → smoke → production gate" : " directly"}…\n`,
+    code: null,
+    host: site.host,
+    site: site.id,
+    gate: viaGate,
+  };
+  governance.record({
+    site: site.id,
+    action: "publish-start",
+    note: `${viaGate ? "safe gate" : "direct deploy"}: ${command} ${args.join(" ")}`,
+  });
+  const child = spawn(command, args, { cwd: NEXUS });
   const append = (chunk) => {
     publishJob.log += chunk.toString();
     if (publishJob.log.length > 180_000) publishJob.log = publishJob.log.slice(-150_000);
@@ -482,7 +726,51 @@ function startPublish(site) {
     publishJob.running = false;
     publishJob.code = code;
     publishJob.log += `\nPublish finished with exit code ${code}.\n`;
+    governance.record({
+      site: site.id,
+      action: code === 0 ? "publish-ok" : "publish-failed",
+      note: `${site.host}: exit ${code}`,
+    });
   });
+}
+
+function localPageExists(site, pathname) {
+  const clean = String(pathname || "").split("#")[0].split("?")[0];
+  if (!clean) return true;
+  try {
+    const rel = urlToRelFor(site, clean);
+    if (fs.existsSync(path.join(site.dir, rel))) return true;
+    if (fs.existsSync(path.join(site.dir, clean.replace(/^\/+/, "")))) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function seoAudit(site, { refresh = false } = {}) {
+  const cached = seoCache.get(site.id);
+  if (!refresh && cached && Date.now() - cached.at < 60_000) return cached.report;
+  const pages = pagesOf(site).map((rel) => ({ rel, path: relToUrl(rel) }));
+  const sitemapPath = sitemapPathOf(site);
+  const imagePath = imageSitemapPathOf(site);
+  const robotsPath = path.join(site.dir, "robots.txt");
+  const report = auditSite({
+    site,
+    pages,
+    read: (rel) => fs.readFileSync(inside(site, rel), "utf8"),
+    sitemap: fs.existsSync(sitemapPath) ? fs.readFileSync(sitemapPath, "utf8") : "",
+    imageSitemap: fs.existsSync(imagePath) ? fs.readFileSync(imagePath, "utf8") : "",
+    robots: fs.existsSync(robotsPath) ? fs.readFileSync(robotsPath, "utf8") : "",
+    hasImageSitemap: fs.existsSync(imagePath),
+    // Worker-rendered sites do not have every route on disk, so link and
+    // sitemap-local checks would report false breakage. Page-level SEO is
+    // still useful for the files that do exist.
+    checkLinks: site.mode === "static",
+    checkSitemapLocals: site.mode === "static",
+    pageExists: (pathname) => localPageExists(site, pathname),
+  });
+  seoCache.set(site.id, { at: Date.now(), report });
+  return report;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -499,25 +787,52 @@ const server = http.createServer(async (req, res) => {
       if (!file.startsWith(`${root}${path.sep}`) || !types[ext] || !fs.existsSync(file)) {
         return send(res, 404, { error: "Not found" });
       }
-      res.writeHead(200, { "Content-Type": types[ext], "Cache-Control": "public, max-age=86400" });
+      res.writeHead(200, {
+        "Content-Type": types[ext],
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+      });
       return res.end(fs.readFileSync(file));
     }
     if (req.method === "POST" && url.pathname === "/api/login") {
+      const ip = clientIp(req);
+      if (!loginAllowed(ip)) {
+        return send(res, 429, { error: "Too many wrong passwords. Wait 10 minutes and try again." });
+      }
       const body = await readBody(req);
       const expected = Buffer.from(password());
       const given = Buffer.from(String(body.password || ""));
       const ok = expected.length === given.length && crypto.timingSafeEqual(expected, given);
-      if (!ok) return send(res, 401, { error: "Wrong password" });
+      if (!ok) {
+        noteLoginFailure(ip);
+        return send(res, 401, { error: "Wrong password" });
+      }
+      loginAttempts.delete(ip);
       const token = crypto.randomBytes(24).toString("base64url");
-      sessions.set(token, { expires: Date.now() + 1000 * 60 * 60 * 12 });
+      const csrf = crypto.randomBytes(24).toString("base64url");
+      sessions.set(token, { expires: Date.now() + SESSION_MS });
+      const secure = secureCookies(req) ? "; Secure" : "";
       return send(res, 200, { ok: true }, {
-        "Set-Cookie": `joffe_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`,
+        "Set-Cookie": [
+          `joffe_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure}`,
+          `${CSRF_COOKIE}=${encodeURIComponent(csrf)}; SameSite=Strict; Path=/; Max-Age=43200${secure}`,
+        ],
       });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
       sessions.delete(cookieToken(req));
-      return send(res, 200, { ok: true }, { "Set-Cookie": "joffe_admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
+      const secure = secureCookies(req) ? "; Secure" : "";
+      return send(res, 200, { ok: true }, {
+        "Set-Cookie": [
+          `joffe_admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`,
+          `${CSRF_COOKIE}=; SameSite=Strict; Path=/; Max-Age=0${secure}`,
+        ],
+      });
     }
+    const csrfError = checkCsrf(req, url);
+    if (csrfError) return send(res, 403, { error: csrfError });
     if (!authed(req)) return send(res, 401, { error: "Sign in" });
 
     if (req.method === "GET" && url.pathname === "/api/sites") {
@@ -533,6 +848,7 @@ const server = http.createServer(async (req, res) => {
             mode: site.mode || "static",
             note: site.note || "",
             home: ready && fs.existsSync(path.join(site.dir, "index.html")),
+            gate: Boolean(site.safeDeploy),
           };
         }),
         publish: { running: publishJob.running, code: publishJob.code, host: publishJob.host },
@@ -546,6 +862,39 @@ const server = http.createServer(async (req, res) => {
     if (!siteMatch) return send(res, 404, { error: "Not found" });
     const site = siteById(siteMatch[1]);
     const rest = siteMatch[2] || "";
+
+    if (req.method === "GET" && rest === "/seo") {
+      return send(res, 200, seoAudit(site, { refresh: url.searchParams.get("refresh") === "1" }));
+    }
+    if (req.method === "GET" && rest === "/history") {
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+      const pagePath = url.searchParams.get("path") || "";
+      const rel = pagePath ? urlToRelFor(site, pagePath) : "";
+      const entries = governance.history(site.id, { limit, rel }).map((entry) => ({
+        ...entry,
+        url: entry.path ? relToUrl(entry.path) : "",
+      }));
+      return send(res, 200, { entries, state: governance.stateDir });
+    }
+    if (req.method === "POST" && rest === "/restore") {
+      const body = await readBody(req);
+      const pagePath = String(body.path || "");
+      if (!pagePath) throw Object.assign(new Error("Choose a page to restore"), { status: 400 });
+      const rel = urlToRelFor(site, pagePath);
+      const result = governance.restore({
+        file: inside(site, rel),
+        site: site.id,
+        rel,
+        hash: String(body.hash || ""),
+        note: noteOf(body) || `Restored ${pagePath}`,
+      });
+      clearSeo(site);
+      return send(res, 200, {
+        path: relToUrl(rel),
+        restored: result.changed,
+        revision: revisionOf(inside(site, rel)),
+      });
+    }
 
     if (req.method === "GET" && rest === "/pages") {
       const { navHrefs, sitemapLocs } = siteNavAndSitemap(site);
@@ -573,6 +922,7 @@ const server = http.createServer(async (req, res) => {
       if (!target.length) throw Object.assign(new Error("Menu links have to start with /"), { status: 400 });
       const wanted = new Set(target.map((link) => link.href));
       let updated = 0;
+      const actionId = crypto.randomUUID();
       for (const rel of pagesOf(site)) {
         const file = inside(site, rel);
         const html = fs.readFileSync(file, "utf8");
@@ -592,7 +942,7 @@ const server = http.createServer(async (req, res) => {
           if (now && now.label !== link.label) next = renameNavLink(next, link.href, now.label, link.label);
         }
         if (next !== html) {
-          fs.writeFileSync(file, next);
+          writeAudited(site, rel, next, { action: "nav", note: "Saved site menu", actionId });
           updated += 1;
         }
       }
@@ -615,8 +965,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && rest === "/mentions") return send(res, 200, mentionReport(site));
     if (req.method === "POST" && rest === "/mentions") return send(res, 200, applyMentions(site));
     if (req.method === "POST" && rest === "/publish") {
+      const body = await readBody(req);
+      if (body.confirm !== true) {
+        throw Object.assign(new Error("Confirm the publish before it starts"), { status: 400 });
+      }
       startPublish(site);
-      return send(res, 202, { started: true, host: site.host });
+      return send(res, 202, { started: true, host: site.host, gate: Boolean(site.safeDeploy) });
     }
     if (req.method === "POST" && rest === "/pages") {
       const body = await readBody(req);
@@ -663,7 +1017,7 @@ const server = http.createServer(async (req, res) => {
       const links = currentBacklinks(site);
       html = applyBacklinks(html, links, links.map((link) => link.href));
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, html);
+      writeAudited(site, rel, html, { action: "create-page", note: urlPath });
       // The page is on disk now. If the sitemap or nav cannot take it, say so
       // in the response rather than failing the call or reporting success.
       const inSitemapWanted = body.inSitemap !== false;
@@ -672,7 +1026,7 @@ const server = http.createServer(async (req, res) => {
       let inSitemap = inSitemapWanted;
       let inNav = inNavWanted;
       try {
-        setInSitemap(site, urlPath, inSitemapWanted);
+        setInSitemap(site, urlPath, inSitemapWanted, html);
       } catch (error) {
         inSitemap = false;
         warnings.push(`Sitemap: ${error.message}`);
@@ -685,21 +1039,35 @@ const server = http.createServer(async (req, res) => {
           warnings.push(`Navigation: ${error.message}`);
         }
       }
-      return send(res, 201, { path: urlPath, inNav, inSitemap, warnings });
+      return send(res, 201, { path: urlPath, inNav, inSitemap, warnings, revision: revisionOf(file) });
     }
     if (req.method === "GET" && rest === "/library") {
       const dir = path.join(site.dir, "img");
-      const names = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
-      const images = names
-        .filter((name) => IMAGE_TYPES[path.extname(name).toLowerCase()] && path.extname(name).toLowerCase() !== ".svg")
-        .map((name) => ({ src: `/img/${name}`, mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
+      const images = walkImages(dir, dir, [])
+        .map((rel) => {
+          const file = path.join(dir, rel);
+          const stat = fs.statSync(file);
+          const buf = fs.readFileSync(file);
+          const size = imageSize(buf);
+          return {
+            src: `/img/${rel}`,
+            mtime: stat.mtimeMs,
+            bytes: stat.size,
+            size: humanBytes(stat.size),
+            width: size?.width || 0,
+            height: size?.height || 0,
+            webp: fs.existsSync(file.replace(/\.[^.]+$/, ".webp")),
+          };
+        })
         .sort((a, b) => b.mtime - a.mtime)
-        .slice(0, 60);
+        .slice(0, 240);
       return send(res, 200, { images });
     }
     if (req.method === "GET" && rest.startsWith("/media/")) {
       const rel = decodeURIComponent(rest.slice("/media/".length));
-      const allowed = /^(?:img\/[A-Za-z0-9._-]+|favicon\.svg|favicon\.png|favicon\.ico|apple-touch-icon\.png)$/.test(rel);
+      const allowed =
+        IMAGE_REL.test(rel) ||
+        /^(?:favicon\.svg|favicon\.png|favicon\.ico|apple-touch-icon\.png)$/.test(rel);
       if (!allowed || rel.includes("..")) throw Object.assign(new Error("That image is not available"), { status: 404 });
       const file = inside(site, rel);
       const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
@@ -725,16 +1093,37 @@ const server = http.createServer(async (req, res) => {
       const dest = inside(site, `img/${name}`);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, filePart.body);
+      const dimensions = imageSize(filePart.body);
+      governance.record({
+        site: site.id,
+        action: "upload-image",
+        rel: `img/${name}`,
+        note: `${role || "photo"} ${humanBytes(filePart.body.length)}${dimensions ? `, ${dimensions.width}×${dimensions.height}` : ""}`,
+      });
       const src = `/img/${name}`;
       const alt = (parts.find((part) => part.name === "alt")?.body.toString("utf8") || "").trim() || defaultAlt(site);
       const pagePath = (parts.find((part) => part.name === "path")?.body.toString("utf8") || "").trim();
       const insert = !role && (parts.find((part) => part.name === "insert")?.body.toString("utf8") || "") === "1";
+      let revision = "";
       if (insert && pagePath) {
         const rel = urlToRelFor(site, pagePath);
+        assertRevision(site, rel, bodyRevision(req, parts), { required: true });
         const { file, html } = readHtml(site, rel);
-        fs.writeFileSync(file, insertImage(html, src, alt));
+        const next = insertImage(html, src, alt, dimensions || {});
+        if (next !== html) writeAudited(site, rel, next, { action: "insert-image", note: src });
+        revision = revisionOf(file);
       }
-      return send(res, 201, { src, alt, role, inserted: Boolean(insert && pagePath) });
+      return send(res, 201, {
+        src,
+        alt,
+        role,
+        inserted: Boolean(insert && pagePath),
+        width: dimensions?.width || 0,
+        height: dimensions?.height || 0,
+        bytes: filePart.body.length,
+        size: humanBytes(filePart.body.length),
+        revision,
+      });
     }
     if (req.method === "PUT" && rest === "/icons") {
       const body = await readBody(req);
@@ -747,12 +1136,13 @@ const server = http.createServer(async (req, res) => {
         if (!fs.existsSync(inside(site, src.slice(1)))) throw Object.assign(new Error("That icon is not on this site"), { status: 404 });
       }
       let updated = 0;
+      const actionId = crypto.randomUUID();
       for (const rel of pagesOf(site)) {
         const file = inside(site, rel);
         const html = fs.readFileSync(file, "utf8");
         const next = writeIcons(html, { favicon, appleIcon });
         if (next !== html) {
-          fs.writeFileSync(file, next);
+          writeAudited(site, rel, next, { action: "icons", note: "Updated site icons", actionId });
           updated += 1;
         }
       }
@@ -761,53 +1151,81 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && rest === "/remove-image") {
       const body = await readBody(req);
       const src = String(body.src || "");
-      if (!/^\/img\/[A-Za-z0-9._-]+$/.test(src)) throw Object.assign(new Error("That photo is not on this page"), { status: 400 });
+      if (!/^\/img\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(src)) throw Object.assign(new Error("That photo is not on this page"), { status: 400 });
       const rel = urlToRelFor(site, body.path || "/");
+      assertRevision(site, rel, body.revision, { required: true });
       const { file, html } = readHtml(site, rel);
       const next = removeImage(html, src);
       if (next === html) throw Object.assign(new Error("That photo is not on this page"), { status: 404 });
-      fs.writeFileSync(file, next);
-      return send(res, 200, { src, path: relToUrl(rel), removed: true });
+      writeAudited(site, rel, next, { action: "remove-image", note: src });
+      return send(res, 200, { src, path: relToUrl(rel), removed: true, revision: revisionOf(file) });
     }
     if (req.method === "POST" && rest === "/insert-image") {
       const body = await readBody(req);
       const src = String(body.src || "");
-      if (!/^\/img\/[A-Za-z0-9._-]+$/.test(src)) throw Object.assign(new Error("Pick a photo from this site"), { status: 400 });
+      if (!/^\/img\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(src)) throw Object.assign(new Error("Pick a photo from this site"), { status: 400 });
       const fileOnDisk = inside(site, src.slice(1));
       if (!fs.existsSync(fileOnDisk)) throw Object.assign(new Error("That photo is not on this site"), { status: 404 });
       const alt = String(body.alt || "").trim() || defaultAlt(site);
       const rel = urlToRelFor(site, body.path || "/");
+      assertRevision(site, rel, body.revision, { required: true });
       const { file, html } = readHtml(site, rel);
-      fs.writeFileSync(file, insertImage(html, src, alt));
-      return send(res, 200, { src, alt, path: relToUrl(rel) });
+      const dimensions = imageSize(fs.readFileSync(fileOnDisk)) || {};
+      const next = insertImage(html, src, alt, dimensions);
+      if (next !== html) writeAudited(site, rel, next, { action: "insert-image", note: src });
+      return send(res, 200, { src, alt, path: relToUrl(rel), width: dimensions.width || 0, height: dimensions.height || 0, revision: revisionOf(file) });
     }
     if (req.method === "POST" && rest === "/paragraph") {
       const body = await readBody(req);
       const text = String(body.text || "").trim();
       if (!text) throw Object.assign(new Error("Write something first"), { status: 400 });
       const rel = urlToRelFor(site, body.path || "/");
+      assertRevision(site, rel, body.revision, { required: true });
       const { file, html } = readHtml(site, rel);
-      fs.writeFileSync(file, appendParagraph(html, text));
-      return send(res, 200, { path: relToUrl(rel), saved: true });
+      const next = appendParagraph(html, text);
+      if (next !== html) writeAudited(site, rel, next, { action: "paragraph", note: text.slice(0, 80) });
+      return send(res, 200, { path: relToUrl(rel), saved: true, revision: revisionOf(file) });
     }
 
     const pageMatch = rest.match(/^\/page$/);
     if (pageMatch && req.method === "GET") {
       const rel = urlToRelFor(site, url.searchParams.get("path") || "/");
-      const { html } = readHtml(site, rel);
+      const { file, html } = readHtml(site, rel);
       const pathName = relToUrl(rel);
       const { navHrefs, sitemapLocs } = siteNavAndSitemap(site);
-      return send(res, 200, { path: pathName, ...readPage(html), ...placement(site, pathName, navHrefs, sitemapLocs) });
+      return send(res, 200, {
+        path: pathName,
+        revision: revisionOf(file),
+        ...withImageDimensions(site, readPage(html)),
+        ...placement(site, pathName, navHrefs, sitemapLocs),
+      });
     }
     if (pageMatch && req.method === "PUT") {
       const body = await readBody(req);
       const rel = urlToRelFor(site, body.path || "/");
+      assertRevision(site, rel, body.revision, { required: true });
       const { file, html } = readHtml(site, rel);
-      fs.writeFileSync(file, writePage(html, body));
+      const next = writePage(html, body);
+      const result = writeAudited(site, rel, next, { action: "save-page", note: noteOf(body) || String(body.title || relToUrl(rel)) });
       const pathName = relToUrl(rel);
-      if (typeof body.inNav === "boolean") setInNav(site, pathName, String(body.navLabel || body.title || pathName), body.inNav);
-      if (typeof body.inSitemap === "boolean") setInSitemap(site, pathName, body.inSitemap);
-      return send(res, 200, { path: pathName, saved: true });
+      const warnings = [];
+      try {
+        if (typeof body.inNav === "boolean") setInNav(site, pathName, String(body.navLabel || body.title || pathName), body.inNav);
+      } catch (error) {
+        warnings.push(`Navigation: ${error.message}`);
+      }
+      try {
+        if (typeof body.inSitemap === "boolean") setInSitemap(site, pathName, body.inSitemap, next);
+      } catch (error) {
+        warnings.push(`Sitemap: ${error.message}`);
+      }
+      return send(res, 200, {
+        path: pathName,
+        saved: true,
+        changed: result.changed,
+        warnings,
+        revision: revisionOf(file),
+      });
     }
     if (pageMatch && req.method === "DELETE") {
       const body = await readBody(req);
@@ -815,23 +1233,39 @@ const server = http.createServer(async (req, res) => {
       if (rel === "index.html") throw Object.assign(new Error("The home page stays"), { status: 400 });
       const file = inside(site, rel);
       if (!fs.existsSync(file)) throw Object.assign(new Error("Page not found"), { status: 404 });
-      fs.unlinkSync(file);
+      assertRevision(site, rel, body.revision, { required: true });
+      const uri = relToUrl(rel);
+      deleteAudited(site, rel, noteOf(body) || `Deleted ${uri}`);
       let dir = path.dirname(file);
       while (dir !== path.resolve(site.dir) && fs.readdirSync(dir).length === 0) {
         fs.rmdirSync(dir);
         dir = path.dirname(dir);
       }
       const sitemap = sitemapPathOf(site);
-      const loc = `https://${site.host}${relToUrl(rel)}`;
-      if (fs.existsSync(sitemap)) fs.writeFileSync(sitemap, removeSitemap(fs.readFileSync(sitemap, "utf8"), loc));
-      const urlPath = relToUrl(rel);
+      const loc = `https://${site.host}${uri}`;
+      if (fs.existsSync(sitemap)) {
+        const xml = fs.readFileSync(sitemap, "utf8");
+        const next = removeSitemap(xml, loc);
+        if (next !== xml) {
+          writeAudited(site, site.sitemap || "sitemap.xml", next, { action: "sitemap-remove", note: uri });
+        }
+      }
+      const imageSitemap = imageSitemapPathOf(site);
+      if (fs.existsSync(imageSitemap)) {
+        const xml = fs.readFileSync(imageSitemap, "utf8");
+        const next = removeSitemapImages(xml, loc);
+        if (next !== xml) {
+          writeAudited(site, "sitemap-images.xml", next, { action: "image-sitemap-remove", note: uri });
+        }
+      }
+      const urlPath = uri;
       for (const pageRel of pagesOf(site)) {
         const pageFile = inside(site, pageRel);
         const pageHtml = fs.readFileSync(pageFile, "utf8");
         if (!pageHtml.includes('class="primary"')) continue;
         // Surgical: only unlink this one path, leave the menu's structure alone.
         const next = removeNavLink(pageHtml, urlPath);
-        if (next !== pageHtml) fs.writeFileSync(pageFile, next);
+        if (next !== pageHtml) writeAudited(site, pageRel, next, { action: "nav-remove", note: uri });
       }
       return send(res, 200, { deleted: urlPath });
     }
@@ -842,7 +1276,22 @@ const server = http.createServer(async (req, res) => {
 });
 
 const port = Number(process.env.PORT || 8788);
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Joffe admin  http://127.0.0.1:${port}`);
+const host = process.env.HOST || "127.0.0.1";
+server.listen(port, host, () => {
+  console.log(`Joffe admin  http://${host}:${port}`);
   console.log(`Password file  ${PASSWORD_FILE}`);
+  console.log(`History        ${STATE_DIR}`);
+  if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    console.log("Remote bind enabled. Put this behind Cloudflare Tunnel + Access or a private network; never expose it raw.");
+  }
 });
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (session.expires < now) sessions.delete(token);
+  }
+  for (const [ip, entry] of loginAttempts) {
+    if (entry.reset < now && (!entry.blockedUntil || entry.blockedUntil < now)) loginAttempts.delete(ip);
+  }
+}, 10 * 60 * 1000).unref();

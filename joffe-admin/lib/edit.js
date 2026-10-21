@@ -236,9 +236,22 @@ export function listImages(html) {
       src,
       alt: rawAlt == null ? "" : decode(rawAlt),
       missing: rawAlt == null || decode(rawAlt).trim() === "",
+      width: Number(attr(match[0], "width")) || 0,
+      height: Number(attr(match[0], "height")) || 0,
     });
   }
   return images;
+}
+
+function setNumericAttr(tag, name, value) {
+  const re = new RegExp(`\\b${name}\\s*=\\s*("[^"]*"|'[^']*'|[^\\s>]+)`, "i");
+  const match = re.exec(tag);
+  if (match) {
+    const current = match[1].replace(/^["']|["']$/g, "");
+    if (/^\d+$/.test(current)) return tag.replace(re, `${name}="${value}"`);
+    return tag;
+  }
+  return tag.replace(/<img\b/i, `<img ${name}="${value}"`);
 }
 
 export function writeAlts(html, images) {
@@ -247,8 +260,17 @@ export function writeAlts(html, images) {
     const spec = images[index++];
     if (!spec) return tag;
     const alt = encodeAttr(spec.alt ?? "");
-    if (/\balt\s*=/.test(tag)) return tag.replace(/\balt\s*=\s*("[^"]*"|'[^']*')/i, `alt="${alt}"`);
-    return tag.replace(/<img\b/i, `<img alt="${alt}"`);
+    let next = /\balt\s*=/.test(tag)
+      ? tag.replace(/\balt\s*=\s*("[^"]*"|'[^']*')/i, `alt="${alt}"`)
+      : tag.replace(/<img\b/i, `<img alt="${alt}"`);
+    // Existing pages often omitted intrinsic dimensions. When the server has
+    // looked up the real file, write them on save so the browser can reserve
+    // space instead of shifting the gallery while images load.
+    if (Number(spec.width) > 0 && Number(spec.height) > 0) {
+      next = setNumericAttr(next, "width", Number(spec.width));
+      next = setNumericAttr(next, "height", Number(spec.height));
+    }
+    return next;
   });
 }
 
@@ -538,10 +560,11 @@ export function ensureMentions(html, { personPage = false, origin = "https://isr
   return next;
 }
 
-export function insertImage(html, src, alt) {
+export function insertImage(html, src, alt, { width = 0, height = 0 } = {}) {
   const encoded = encodeAttr(src);
   if (html.includes(`src="${encoded}"`)) return html;
-  const figure = `<figure class="wp-block-image"><img src="${encoded}" alt="${encodeAttr(alt)}" loading="lazy" /></figure>`;
+  const dimensions = width > 0 && height > 0 ? ` width="${width}" height="${height}"` : "";
+  const figure = `<figure class="wp-block-image"><img src="${encoded}" alt="${encodeAttr(alt)}"${dimensions} loading="lazy" decoding="async" /></figure>`;
   if (html.includes('class="wpp-body"')) return html.replace('<div class="wpp-body">', `<div class="wpp-body">${figure}`);
   if (html.includes('class="page-body"')) return html.replace('<div class="page-body">', `<div class="page-body">${figure}`);
   if (/<\/main>/i.test(html)) return html.replace(/<\/main>/i, `${figure}\n</main>`);
@@ -751,4 +774,48 @@ export function removeSitemap(xml, loc) {
   const exact = sitemapEntry(loc);
   if (xml.includes(exact)) return xml.replace(exact, "");
   return xml.replace(new RegExp(`\\s*<url>\\s*<loc>${loc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</loc>[\\s\\S]*?</url>`, "g"), "");
+}
+
+function xmlText(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function imageTags(images) {
+  return images
+    .map((image) => {
+      const src = xmlText(image.src || "");
+      if (!src) return "";
+      const title = image.title ? `<image:title>${xmlText(image.title)}</image:title>` : "";
+      const caption = image.caption ? `<image:caption>${xmlText(image.caption)}</image:caption>` : "";
+      return `<image:image><image:loc>${src}</image:loc>${title}${caption}</image:image>`;
+    })
+    .join("");
+}
+
+// Add image metadata to the page's own <url> entry. This deliberately does not
+// remove existing image tags: hand-written captions are better than anything a
+// generic save can infer, so the admin only fills gaps. A sitemap without the
+// image namespace is left untouched rather than made invalid.
+export function upsertSitemapImages(xml, loc, images = []) {
+  if (!xml.includes("xmlns:image")) return xml;
+  const clean = images.filter((image) => image && image.src);
+  if (!clean.length) return xml;
+  const urlRe = new RegExp(`<url>\\s*<loc>${escapeRegExp(loc)}</loc>[\\s\\S]*?</url>`);
+  const existing = xml.match(urlRe);
+  if (existing) {
+    const already = new Set([...existing[0].matchAll(/<image:loc>([^<]+)<\/image:loc>/g)].map((match) => match[1]));
+    const missing = clean.filter((image) => !already.has(xmlText(image.src)));
+    if (!missing.length) return xml;
+    return xml.replace(urlRe, (block) => block.replace("</url>", `${imageTags(missing)}</url>`));
+  }
+  const entry = `  <url><loc>${loc}</loc><changefreq>monthly</changefreq><priority>0.6</priority>${imageTags(clean)}</url>\n`;
+  if (xml.includes("</urlset>")) return xml.replace("</urlset>", `${entry}</urlset>`);
+  return xml;
+}
+
+export function removeSitemapImages(xml, loc) {
+  const urlRe = new RegExp(`<url>\\s*<loc>${escapeRegExp(loc)}</loc>[\\s\\S]*?</url>`);
+  return xml.replace(urlRe, (block) =>
+    block.replace(/<image:image>[\s\S]*?<\/image:image>/g, ""),
+  );
 }

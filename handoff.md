@@ -3874,3 +3874,40 @@ sitemap, Formspree, GSC CSV).
 **Proof:** suite 453/453; deploy gate re-ran it; `version.txt == 7e7d7a4…` live; index.html serves the new asset (HTTP 200, 351KB); "Connect this browser" ×5 in the live bundle; browser walkthrough on prod (demo-seller login): (1) no-extension state, (2) one-button state, (3) click exercised with the POST stubbed → recorded `POST /api/devices/pair {install_id:"simulated-install-9f3a"}` → probe → PAIRED chip + success toast + feed button enabled ("Post all existing items"). The real POST path is server-proven from the earlier raw end-to-end run (register→heartbeat→pair→enqueue→report posted→re-enqueue=0); the stub was only used to avoid writing junk device rows under the public demo account.
 
 **Owner step (unchanged):** reload the unpacked extension once — after that, Shops → Connect this browser → done, and every save posts on its own.
+
+## 35. 2026-10-21 — admin portal: governance, revisions, SEO/image audit
+
+`joffe-admin` now behaves like an editing tool rather than a file form.
+
+**Fixed a real source bug first:** `fash` was pointed at `~/fashionistas-ai`, a stale copy whose home title was still “Shop & Sell Secondhand Fashion”. The live site is the project copy at `Default Project/fashionistas-ai` (“Photograph Your Closet, Sell It Everywhere”). Menu/SEO saves against the old path never reached production. The registry now uses the project source.
+
+**Governance (`lib/governance.js`)**
+- Before/after contents are stored as SHA-256 blobs; identical content is stored once.
+- `.state/audit.jsonl` is append-only and records page saves, menu/footer bulk edits, sitemap changes, uploads, creates, deletes, restores and publish starts/results.
+- Saves are atomic (temp file + rename) and optimistic: the editor sends the revision hash it opened; an external edit returns **409**, a missing hash returns **428**.
+- History tab shows the last 100 changes and restores any page revision. Restores are recorded as new entries.
+- `.state/` is gitignored.
+
+**Security**
+- CSRF double-submit token required on every state-changing request (login and logout handled explicitly).
+- Login rate limit: 5 failures per 10 minutes per IP.
+- Strict CSP, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, Permissions-Policy, COOP; Secure cookies when HTTPS/`X-Forwarded-Proto=https`.
+- `HOST`/`PORT` configurable; README documents Cloudflare Tunnel + Access for remote use and explicitly rejects a raw public port.
+
+**SEO / images**
+- Site check tab + `/api/sites/:id/seo`: titles, descriptions, canonicals, H1s, alt text, missing width/height, social cards, sitemap and image-sitemap coverage, stale sitemap URLs, broken internal links, duplicate titles. Com: 174 pages, 3,214 images, 0 errors, 336 warnings, 2,737 notices, ~130 ms.
+- Photo library walks nested `img/` (the com archive lives under `img/g/`), shows dimensions/bytes/WebP, and reads JPEG/PNG/GIF/WebP/AVIF headers without a dependency.
+- Uploads write real `width`/`height`, `loading="lazy"`, `decoding="async"`; large JPEG/PNG is resized to 1800 px and encoded as WebP in the browser.
+- Saving a page backfills missing intrinsic dimensions from the actual image files. `sitemap-images.xml` gains missing entries for the page on save and loses them on delete. Hand-written captions are never removed by a generic save.
+
+**Publish**
+- com and cs run `scripts/deploy-safe-static.sh` (preview → smoke → production) instead of a raw deploy.
+- Publish requires `{confirm:true}` and is recorded in history.
+
+**Verification**
+- `node --test`: **45/45 pass** (governance, image headers, sitemap images, SEO).
+- UI inline JS syntax-checked; browser login (temporary password file) rendered Site check and History.
+- API guards: no revision **428**, stale revision **409**, no/wrong CSRF **403**; rejected writes left history at 0.
+- No production deploy was run for this admin change.
+
+**Owner note:** this is still a single-password, single-operator tool. If it is exposed remotely, Cloudflare Access (or Tailscale) must be the outer lock; the password is the second. The History file is local, not backed up to Cloudflare.

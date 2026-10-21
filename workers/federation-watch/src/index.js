@@ -194,9 +194,72 @@ function botChecks() {
   }]);
 }
 
+// The placebets DATA plane. Months of silent empties (a wire answering 0 rows,
+// a weather feed at 0/194 grounds, a board that lost its pricing) looked like
+// health because everything measured whether the site SERVED, not whether it
+// had data. These HAVE-data checks run on the hourly tick (the same gated
+// cadence as the LLM bot checks) because each carries a real fetch; the
+// 2-failure ntfy debounce applies. Lesson from the first attempt (2026-10-20):
+// the insertion landed INSIDE the FEEDS array and turned the function into a
+// check entry — a TypeError the gate never surfaced. Do not anchor new
+// functions to comments in the middle of check lists.
+function placebetsDataChecks() {
+  return [
+    ["placebets injury wire", async () => {
+      const r = await get("https://placebets.ai/api/injuries");
+      const players = r.status === 200 ? (r.text.match(/"player"\s*:/g) || []).length : 0;
+      // 1399 rows is the working direct-ESPN level; <250 means leagues read
+      // empty; 0 means every league fell back and the wire is silently dead.
+      return { ok: players >= 250, detail: `${players} player rows${r.status !== 200 ? ` (HTTP ${r.status})` : ""}` };
+    }],
+    ["placebets weather grounds", async () => {
+      const d = json((await get("https://placebets.ai/api/weather")).text) || {};
+      const read = Number(d.groundsRead), ans = Number(d.groundsAnswered);
+      if (!Number.isFinite(read) || read <= 0) return { ok: false, detail: "groundsRead unreadable" };
+      return { ok: ans / read >= 0.6, detail: `${ans}/${read} grounds answered` };
+    }],
+    ["placebets board pricing", async () => {
+      // _cb: the KV-served board copy predates ?stats=1 and never carries the
+      // field — only a fresh compute is guaranteed to report pricing coverage.
+      const d = json((await get(`https://placebets.ai/api/odds?stats=1&_cb=${Date.now()}`)).text) || {};
+      const s = d.stats24h || {};
+      const ouRate = Number(s.priced24h) ? (Number(s.withOU24h) / Number(s.priced24h)) : 0;
+      return {
+        ok: Number(s.events) >= 20 && Number(s.priced24h) >= 3 && ouRate >= 0.4,
+        detail: `${s.events ?? "?"} events, ${s.priced24h ?? "?"} priced/24h, O/U ${Number.isFinite(ouRate) ? Math.round(ouRate * 100) : "?"}%`,
+      };
+    }],
+    ["placebets bot telemetry", async () => {
+      // The mine route is also the bot's health stamp: a check whose summary
+      // stops updating means the telemetry write broke (or the route did).
+      const d = json((await get("https://placebets.ai/api/cron/chatbot-mine")).text) || {};
+      const ageMs = age(d.checkedAt);
+      return {
+        ok: d.ok === true && Number.isFinite(ageMs) && ageMs < 26 * HOUR,
+        detail: `24h asks ${d.rows24h ?? 0}, misses ${d.missCount ?? 0}, corrected ${d.replaced ?? 0}, p95 ${d.p95 ?? "?"}ms, summary ${hrs(ageMs)} old`,
+      };
+    }],
+    ["placebets daily proof", async () => {
+      // The site runs its own end-to-end morning test (board, wire, weather,
+      // signup form, chatbot, cron stamps, mail) at 12:00 UTC and persists the
+      // verdict. This check exists so the WATCHER pages the phone on it: a red
+      // verdict or a verdict older than 26h (the scheduled test itself went
+      // missing) both count as failure, with the same 2-fail debounce.
+      const d = json((await get(`https://placebets.ai/api/cron/daily-proof?view=last&_cb=${Date.now()}`)).text) || {};
+      const ageMs = age(d.checkedAt);
+      const nfail = Array.isArray(d.failing) ? d.failing.length : 0;
+      const ok = d.ok === true && Number.isFinite(ageMs) && ageMs < 26 * HOUR;
+      return {
+        ok,
+        detail: d.checkedAt ? `${nfail} failing, verdict ${hrs(ageMs)} old${nfail ? `: ${d.failing.join(" · ").slice(0, 140)}` : ""}` : "no verdict yet",
+      };
+    }],
+  ];
+}
+
 async function runAll(env, { bots }) {
   ENV = env;
-  const checks = [...pageChecks(), ...FEEDS, d1Check(env), ...(bots ? botChecks() : [])];
+  const checks = [...pageChecks(), ...FEEDS, d1Check(env), ...(bots ? [...botChecks(), ...placebetsDataChecks()] : [])];
   const results = await Promise.all(checks.map(async ([name, fn]) => {
     try { return { name, ...(await fn()) }; } catch (e) { return { name, ok: false, detail: `threw: ${String(e && e.message || e).slice(0, 120)}` }; }
   }));

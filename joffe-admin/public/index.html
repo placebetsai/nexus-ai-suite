@@ -138,6 +138,29 @@
   .uses button { flex: 1; width: auto; border: 1px solid var(--line); border-radius: 999px; background: transparent; padding: 6px 8px; }
   .add-footer { margin: 4px 0 10px; }
   .warn { color: var(--danger); }
+  .audit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+  .audit-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .audit-card b { display: block; font-size: 24px; line-height: 1.1; }
+  .audit-card span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .audit-card.bad b { color: var(--danger); }
+  .audit-card.warn b { color: var(--accent); }
+  .audit-card.good b { color: #7ec699; }
+  .audit-issue { display: grid; grid-template-columns: 78px minmax(120px, 210px) 1fr auto; gap: 10px; align-items: start; padding: 9px 10px; border-top: 1px solid var(--line); }
+  .audit-issue:first-child { border-top: 0; }
+  .audit-issue .sev { text-transform: uppercase; font-size: 10px; letter-spacing: .08em; padding-top: 3px; }
+  .audit-issue .sev.error { color: var(--danger); }
+  .audit-issue .sev.warning { color: var(--accent); }
+  .audit-issue .sev.notice { color: var(--muted); }
+  .audit-issue code { font-size: 12px; color: var(--muted); }
+  .audit-issue p { margin: 0; }
+  .audit-issue button, .history-row button { width: auto; border: 1px solid var(--line); border-radius: 999px; background: transparent; padding: 5px 10px; }
+  .history-row { display: grid; grid-template-columns: 150px 110px minmax(120px, 190px) 1fr auto; gap: 10px; align-items: start; padding: 9px 10px; border-top: 1px solid var(--line); }
+  .history-row:first-child { border-top: 0; }
+  .history-row time, .history-row code { color: var(--muted); font-size: 12px; }
+  .history-row p { margin: 0; }
+  @media (max-width: 900px) {
+    .audit-issue, .history-row { grid-template-columns: 1fr; }
+  }
   #message:empty { display: none; }
   #message { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #241e16; border: 1px solid #5a4630; color: var(--accent); }
   #login { max-width: 420px; margin: 14vh auto; padding: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); }
@@ -187,6 +210,8 @@
         <button type="button" data-tab="share">Share</button>
         <button type="button" data-tab="content">Write</button>
         <button type="button" data-tab="images">Photos</button>
+        <button type="button" data-tab="health">Site check</button>
+        <button type="button" data-tab="history">History</button>
         <button type="button" data-tab="nav">Menu</button>
         <button type="button" data-tab="links">Footer</button>
         <button type="button" data-tab="new">New page</button>
@@ -299,11 +324,12 @@
           <strong>Add a photo to this page</strong>
           <input id="file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif" multiple />
           <input id="upload-alt" type="text" value="Israel Joffe" placeholder="Alt text" />
+          <label class="check"><input id="optimize-upload" type="checkbox" checked /> Shrink large JPEG/PNG photos to WebP before upload</label>
           <button id="upload" class="primary" type="button">Upload</button>
         </div>
-        <p class="note">Or pick one already on the site.</p>
+        <p class="note">Or pick one already on the site. Dimensions and file size are shown so you can avoid 4&nbsp;MB hero images.</p>
         <div id="library" class="gallery"></div>
-        <p class="note">Photos already on this page. Change the alt text, then Save page.</p>
+        <p class="note">Photos already on this page. Change the alt text, then Save page. Saving also fills missing width/height from the image files, which stops the gallery jumping while it loads.</p>
         <div id="images"></div>
         <button id="fill-alts" type="button">Fill empty alts with “Israel Joffe”</button>
       </section>
@@ -318,6 +344,23 @@
         <div class="actions">
           <button id="save-footer" class="primary" type="button">Save footer on every page</button>
         </div>
+      </section>
+      <section data-panel="health" class="hidden">
+        <p class="note">Read-only checks across every page in this site's source: titles, descriptions, canonicals, H1s, image alt text and dimensions, social cards, sitemap coverage, image-sitemap coverage and internal links. Nothing is changed by running it.</p>
+        <div class="actions">
+          <button id="run-audit" class="primary" type="button">Run site check</button>
+          <span id="audit-stamp" class="note"></span>
+        </div>
+        <div id="audit-summary" class="audit-grid"></div>
+        <div id="audit-issues"></div>
+      </section>
+      <section data-panel="history" class="hidden">
+        <p class="note">Every page save, menu/footer change, sitemap update, upload, publish and restore is recorded on this computer. Restoring writes an earlier snapshot back and records that restore too.</p>
+        <div class="actions">
+          <button id="refresh-history" type="button">Refresh history</button>
+          <span class="note">Newest first, last 100 changes for this site.</span>
+        </div>
+        <div id="history"></div>
       </section>
       <section data-panel="new" class="hidden">
         <label>Address</label><input id="new-slug" type="text" placeholder="notes" />
@@ -350,7 +393,7 @@ let footerGroups = [];
 async function api(path, options = {}) {
   const res = await fetch(path, {
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Joffe-CSRF": csrfToken(), ...(options.headers || {}) },
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -359,11 +402,18 @@ async function api(path, options = {}) {
   return data;
 }
 
+function csrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)joffe_admin_csrf=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 function showTab(name) {
   document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll("[data-panel]").forEach((panel) => panel.classList.toggle("hidden", panel.dataset.panel !== name));
-  $("save-bar").classList.toggle("hidden", name === "nav" || name === "links" || name === "new");
+  $("save-bar").classList.toggle("hidden", ["nav", "links", "new", "health", "history"].includes(name));
   if (name === "images") loadLibrary().catch((error) => { $("message").textContent = error.message; });
+  if (name === "health") runAudit().catch((error) => { $("message").textContent = error.message; });
+  if (name === "history") loadHistory().catch((error) => { $("message").textContent = error.message; });
   if (name === "share") {
     renderShare();
     loadShareLibrary().catch((error) => { $("message").textContent = error.message; });
@@ -399,6 +449,7 @@ function decodeText(value) {
 }
 
 function mediaUrl(src) {
+  if (/^(?:[a-z]+:)?\/\//i.test(src) || src.startsWith("data:")) return src;
   return `/api/sites/${site}/media${src}`;
 }
 
@@ -428,7 +479,7 @@ function renderImages() {
     remove.onclick = async () => {
       if (!confirm("Take this photo off the page?")) return;
       try {
-        await api(`/api/sites/${site}/remove-image`, { method: "POST", body: { path: current.path, src: image.src } });
+        await api(`/api/sites/${site}/remove-image`, { method: "POST", body: { path: current.path, src: image.src, revision: current.revision } });
         $("message").textContent = "Photo removed from this page. Click Publish this site to update the live website.";
         await openPage(current.path);
       } catch (error) {
@@ -490,7 +541,9 @@ function renderSerp() {
 }
 
 async function loadLibrary() {
-  const data = await api(`/api/sites/${site}/library`);
+  const target = site;
+  const data = await api(`/api/sites/${target}/library`);
+  if (target !== site) return;
   $("library").replaceChildren();
   data.images.forEach((image) => {
     const figure = document.createElement("figure");
@@ -501,13 +554,19 @@ async function loadLibrary() {
     button.type = "button";
     button.textContent = "Add to this page";
     button.onclick = () => placeExisting(image.src);
-    figure.append(img, button);
+    const info = document.createElement("small");
+    info.className = "note";
+    const dimensions = image.width && image.height ? `${image.width}×${image.height}` : "dimensions unknown";
+    info.textContent = `${dimensions} · ${image.size || ""}${image.webp ? " · WebP" : ""}`;
+    figure.append(img, button, info);
     $("library").append(figure);
   });
 }
 
 async function loadShareLibrary() {
-  const data = await api(`/api/sites/${site}/library`);
+  const target = site;
+  const data = await api(`/api/sites/${target}/library`);
+  if (target !== site) return;
   $("share-library").replaceChildren();
   if (!data.images.length) {
     const empty = document.createElement("p");
@@ -546,13 +605,42 @@ function chooseShare(kind, src) {
     : "Link image selected. Click Save page, then Publish this site.";
 }
 
+async function optimizeImage(file) {
+  const box = $("optimize-upload");
+  if (!box || !box.checked) return file;
+  if (!/^image\/(jpeg|png)$/i.test(file.type) || file.size < 250 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const max = 1800;
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+    if (!blob || blob.size >= file.size * 0.9) return file;
+    const stem = file.name.replace(/\.[^.]+$/, "") || "photo";
+    return new File([blob], `${stem}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
+  }
+}
+
 async function uploadRole(fileInput, role) {
   const file = fileInput.files && fileInput.files[0];
   if (!file) { $("message").textContent = "Choose an image first."; return null; }
+  const prepared = await optimizeImage(file);
   const form = new FormData();
-  form.append("file", file);
+  form.append("file", prepared, prepared.name || "photo");
   form.append("role", role);
-  const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+  const res = await fetch(`/api/sites/${site}/upload`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "X-Joffe-CSRF": csrfToken() },
+    body: form,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Upload failed");
   fileInput.value = "";
@@ -561,7 +649,7 @@ async function uploadRole(fileInput, role) {
 
 async function placeExisting(src) {
   const alt = $("upload-alt").value.trim() || "Israel Joffe";
-  await api(`/api/sites/${site}/insert-image`, { method: "POST", body: { path: current.path, src, alt } });
+  await api(`/api/sites/${site}/insert-image`, { method: "POST", body: { path: current.path, src, alt, revision: current.revision } });
   $("message").textContent = "Photo added to this page. Click Publish this site to put it on the live website.";
   await openPage(current.path);
   await loadLibrary();
@@ -599,6 +687,7 @@ async function loadSites() {
     button.className = item.id === site ? "active" : "";
     button.onclick = () => {
       site = item.id;
+      current = null;
       if (item.id === "wuw" && $("upload-alt").value === "Israel Joffe") $("upload-alt").value = "World of Unpredictable Wrestling";
       if (item.id !== "wuw" && $("upload-alt").value === "World of Unpredictable Wrestling") $("upload-alt").value = "Israel Joffe";
       loadPages();
@@ -614,6 +703,7 @@ async function loadSites() {
   if (active) {
     if (active.note) bits.push(active.note);
     else if (active.mode === "build") bits.push("Generated build output — publish right after editing; the next build overwrites these files.");
+    if (active.gate) bits.push("Publish runs the preview → smoke → production gate.");
     if (active.home === false) bits.push("It has no home page file, so its home page and menu cannot be edited here.");
     if (active.ready === false) bits.push("Its local folder is missing, so there is nothing to edit yet.");
   }
@@ -709,6 +799,146 @@ async function loadFooter() {
   renderFooter();
 }
 
+function auditCard(value, label, tone = "") {
+  const card = document.createElement("div");
+  card.className = `audit-card ${tone}`.trim();
+  const number = document.createElement("b");
+  number.textContent = Number(value || 0).toLocaleString();
+  const text = document.createElement("span");
+  text.textContent = label;
+  card.append(number, text);
+  return card;
+}
+
+function renderAudit(data) {
+  const s = data.summary || {};
+  $("audit-stamp").textContent = `Checked ${new Date(data.generatedAt).toLocaleString()}`;
+  $("audit-summary").replaceChildren(
+    auditCard(s.pages, "pages"),
+    auditCard(s.images, "images on pages"),
+    auditCard(s.errors, "errors", s.errors ? "bad" : "good"),
+    auditCard(s.warnings, "warnings", s.warnings ? "warn" : "good"),
+    auditCard(s.notices, "notices"),
+    auditCard(s.missingAlt, "images without alt"),
+    auditCard(s.missingDescription, "pages without a description"),
+    auditCard(s.imageNoDimensions, "images without width/height"),
+    auditCard(s.notInSitemap, "indexable pages not in sitemap"),
+    auditCard(s.brokenInternalLinks, "broken internal links"),
+    auditCard(s.staleSitemapUrls, "stale sitemap URLs"),
+    auditCard(s.imagePagesMissingFromImageSitemap, "pages missing from image sitemap"),
+  );
+  const list = $("audit-issues");
+  list.replaceChildren();
+  if (!data.issues?.length) {
+    const empty = document.createElement("p");
+    empty.className = "note";
+    empty.textContent = "No findings. That is rare — check the cards above for zeroes that look too good.";
+    list.append(empty);
+    return;
+  }
+  data.issues.forEach((issue) => {
+    const row = document.createElement("div");
+    row.className = "audit-issue";
+    const severity = document.createElement("span");
+    severity.className = `sev ${issue.severity}`;
+    severity.textContent = issue.severity;
+    const code = document.createElement("code");
+    code.textContent = issue.code;
+    const detail = document.createElement("p");
+    detail.textContent = issue.detail;
+    row.append(severity, code, detail);
+    if (issue.path && issue.path.startsWith("/")) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = issue.path === "/" ? "Open home" : "Open";
+      open.onclick = async () => {
+        try {
+          await openPage(issue.path);
+          showTab("seo");
+        } catch (error) {
+          $("message").textContent = error.message;
+        }
+      };
+      row.append(open);
+    } else {
+      row.append(document.createElement("span"));
+    }
+    list.append(row);
+  });
+  if (data.truncated) {
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "Showing the first 800 findings. Fix the errors and warnings first, then run it again.";
+    list.append(note);
+  }
+}
+
+async function runAudit() {
+  const target = site;
+  $("audit-stamp").textContent = "Checking every page…";
+  $("audit-summary").replaceChildren();
+  $("audit-issues").replaceChildren();
+  const data = await api(`/api/sites/${target}/seo?refresh=1`);
+  if (target !== site) return;
+  renderAudit(data);
+}
+
+async function loadHistory() {
+  const target = site;
+  const data = await api(`/api/sites/${target}/history?limit=100`);
+  if (target !== site) return;
+  const list = $("history");
+  list.replaceChildren();
+  if (!data.entries?.length) {
+    const empty = document.createElement("p");
+    empty.className = "note";
+    empty.textContent = "No edits recorded for this site yet.";
+    list.append(empty);
+    return;
+  }
+  data.entries.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    const time = document.createElement("time");
+    time.textContent = new Date(entry.at).toLocaleString();
+    time.title = entry.at;
+    const action = document.createElement("code");
+    action.textContent = entry.action || "save";
+    const path = document.createElement("code");
+    path.textContent = entry.url || entry.path || "site-wide";
+    const note = document.createElement("p");
+    note.textContent = entry.note || "";
+    row.append(time, action, path, note);
+    const canRestore = entry.path?.endsWith(".html") && entry.before && entry.url;
+    if (canRestore) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.textContent = "Restore";
+      restore.onclick = async () => {
+        if (!confirm(`Restore ${entry.url} to the version from ${new Date(entry.at).toLocaleString()}?`)) return;
+        try {
+          $("message").textContent = `Restoring ${entry.url}…`;
+          await api(`/api/sites/${site}/restore`, {
+            method: "POST",
+            body: { path: entry.url, hash: entry.before, note: `Restored ${entry.url} from History` },
+          });
+          $("message").textContent = `Restored ${entry.url}. Click Publish this site to make it live.`;
+          await loadPages();
+          await openPage(entry.url);
+          await loadHistory();
+          showTab("seo");
+        } catch (error) {
+          $("message").textContent = error.message;
+        }
+      };
+      row.append(restore);
+    } else {
+      row.append(document.createElement("span"));
+    }
+    list.append(row);
+  });
+}
+
 $("login").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("login-error").textContent = "";
@@ -729,6 +959,8 @@ document.querySelectorAll("[data-tab]").forEach((button) => {
   button.onclick = () => showTab(button.dataset.tab);
 });
 $("filter").addEventListener("input", renderPages);
+$("run-audit").onclick = () => runAudit().catch((error) => { $("message").textContent = error.message; });
+$("refresh-history").onclick = () => loadHistory().catch((error) => { $("message").textContent = error.message; });
 ["title", "description", "canonical"].forEach((id) => $(id).addEventListener("input", renderSerp));
 $("social-alt").addEventListener("input", () => { if (current) current.socialAlt = $("social-alt").value; });
 $("link-alt").addEventListener("input", () => { if (current) current.linkAlt = $("link-alt").value; });
@@ -781,10 +1013,11 @@ $("apple-upload").onclick = async () => {
 $("save").onclick = async () => {
   $("message").textContent = "Saving…";
   try {
-    await api(`/api/sites/${site}/page`, {
+    const result = await api(`/api/sites/${site}/page`, {
       method: "PUT",
       body: {
         path: current.path,
+        revision: current.revision,
         title: $("title").value,
         description: $("description").value,
         canonical: $("canonical").value,
@@ -801,7 +1034,10 @@ $("save").onclick = async () => {
         navLabel: $("title").value,
       },
     });
-    $("message").textContent = "Saved. Menu and sitemap updated on this computer. Click Publish this site to make it live.";
+    current.revision = result.revision;
+    $("message").textContent = result.warnings?.length
+      ? `Saved, but: ${result.warnings.join(" ")}`
+      : "Saved. Menu and sitemap updated on this computer. Click Publish this site to make it live.";
     await loadPages();
   } catch (error) {
     $("message").textContent = error.message;
@@ -814,14 +1050,22 @@ $("upload").onclick = async () => {
   $("message").textContent = "Uploading…";
   try {
     for (const file of files) {
+      const prepared = await optimizeImage(file);
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", prepared, prepared.name || "photo");
       form.append("alt", $("upload-alt").value.trim());
       form.append("path", current.path);
+      form.append("revision", current.revision);
       form.append("insert", "1");
-      const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+      const res = await fetch(`/api/sites/${site}/upload`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-Joffe-CSRF": csrfToken() },
+        body: form,
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
+      if (data.revision) current.revision = data.revision;
     }
     $("file").value = "";
     $("message").textContent = "Photo is on this page. Click Publish this site to put it on the live website.";
@@ -881,15 +1125,15 @@ $("create-page").onclick = async () => {
 };
 $("delete").onclick = async () => {
   if (!current || current.path === "/") return;
-  if (!confirm(`Delete ${current.path}?`)) return;
-  await api(`/api/sites/${site}/page`, { method: "DELETE", body: { path: current.path } });
+  if (!confirm(`Delete ${current.path}? The previous version stays in History and can be restored.`)) return;
+  await api(`/api/sites/${site}/page`, { method: "DELETE", body: { path: current.path, revision: current.revision } });
   current = null;
-  $("message").textContent = "Page deleted on this computer.";
+  $("message").textContent = "Page deleted on this computer. Its old version is in History.";
   await loadPages();
 };
 $("publish").onclick = async () => {
-  if (!confirm(`Publish ${site} to Cloudflare?`)) return;
-  await api(`/api/sites/${site}/publish`, { method: "POST" });
+  if (!confirm(`Publish the saved files for ${site} to Cloudflare? This is the live site.`)) return;
+  await api(`/api/sites/${site}/publish`, { method: "POST", body: { confirm: true } });
   $("log").classList.remove("hidden");
   const timer = setInterval(async () => {
     const job = await api("/api/publish");
@@ -1023,11 +1267,17 @@ $("editor-image").onclick = () => {
   picker.onchange = async () => {
     const file = picker.files && picker.files[0];
     if (!file || !current) return;
+    const prepared = await optimizeImage(file);
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", prepared, prepared.name || "photo");
     form.append("alt", $("upload-alt").value.trim() || "Israel Joffe");
     form.append("insert", "0");
-    const res = await fetch(`/api/sites/${site}/upload`, { method: "POST", credentials: "same-origin", body: form });
+    const res = await fetch(`/api/sites/${site}/upload`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "X-Joffe-CSRF": csrfToken() },
+      body: form,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { $("message").textContent = data.error || "Upload failed"; return; }
     if ($("visual").innerHTML.includes(data.src)) {
@@ -1036,7 +1286,8 @@ $("editor-image").onclick = () => {
     }
     restoreRange();
     const alt = (data.alt || "Israel Joffe").replace(/"/g, "&quot;");
-    document.execCommand("insertHTML", false, `<img src="/api/sites/${site}/media${data.src}" alt="${alt}" style="max-width:280px;height:auto">`);
+    const size = data.width > 0 && data.height > 0 ? ` width="${data.width}" height="${data.height}"` : "";
+    document.execCommand("insertHTML", false, `<img src="/api/sites/${site}/media${data.src}" alt="${alt}"${size} style="max-width:280px;height:auto">`);
     visualDirty = true;
     visualToCode();
     $("message").textContent = "Photo inserted. Click Save page, then Publish this site.";

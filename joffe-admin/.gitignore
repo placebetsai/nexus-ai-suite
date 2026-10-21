@@ -1,0 +1,3 @@
+# Local editing history and content-addressed snapshots. This is runtime data,
+# not source: it stays on the machine that runs the admin.
+.state/
