@@ -1,6 +1,33 @@
 # Handoff: placebets.ai, current as of 8:40 AM ET, Thu Oct 15 2026
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
 
+
+## PLANNED NEXT (Oct 21, 2:20 PM ET, Grok Bot): research only, nothing deployed
+- **Blocker 0:**
+  - Production is Pages commit **04616bb** (8 deploys today, 8:35 AM–1:54 PM ET), and it is **not on GitHub**. GitHub main is 3d4bc04 (Oct 17); the box checkout is ff99bb5 (Oct 15).
+  - OpenCode on the laptop is shipping (ISSUE_LOG #134–140). Push 04616bb to GitHub and name ONE owner before anyone builds, or the next deploy from another copy reverts production.
+- **Futures root cause today:** the box loop (`futures-refresh-loop.sh`, PID 1939) is alive but has written nothing since Oct 16. `seed-futures-kv.mjs` needs `node_modules/.bin/wrangler`, `node_modules` is empty, and the loop's grep hides the error. KV expired, so title asks fall back to standings.
+- **Iz rejected paid feeds.** Plan: free-source pipeline. Probe results from the box and from Cloudflare egress (throwaway Worker pb-probe-tmp-1021, deleted):
+  - **The Odds Gap** works from Cloudflare and robots allows its /api/* feeds. It has per-book futures (NHL/NBA/NFL/MLB…, up to 9 books), per-book game pages, props, openers/closers and line history. The licence wants a conversation before automated reuse; the draft email is in the plan.
+  - **Action Network:** 6 books per game, works from Cloudflare, but robots Disallow: /.
+  - **FanDuel sbapi and Kambi (BetRivers):** work from Cloudflare (props included); ToS unverified. Iz decides.
+  - **Pinnacle guest API** works but is forbidden (Oct 14 ruling). DK, Caesars and bet365 are blocked.
+  - **ESPN core** returns 403 from Cloudflare (box only). ESPN site works with a browser UA only.
+  - **Kalshi/Polymarket:** display is ToS-restricted (Oct 14 ruling).
+  - **Open-Meteo** is non-commercial; use NWS for US venues.
+- **Pipeline:**
+  - New Worker `placebets-ingest`, writing to D1 tables `events`, `event_alias`, per-book `odds_current`/`odds_ticks` (written on change, R2 archive), `futures_*` and `source_health` (with email alerts).
+  - One reader module (`lib/market/read.js`) with fail-soft: "No price available". Delete the standings-as-price path.
+  - Optional backup runner = OpenCode systemd --user timer on the laptop (the box has no systemd/cron). No GitHub Actions.
+- **Catalyst v1 exists live** (/terminal, email-gated; line-history consensus-only, edges with anonymised "Book A–G", splits, injuries, weather, attention). Measured defect: /api/edges and /api/line-history disagree on the Cowboys@Eagles move.
+- **Catalyst v2:** per-book ticks, then moves/steam/RLM/origin book, then timestamped catalysts (injury diffs, lineups, NWS weather, NBA refs, schedule/rest, news), then an attribution label (confirmed order / candidate / no public catalyst), then an impact graph built in code with model prose.
+- **Order:** data (13–15 d), Catalyst (12–13 d), bot (6–8 d), UI (8–10 d).
+- **First slice (4–5 d):**
+  - Odds Gap per-book futures plus Odds Gap / Action Network NBA/NFL ticks into the new tables.
+  - Honest futures in the bot.
+  - Injury-diff catalysts and a Movement block on game pages.
+- **Full docs:** docs/placebets/SCRAPER-PLAN-2026-10-21.md, CATALYST-PLAN-2026-10-21.md, STRATEGY-2026-10-21.md (box copies in /workspace/placebets-preview/).
+
 ## REBUILD SHIPPED (Oct 15, started 9:15 AM ET, live 10:08 AM ET)
 - **Why:** Iz says desktop placebets.ai is broken (blank half-page, breaks after loading, slow, ugly). His new plan replaces the desktop diagnosis task.
 - **Branch:** `feat/analyst-rebuild` (placebetsai/Placebetsai).
