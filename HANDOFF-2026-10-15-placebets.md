@@ -2,6 +2,44 @@
 (Continues HANDOFF-2026-10-14-placebets.md. No secret values in this file. Tokens live in /home/box/.cf-tokens on the box; use WORKERS_TOKEN. PLACEBETS_TOKEN is dead.)
 
 
+## OCT 21 IN PROGRESS (3:25 PM ET, Grok Bot): slice 1 built and passing preview; site (Pages) NOT deployed to production yet
+
+**Source:** Iz's laptop repo `Placebetsai`, HEAD **04616bb** + 73-file dirty working tree, copied read-only at 2:11 PM ET (laptop untouched).
+- Laptop copy on the box: `/workspace/uploads/placebets-src-1021.tgz` (sha256 feb42e78…ebad). A leftover copy also sits at the laptop's `~/placebets-src-1021.tgz`.
+- Working tree (all changes): `/workspace/pb/Placebetsai-src`. Sync tarball: `/workspace/placebets-slice1-changed-tree-1021.tgz`. **Until the laptop is synced, a deploy from the laptop tree reverts this work.**
+
+**What's live already (not the Pages site):**
+- D1 `prediction-market-data`: additive migration `migrations/market-data/0001_pb_books.sql` applied. New tables: pb_events, pb_event_alias, pb_event_seen, pb_odds_current/ticks, pb_futures_current/ticks, pb_props_current, pb_source_health. No existing table touched.
+- Worker `placebets-ingest` (cron */5): The Odds Gap, Action Network (6 books kept separate), FanDuel sbapi (games + title outrights), BetRivers/Kambi (games + title outrights). Health: https://placebets-ingest.placebetsai.workers.dev/health
+- Box futures loop fixed: KV REST, no wrangler; full logging; no stale ESPN seasons, ESPN BET boards skipped.
+
+**Done in the tree, verified on preview (https://8cec3d94.placebetsai.pages.dev), not in production:**
+- The bot's model is now Workers AI `@cf/openai/gpt-oss-120b` tool calling, falling back to `llama-3.3-70b`. Tools: title odds, game lines, slate, props, news, off-topic, plus a legacy-router fallthrough.
+- Per-book futures, including the World Series (Brewers/Rays via FanDuel + BetRivers). Game lines show best price, book, "As of" and source. Nicknames resolve (Wings/Habs/Bolts/Niners), within a 48-hour window. A missing game gives "no line" plus each team's next real game, and no lean.
+- Hard 6-second deadline. Off-topic questions (weather, capitals) get a short reply in about 1 s.
+- Grounding check: any sentence in the model's take with a number, quote or name not found in tool output is dropped. News sentences must cite a real wire item, and the reply lists sources with ET times.
+- Standings→odds path deleted. The board names the book behind each best moneyline.
+- Smoke: the old "general question must be researched" check was replaced by an "off-topic gets a quick reply, no odds" check (per Iz). Six regression cases were added to scripts/eval (Wizards vs Nets, CFB Saturday, Wings or Canucks, NY weather, Babcock/Levi, World Series).
+
+**Evals:**
+- Full eval before the change (prod, 1,055 items): **1018/1055**.
+- A 200-item sample before/after is running now; production deploy happens only if after ≥ before.
+- Regression cases: prod 1/6, preview 5/6. The news case was fixed after that run.
+
+**Next steps:**
+1. Compare the s200 evals: `/workspace/pb/eval/s200-{before,after}.json`.
+2. If after ≥ before: `cd /workspace/pb/Placebetsai-src && set -a && . /home/box/.cf-tokens && set +a && CLOUDFLARE_API_TOKEN="$WORKERS_TOKEN" CLOUDFLARE_ACCOUNT_ID=2765cb2786006552f33cc3dfe0b680a1 FORCE_DEPLOY=1 PROPAGATE_S=75 bash scripts/deploy-safe.sh`
+   - FORCE is needed because of the one-promote-per-day cadence rule.
+   - The last two gate runs failed only on transient fresh-preview 404s that were 200 on recheck.
+3. Collect curl receipts and screenshots at 1440 and 412, then update this note.
+4. Sync the laptop from the tarball.
+
+**Known gaps:**
+- Action Network robots.txt disallows the API; FanDuel/Kambi ToS not verified.
+- The Odds Gap futures lag about 7 h; those books are labeled with their own time.
+- No email alerting on ingest failures.
+- The hive relay moved last.
+
 ## PLANNED NEXT (Oct 21, 2:20 PM ET, Grok Bot): research only, nothing deployed
 - **Blocker 0:**
   - Production is Pages commit **04616bb** (8 deploys today, 8:35 AM–1:54 PM ET), and it is **not on GitHub**. GitHub main is 3d4bc04 (Oct 17); the box checkout is ff99bb5 (Oct 15).
