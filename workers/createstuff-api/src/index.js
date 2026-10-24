@@ -640,10 +640,32 @@ const gen = async (env, system, user, maxTok = 8000) => {
     ...rest.filter((s) => !BACKEND_DEAD.has(s.key)),
     ...rest.filter((s) => BACKEND_DEAD.has(s.key)),
   ];
+  // One hard ceiling for the WHOLE walk, not just each attempt. Measured live
+  // 2026-10-24: with every attempt individually abort-bounded the chain itself
+  // was unbounded — groq 2 models × 110 s + one retry, 3 Zen × 150 s,
+  // 4 OpenRouter × 150 s, 4 Workers AI × 90 s — so a build in its repair stage
+  // sat "running" for 7+ minutes until the cron stale-sweep failed it while the
+  // builder spun. The build-stage gates (started < 140–150 s) only check BEFORE
+  // a call starts, so this is the guard that bounds a call that starts late.
+  // A budget hit demotes the silent backend for the rest of this invocation
+  // (BACKEND_DEAD below), same memory a refusal gets.
+  const CHAIN_BUDGET_MS = 120000;
+  const chainStart = Date.now();
   let last = null;
   for (const s of order) {
+    const left = CHAIN_BUDGET_MS - (Date.now() - chainStart);
+    if (left < 8000) {
+      if (last) throw last;
+      last = new Error("no model answered within the " + Math.round(CHAIN_BUDGET_MS / 1000) + "s budget (" + s.key + " next in line)");
+      throw last;
+    }
     try {
-      const r = await s.run();
+      // withTimeout, not another AbortSignal: the existing per-fetch aborts and
+      // the env.AI.run guard already stand behind each attempt, so this only
+      // has to stop the CHAIN when a backend sits silent on a slow tier. The
+      // abandoned call is drained by withTimeout's own catch (no unhandled
+      // rejection) and its own aborts still apply underneath.
+      const r = await withTimeout(s.run(), left, "backend " + s.key + " within the " + Math.round(CHAIN_BUDGET_MS / 1000) + "s budget");
       BACKEND_OK = s.key;
       return r;
     } catch (e) {
